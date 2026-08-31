@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  build-and-test:
+    name: Lint · Build · Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      # Every workspace is installed once and reused by all three steps.
+      - name: Install
+        run: |
+          npm install
+          npm install --prefix libs/common
+          npm install --prefix libs/rabbitmq
+          npm install --prefix apps/api-gateway
+          npm install --prefix apps/users-service
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck gateway
+        run: npx tsc --noEmit -p apps/api-gateway/tsconfig.json
+
+      - name: Typecheck users-service
+        run: npx tsc --noEmit -p apps/users-service/tsconfig.json
+
+      # --passWithNoTests keeps the pipeline honest for services that do not
+      # have specs yet, instead of failing on Jest's "no tests found" exit 1.
+      - name: Test users-service
+        run: npm test --prefix apps/users-service -- --passWithNoTests
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan for committed credentials
+        run: bash scripts/scan-secrets.sh

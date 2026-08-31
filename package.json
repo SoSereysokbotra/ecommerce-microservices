@@ -1,0 +1,29 @@
+{
+  "name": "ecommerce-microservices",
+  "version": "1.0.0",
+  "description": "Order-Inventory-Payment microservices with a saga-orchestrated checkout",
+  "private": true,
+  "scripts": {
+    "setup": "bash scripts/setup.sh",
+    "build:all": "npm run build --prefix apps/api-gateway && npm run build --prefix apps/users-service",
+    "start:gateway": "npm run start:dev --prefix apps/api-gateway",
+    "start:users": "npm run start:dev --prefix apps/users-service",
+    "test:all": "npm test --prefix apps/users-service && npm test --prefix apps/api-gateway",
+    "migrate:users": "npm run migration:run --prefix apps/users-service",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "lint": "eslint \"{apps,libs}/**/*.ts\"",
+    "format": "prettier --write \"{apps,libs}/**/*.ts\""
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.1.0",
+    "prettier": "^3.2.0",
+    "typescript": "^5.5.4"
+  },
+  "engines": { "node": ">=20.0.0" }
+}

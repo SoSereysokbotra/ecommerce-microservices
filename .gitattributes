@@ -1,0 +1,12 @@
+* text=auto eol=lf
+
+# These run inside Linux containers and in CI. A CRLF line ending makes the
+# shebang unparseable and the script fails with a confusing "not found".
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary

@@ -1,0 +1,106 @@
+name: commerce
+
+# Databases are NOT in this file. Every service connects to its own Neon
+# PostgreSQL instance via DATABASE_URL in apps/<service>/.env.
+# See docs/adr/0001-new-repo-and-reuse.md.
+
+services:
+  # ---------------------------------------------------------------- infrastructure
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: commerce-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-guest}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    networks: [commerce]
+
+  redis:
+    image: redis:7-alpine
+    container_name: commerce-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [commerce]
+
+  # ---------------------------------------------------------------------- services
+  users-service:
+    build:
+      context: .
+      dockerfile: ./apps/users-service/Dockerfile
+      target: development
+    container_name: commerce-users-service
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    env_file:
+      - ./apps/users-service/.env
+    volumes:
+      - .:/app
+      - users_service_node_modules:/app/apps/users-service/node_modules
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # Readiness, not liveness: /ready queries Neon, so the gateway does not
+      # start until this service can actually reach its database.
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/v1/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 40s
+    networks: [commerce]
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: ./apps/api-gateway/Dockerfile
+      target: development
+    container_name: commerce-api-gateway
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./apps/api-gateway/.env
+    volumes:
+      - .:/app
+      - api_gateway_node_modules:/app/apps/api-gateway/node_modules
+    depends_on:
+      users-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/v1/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks: [commerce]
+
+volumes:
+  rabbitmq_data:
+  redis_data:
+  users_service_node_modules:
+  api_gateway_node_modules:
+
+networks:
+  commerce:
+    driver: bridge

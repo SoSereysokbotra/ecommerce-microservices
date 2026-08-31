@@ -1,0 +1,23 @@
+node_modules/
+dist/
+build/
+coverage/
+
+# Environment — only .env.example is committed, and it must contain
+# placeholders only. Never a real credential.
+.env
+.env.local
+.env.*.local
+
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+logs/
+*.log
+npm-debug.log*
+
+tmp/
+temp/

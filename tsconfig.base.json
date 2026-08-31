@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "ES2021",
+    "lib": ["ES2021"],
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "sourceMap": true,
+    "incremental": true,
+    "ignoreDeprecations": "5.0",
+    "skipLibCheck": true,
+    "strictNullChecks": true,
+    "strictPropertyInitialization": false,
+    "noImplicitAny": true,
+    "strictBindCallApply": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@libs/common": ["./libs/common/src"],
+      "@libs/common/*": ["./libs/common/src/*"],
+      "@libs/shared-types": ["./libs/shared-types/src"],
+      "@libs/shared-types/*": ["./libs/shared-types/src/*"],
+      "@libs/rabbitmq": ["./libs/rabbitmq/src"],
+      "@libs/rabbitmq/*": ["./libs/rabbitmq/src/*"]
+    }
+  }
+}

@@ -1,0 +1,13 @@
+node_modules
+dist
+coverage
+.git
+.idea
+.vscode
+*.log
+.env
+.env.*
+apps/**/node_modules
+apps/**/dist
+libs/**/node_modules
+libs/**/dist
