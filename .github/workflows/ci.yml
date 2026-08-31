@@ -31,6 +31,8 @@ jobs:
           npm install --prefix apps/users-service
           npm install --prefix apps/catalog-service
           npm install --prefix apps/inventory-service
+          npm install --prefix apps/orders-service
+          npm install --prefix apps/payments-service
 
       - name: Lint
         run: npm run lint
@@ -41,6 +43,8 @@ jobs:
           npx tsc --noEmit -p apps/users-service/tsconfig.json
           npx tsc --noEmit -p apps/catalog-service/tsconfig.json
           npx tsc --noEmit -p apps/inventory-service/tsconfig.json
+          npx tsc --noEmit -p apps/orders-service/tsconfig.json
+          npx tsc --noEmit -p apps/payments-service/tsconfig.json
 
       # --passWithNoTests keeps the pipeline honest for services that do not
       # have specs yet, instead of failing on Jest's "no tests found" exit 1.

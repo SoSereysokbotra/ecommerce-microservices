@@ -1,13 +1,13 @@
 import { HttpService } from '@nestjs/axios';
 import { HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { CORRELATION_ID_HEADER } from '@libs/common';
+import { CORRELATION_ID_HEADER, USER_ID_HEADER, USER_ROLE_HEADER } from '@libs/common';
 import { AxiosError, AxiosResponse } from 'axios';
 import { Request } from 'express';
 import { firstValueFrom } from 'rxjs';
 
 type AuthenticatedRequest = Request & {
-  user?: { sub?: string };
+  user?: { sub?: string; role?: string };
   correlationId?: string;
 };
 
@@ -62,6 +62,16 @@ export class ProxyService {
     delete headers.host;
     delete headers['content-length'];
     headers[CORRELATION_ID_HEADER] = request.correlationId ?? '';
+
+    // Forward the identity the guard already verified. Strip anything the
+    // caller sent under these names first — otherwise a client could simply
+    // claim to be another user.
+    delete headers[USER_ID_HEADER];
+    delete headers[USER_ROLE_HEADER];
+    if (request.user?.sub) {
+      headers[USER_ID_HEADER] = request.user.sub;
+      headers[USER_ROLE_HEADER] = request.user.role ?? '';
+    }
 
     const timeout = this.configService.get<number>('upstreamTimeoutMs') ?? 5000;
     const maxRetries = RETRYABLE_METHODS.has(request.method)

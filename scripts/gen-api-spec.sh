@@ -16,6 +16,8 @@ declare -A SERVICES=(
   [users]=3001
   [catalog]=3002
   [inventory]=3003
+  [orders]=3004
+  [payments]=3005
 )
 
 failed=0

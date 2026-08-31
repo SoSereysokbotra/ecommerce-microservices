@@ -1,6 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, MaxLength, Min, NotEquals } from 'class-validator';
+import {
+  ArrayMinSize,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  Min,
+  NotEquals,
+  ValidateNested,
+} from 'class-validator';
 
 export class ListStockQueryDto {
   @ApiPropertyOptional({
@@ -49,4 +59,33 @@ export class StockResponseDto {
   @ApiProperty({ description: 'Units held by in-flight orders.' }) reservedQty: number;
   @ApiProperty() version: number;
   @ApiProperty() updatedAt: Date;
+}
+
+export class ReservationItemDto {
+  @ApiProperty()
+  @IsUUID()
+  productId: string;
+
+  @ApiProperty({ example: 2 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  qty: number;
+}
+
+export class ReserveStockDto {
+  @ApiProperty()
+  @IsUUID()
+  orderId: string;
+
+  @ApiProperty({ type: [ReservationItemDto] })
+  @ValidateNested({ each: true })
+  @Type(() => ReservationItemDto)
+  @ArrayMinSize(1)
+  items: ReservationItemDto[];
+}
+
+export class ReservationResultDto {
+  @ApiProperty() orderId: string;
+  @ApiProperty({ type: [StockResponseDto] }) stock: StockResponseDto[];
 }

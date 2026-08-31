@@ -4,6 +4,17 @@ import { NextFunction, Request, Response } from 'express';
 
 export const CORRELATION_ID_HEADER = 'x-correlation-id';
 
+/**
+ * Identity the gateway extracted from a verified JWT and forwards downstream.
+ *
+ * Services trust these because only the gateway is exposed; nothing else can
+ * reach them. Sending the identity as headers rather than injecting it into the
+ * request body keeps it available on GET and DELETE too, and leaves each
+ * service's DTOs describing only what a caller actually sends.
+ */
+export const USER_ID_HEADER = 'x-user-id';
+export const USER_ROLE_HEADER = 'x-user-role';
+
 declare module 'express-serve-static-core' {
   interface Request {
     correlationId?: string;

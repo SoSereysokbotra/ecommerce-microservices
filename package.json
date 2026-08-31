@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "setup": "bash scripts/setup.sh",
-    "build:all": "npm run build --prefix apps/api-gateway && npm run build --prefix apps/users-service && npm run build --prefix apps/catalog-service && npm run build --prefix apps/inventory-service",
+    "build:all": "npm run build --prefix apps/api-gateway && npm run build --prefix apps/users-service && npm run build --prefix apps/catalog-service && npm run build --prefix apps/inventory-service && npm run build --prefix apps/orders-service && npm run build --prefix apps/payments-service",
     "start:gateway": "npm run start:dev --prefix apps/api-gateway",
     "start:users": "npm run start:dev --prefix apps/users-service",
     "start:catalog": "npm run start:dev --prefix apps/catalog-service",
@@ -17,13 +17,16 @@
     "seed:inventory": "npm run seed --prefix apps/inventory-service",
     "gen:spec": "bash scripts/gen-api-spec.sh",
     "gen:types": "bash scripts/gen-api-types.sh",
-    "test:all": "npm test --prefix apps/users-service -- --passWithNoTests && npm test --prefix apps/catalog-service -- --passWithNoTests && npm test --prefix apps/inventory-service -- --passWithNoTests",
+    "test:all": "npm test --prefix apps/users-service -- --passWithNoTests && npm test --prefix apps/catalog-service -- --passWithNoTests && npm test --prefix apps/inventory-service -- --passWithNoTests && npm test --prefix apps/orders-service -- --passWithNoTests && npm test --prefix apps/payments-service -- --passWithNoTests",
     "lint": "eslint \"{apps,libs}/**/*.ts\"",
     "format": "prettier --write \"{apps,libs}/**/*.ts\"",
     "scan:secrets": "bash scripts/scan-secrets.sh",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f"
+    "docker:logs": "docker compose logs -f",
+    "start:orders": "npm run start:dev --prefix apps/orders-service",
+    "start:payments": "npm run start:dev --prefix apps/payments-service",
+    "migrate:orders": "npm run migration:run --prefix apps/orders-service"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.0.0",

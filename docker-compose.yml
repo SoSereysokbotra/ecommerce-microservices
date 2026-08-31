@@ -124,6 +124,66 @@ services:
       start_period: 40s
     networks: [commerce]
 
+  payments-service:
+    build:
+      context: .
+      dockerfile: ./apps/payments-service/Dockerfile
+      target: development
+    container_name: commerce-payments-service
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    env_file:
+      - ./apps/payments-service/.env
+    volumes:
+      - .:/app
+      - payments_service_node_modules:/app/apps/payments-service/node_modules
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3005/api/v1/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 40s
+    networks: [commerce]
+
+  orders-service:
+    build:
+      context: .
+      dockerfile: ./apps/orders-service/Dockerfile
+      target: development
+    container_name: commerce-orders-service
+    restart: unless-stopped
+    ports:
+      - "3004:3004"
+    env_file:
+      - ./apps/orders-service/.env
+    volumes:
+      - .:/app
+      - orders_service_node_modules:/app/apps/orders-service/node_modules
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      catalog-service:
+        condition: service_healthy
+      inventory-service:
+        condition: service_healthy
+      payments-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3004/api/v1/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 40s
+    networks: [commerce]
+
   api-gateway:
     build:
       context: .
@@ -145,6 +205,10 @@ services:
         condition: service_healthy
       inventory-service:
         condition: service_healthy
+      orders-service:
+        condition: service_healthy
+      payments-service:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/v1/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 10s
@@ -159,6 +223,8 @@ volumes:
   users_service_node_modules:
   catalog_service_node_modules:
   inventory_service_node_modules:
+  orders_service_node_modules:
+  payments_service_node_modules:
   api_gateway_node_modules:
 
 networks:

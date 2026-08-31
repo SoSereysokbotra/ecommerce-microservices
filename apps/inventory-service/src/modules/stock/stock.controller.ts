@@ -2,7 +2,14 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query } from '@
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '@libs/common';
 import { StockService } from './stock.service';
-import { AdjustStockDto, ListStockQueryDto, SetStockDto, StockResponseDto } from './dto/stock.dto';
+import {
+  AdjustStockDto,
+  ListStockQueryDto,
+  ReservationResultDto,
+  ReserveStockDto,
+  SetStockDto,
+  StockResponseDto,
+} from './dto/stock.dto';
 
 @ApiTags('inventory')
 @Controller('inventory/stock')
@@ -24,6 +31,18 @@ export class StockController {
   @ApiOkResponse({ type: StockResponseDto })
   findOne(@Param('productId', ParseUUIDPipe) productId: string): Promise<StockResponseDto> {
     return this.stock.findOne(productId);
+  }
+
+  /**
+   * Called synchronously by orders-service during checkout (M2). From M3 this
+   * is driven by an `order.created` event instead.
+   */
+  @Post('reserve')
+  @ApiOperation({ summary: 'Reserve stock for an order' })
+  @ApiOkResponse({ type: ReservationResultDto })
+  async reserve(@Body() body: ReserveStockDto): Promise<ReservationResultDto> {
+    const stock = await this.stock.reserve(body.items);
+    return { orderId: body.orderId, stock };
   }
 
   @Post(':productId/adjust')
