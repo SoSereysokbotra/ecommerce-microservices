@@ -15,7 +15,10 @@ module.exports = {
     node: true,
     jest: true,
   },
-  ignorePatterns: ['.eslintrc.js', 'dist', 'node_modules'],
+  // libs/api-types is generated from openapi/*.json. Linting or formatting it
+  // would fight the generator: prettier reformats, regeneration reverts, and
+  // the CI staleness check never passes again.
+  ignorePatterns: ['.eslintrc.js', 'dist', 'node_modules', 'libs/api-types'],
   rules: {
     '@typescript-eslint/interface-name-prefix': 'off',
     '@typescript-eslint/explicit-function-return-type': 'off',

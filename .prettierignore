@@ -1,0 +1,8 @@
+node_modules
+dist
+coverage
+
+# Generated from openapi/*.json by scripts/gen-api-types.sh.
+# Formatting these would fight the generator and break the CI staleness check.
+libs/api-types
+openapi

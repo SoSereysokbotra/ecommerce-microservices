@@ -70,6 +70,60 @@ services:
       start_period: 40s
     networks: [commerce]
 
+  catalog-service:
+    build:
+      context: .
+      dockerfile: ./apps/catalog-service/Dockerfile
+      target: development
+    container_name: commerce-catalog-service
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    env_file:
+      - ./apps/catalog-service/.env
+    volumes:
+      - .:/app
+      - catalog_service_node_modules:/app/apps/catalog-service/node_modules
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3002/api/v1/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 40s
+    networks: [commerce]
+
+  inventory-service:
+    build:
+      context: .
+      dockerfile: ./apps/inventory-service/Dockerfile
+      target: development
+    container_name: commerce-inventory-service
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    env_file:
+      - ./apps/inventory-service/.env
+    volumes:
+      - .:/app
+      - inventory_service_node_modules:/app/apps/inventory-service/node_modules
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3003/api/v1/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 40s
+    networks: [commerce]
+
   api-gateway:
     build:
       context: .
@@ -87,6 +141,10 @@ services:
     depends_on:
       users-service:
         condition: service_healthy
+      catalog-service:
+        condition: service_healthy
+      inventory-service:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/v1/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 10s
@@ -99,6 +157,8 @@ volumes:
   rabbitmq_data:
   redis_data:
   users_service_node_modules:
+  catalog_service_node_modules:
+  inventory_service_node_modules:
   api_gateway_node_modules:
 
 networks:

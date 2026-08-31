@@ -4,8 +4,8 @@ An order–inventory–payment system built to demonstrate distributed-systems
 techniques that a CRUD application cannot: **saga-orchestrated checkout with
 compensating transactions, the transactional outbox, and idempotent consumers.**
 
-> **Status: M0 complete.** The gateway and authentication service run. Catalog,
-> inventory, orders and payments are not built yet. See `../IMPLEMENTATION_PLAN.md`.
+> **Status: M1 complete.** Gateway, auth, catalog and inventory run. Orders and
+> payments are not built yet. See `docs/IMPLEMENTATION_PLAN.md`.
 
 ---
 
@@ -22,12 +22,14 @@ services, in different databases. Making that correct is the point of the projec
 Requires Docker Desktop, Node 20+, and a [Neon](https://console.neon.tech)
 account.
 
-**1. Create the databases.** Every service owns its own Neon database. For M0
-you need one:
+**1. Create the databases.** Every service owns its own Neon database. Three
+are needed so far — they can be three databases inside one Neon project:
 
 | Service | Database |
 |---|---|
 | users-service | `users_db` |
+| catalog-service | `catalog_db` |
+| inventory-service | `inventory_db` |
 
 **2. Configure and start.**
 
@@ -46,7 +48,15 @@ DATABASE_URL=postgresql://<user>:<password>@<endpoint>.neon.tech/users_db?sslmod
 
 ```bash
 docker compose up -d       # starts the stack; waits for dependencies to be ready
-docker compose exec users-service npm run migration:run --prefix apps/users-service
+
+# Migrate, then seed. Order matters: the inventory seed asks the catalog
+# service for product ids over HTTP rather than reading its database.
+docker compose exec users-service     npm run migration:run --prefix apps/users-service
+docker compose exec catalog-service   npm run migration:run --prefix apps/catalog-service
+docker compose exec inventory-service npm run migration:run --prefix apps/inventory-service
+
+docker compose exec catalog-service   npm run seed --prefix apps/catalog-service
+docker compose exec inventory-service npm run seed --prefix apps/inventory-service
 ```
 
 Verify:
@@ -79,8 +89,8 @@ Databases are hosted on Neon; there is no Postgres container. See
 |---|---:|---|---|
 | api-gateway | 3000 | Routing, JWT, rate limiting, correlation ids | **Running** |
 | users-service | 3001 | Auth, customers | **Running** |
-| catalog-service | 3002 | Products, categories | M1 |
-| inventory-service | 3003 | Stock, reservations | M1 |
+| catalog-service | 3002 | Products, categories | **Running** |
+| inventory-service | 3003 | Stock levels | **Running** |
 | orders-service | 3004 | Order lifecycle, saga orchestrator | M2–M5 |
 | payments-service | 3005 | Stripe, webhooks, refunds | M4 |
 
@@ -90,7 +100,7 @@ Supporting: Neon PostgreSQL (one database per service), RabbitMQ, Redis.
 
 ## Conventions
 
-Defined once and applied everywhere — see `../IMPLEMENTATION_PLAN.md` §1.
+Defined once and applied everywhere — see `docs/IMPLEMENTATION_PLAN.md` §1.
 
 - **Money** is integer minor units plus an explicit currency. Never a float.
 - **Events** use one envelope with `eventId`, `correlationId` and `version`, and
@@ -123,6 +133,22 @@ which keeps the project in PCI SAQ-A.
 
 ---
 
+## API types
+
+The frontend's types are generated, never hand-written — hand-mirrored types
+drifting from the backend is what caused a 404 to ship in the previous project.
+
+After changing any controller or DTO:
+
+```bash
+npm run gen:spec    # capture openapi/*.json from the running stack
+npm run gen:types   # regenerate libs/api-types/src/*.d.ts
+```
+
+CI regenerates from the committed specs and fails if the result differs.
+
+---
+
 ## Development
 
 ```bash
@@ -143,6 +169,6 @@ Services run under `ts-node` without watch mode, so a code change needs
 
 | Document | Contents |
 |---|---|
-| `../PROJECT_PLAN.md` | Scope, releases, risks, definition of done |
-| `../IMPLEMENTATION_PLAN.md` | Build order, conventions, milestone tasks |
+| `docs/PROJECT_PLAN.md` | Scope, releases, risks, definition of done |
+| `docs/IMPLEMENTATION_PLAN.md` | Build order, conventions, milestone tasks |
 | `docs/adr/` | Architecture decision records |

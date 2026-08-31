@@ -22,7 +22,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      # Every workspace is installed once and reused by all three steps.
       - name: Install
         run: |
           npm install
@@ -30,20 +29,52 @@ jobs:
           npm install --prefix libs/rabbitmq
           npm install --prefix apps/api-gateway
           npm install --prefix apps/users-service
+          npm install --prefix apps/catalog-service
+          npm install --prefix apps/inventory-service
 
       - name: Lint
         run: npm run lint
 
-      - name: Typecheck gateway
-        run: npx tsc --noEmit -p apps/api-gateway/tsconfig.json
-
-      - name: Typecheck users-service
-        run: npx tsc --noEmit -p apps/users-service/tsconfig.json
+      - name: Typecheck
+        run: |
+          npx tsc --noEmit -p apps/api-gateway/tsconfig.json
+          npx tsc --noEmit -p apps/users-service/tsconfig.json
+          npx tsc --noEmit -p apps/catalog-service/tsconfig.json
+          npx tsc --noEmit -p apps/inventory-service/tsconfig.json
 
       # --passWithNoTests keeps the pipeline honest for services that do not
       # have specs yet, instead of failing on Jest's "no tests found" exit 1.
-      - name: Test users-service
-        run: npm test --prefix apps/users-service -- --passWithNoTests
+      - name: Test
+        run: npm run test:all
+
+  api-types:
+    name: API types are current
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      # Regenerates types from the committed OpenAPI documents. Needs no
+      # database and no running service, so it can gate every pull request.
+      #
+      # This job is why the previous project's bug cannot happen here: the
+      # frontend's types came from a hand-maintained copy that silently drifted
+      # from the backend, and a call to a route that did not exist shipped.
+      - name: Regenerate types from committed specs
+        run: bash scripts/gen-api-types.sh
+
+      - name: Fail if the committed types are stale
+        run: |
+          if ! git diff --exit-code -- libs/api-types; then
+            echo "::error::libs/api-types is out of date. Run 'npm run gen:spec && npm run gen:types' with the stack up, then commit."
+            exit 1
+          fi
+          echo "API types match the committed specs."
 
   secret-scan:
     name: Secret scan

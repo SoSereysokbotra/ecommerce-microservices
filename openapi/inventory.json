@@ -1,0 +1,261 @@
+{
+  "components": {
+    "schemas": {
+      "AdjustStockDto": {
+        "properties": {
+          "delta": {
+            "description": "Signed change to available quantity. Negative removes stock.",
+            "example": 25,
+            "type": "number"
+          },
+          "reason": {
+            "example": "stock-take correction",
+            "type": "string"
+          }
+        },
+        "required": [
+          "delta",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "SetStockDto": {
+        "properties": {
+          "availableQty": {
+            "example": 100,
+            "type": "number"
+          }
+        },
+        "required": [
+          "availableQty"
+        ],
+        "type": "object"
+      },
+      "StockResponseDto": {
+        "properties": {
+          "availableQty": {
+            "description": "Units that can still be reserved.",
+            "type": "number"
+          },
+          "productId": {
+            "type": "string"
+          },
+          "reservedQty": {
+            "description": "Units held by in-flight orders.",
+            "type": "number"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "productId",
+          "availableQty",
+          "reservedQty",
+          "version",
+          "updatedAt"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "bearerFormat": "JWT",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "contact": {},
+    "description": "Stock levels and reservations",
+    "title": "Inventory Service",
+    "version": "1.0"
+  },
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "operationId": "AppController_health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/inventory/stock": {
+      "get": {
+        "operationId": "StockController_list",
+        "parameters": [
+          {
+            "description": "Comma-separated product ids. Omit to list all stock rows.",
+            "in": "query",
+            "name": "productIds",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StockResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "List stock, optionally filtered by product ids",
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/stock/{productId}": {
+      "get": {
+        "operationId": "StockController_findOne",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "productId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Get stock for one product",
+        "tags": [
+          "inventory"
+        ]
+      },
+      "put": {
+        "operationId": "StockController_set",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "productId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetStockDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Set available quantity outright",
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/stock/{productId}/adjust": {
+      "post": {
+        "operationId": "StockController_adjust",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "productId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustStockDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Apply a signed change to available quantity",
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/v1/ready": {
+      "get": {
+        "operationId": "AppController_ready",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  },
+  "servers": [],
+  "tags": []
+}

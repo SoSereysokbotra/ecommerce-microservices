@@ -11,7 +11,7 @@ if [ ! -f .env ]; then
 fi
 
 # Per-service env
-for service in api-gateway users-service; do
+for service in api-gateway users-service catalog-service inventory-service; do
   if [ ! -f "apps/$service/.env" ]; then
     cp "apps/$service/.env.example" "apps/$service/.env"
     echo "Created apps/$service/.env"
@@ -21,7 +21,7 @@ done
 # A shared secret so the gateway and services agree on token signatures.
 if ! grep -q '^JWT_SECRET=.\+' .env; then
   SECRET="$(openssl rand -base64 48 | tr -d '\n')"
-  for f in .env apps/api-gateway/.env apps/users-service/.env; do
+  for f in .env apps/api-gateway/.env apps/users-service/.env apps/catalog-service/.env apps/inventory-service/.env; do
     if [ -f "$f" ]; then
       sed -i.bak "s|^JWT_SECRET=.*|JWT_SECRET=${SECRET}|" "$f" && rm -f "$f.bak"
     fi
@@ -34,10 +34,12 @@ npm install --prefix libs/common
 npm install --prefix libs/rabbitmq
 npm install --prefix apps/api-gateway
 npm install --prefix apps/users-service
+npm install --prefix apps/catalog-service
+npm install --prefix apps/inventory-service
 
 # Neon connection strings cannot be generated; they must be pasted in.
 missing_db=0
-for service in users-service; do
+for service in users-service catalog-service inventory-service; do
   if ! grep -q '^DATABASE_URL=.\+' "apps/$service/.env" 2>/dev/null; then
     echo "  ! apps/$service/.env has no DATABASE_URL"
     missing_db=1

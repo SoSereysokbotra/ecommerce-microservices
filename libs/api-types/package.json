@@ -1,0 +1,7 @@
+{
+  "name": "@libs/api-types",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Types generated from the services' OpenAPI documents. Do not edit by hand.",
+  "types": "src/index.d.ts"
+}

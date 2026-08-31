@@ -1,4 +1,4 @@
-import { All, Controller, Req, Res } from '@nestjs/common';
+import { All, Controller, Get, Req, Res } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { Public } from '@libs/common';
 import { Request, Response } from 'express';
@@ -23,6 +23,24 @@ export class ProxyController {
   @Public()
   @All('payments/webhook')
   async proxyPaymentWebhook(@Req() request: Request, @Res() response: Response): Promise<void> {
+    return this.sendProxy(request, response);
+  }
+
+  /**
+   * Anonymous browsing.
+   *
+   * A shopper must be able to see products and their availability before
+   * creating an account — requiring a token to view a catalogue would be a
+   * strange shop. Deliberately GET-only: creating or editing a product falls
+   * through to the authenticated handler below.
+   *
+   * Declaration order matters. Express matches routes in registration order and
+   * Nest registers them in declaration order, so this must precede the `@All`
+   * block or every GET would be caught by it and require a token.
+   */
+  @Public()
+  @Get(['catalog', 'catalog/*', 'inventory/stock', 'inventory/stock/*'])
+  async proxyPublicReads(@Req() request: Request, @Res() response: Response): Promise<void> {
     return this.sendProxy(request, response);
   }
 
