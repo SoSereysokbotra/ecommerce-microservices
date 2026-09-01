@@ -21,3 +21,7 @@ npm-debug.log*
 
 tmp/
 temp/
+
+# Storefront local env (holds the Stripe publishable key and API URL)
+storefront/.env.local
+storefront/.next/
