@@ -1,36 +1,52 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Storefront
 
-## Getting Started
+Customer-facing UI for the commerce microservices. Next.js, port 3100.
 
-First, run the development server:
+## Running
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run dev          # http://localhost:3100
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Needs `.env.local` (copy `.env.local.example`):
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `NEXT_PUBLIC_API_URL` — the gateway, `http://localhost:3000/api/v1`
+- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` — **`pk_test_...`**, never `sk_...`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`NEXT_PUBLIC_` variables are compiled into the JavaScript every visitor
+downloads. A secret key there would be published to the world, so the payment
+component throws at load if the value does not start with `pk_`.
 
-## Learn More
+## What the pages prove
 
-To learn more about Next.js, take a look at the following resources:
+`/orders/[id]` polls every 1.5s while the order is not terminal. That is the
+asynchronous saga made visible: `pending` -> `awaiting_payment` ->
+`confirmed` or `cancelled`. When an order is cancelled the page says the stock
+was released automatically, because that compensation is the thing worth
+showing.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+When Stripe confirms a payment in the browser, the page deliberately does *not*
+mark the order paid. The webhook is the authority; the browser only ever sees
+its own view, and a customer closing the tab must not change the outcome.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## End-to-end tests
 
-## Deploy on Vercel
+Real browser, real stack, nothing mocked:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+docker compose up -d                                   # from the repo root
+stripe listen --forward-to localhost:3005/api/v1/payments/webhook
+npm run dev
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+export STRIPE_SECRET_KEY=sk_test_...                   # to drive test payments
+npm run e2e
+```
+
+Five specs cover anonymous browsing, the login redirect, a successful purchase,
+a declined card returning the stock, and an oversized order that is never
+charged.
+
+They are **not** in CI: they need six services, five databases and a Stripe
+webhook tunnel. Running them in CI would mean either mocking the backend —
+which would prove nothing about the saga — or standing the whole stack up,
+which belongs with the deployment work in M22.

@@ -75,18 +75,20 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
       <p className="small muted" style={{ fontFamily: 'ui-monospace, monospace' }}>{order.id}</p>
 
       <div className="row" style={{ margin: '1rem 0' }}>
-        <span className={`pill ${PILL[order.status]}`}>{order.status.replace('_', ' ')}</span>
+        <span className={`pill ${PILL[order.status]}`} data-testid="order-status">
+          {order.status.replace('_', ' ')}
+        </span>
         <span className="muted">{EXPLAIN[order.status]}</span>
       </div>
 
       {order.failureReason && (
-        <div className="notice crit small">
+        <div className="notice crit small" data-testid="failure-reason">
           <strong>Reason:</strong> {order.failureReason}
         </div>
       )}
 
       {order.status === 'cancelled' && (
-        <div className="notice ok small" style={{ marginTop: '0.75rem' }}>
+        <div className="notice ok small" style={{ marginTop: '0.75rem' }} data-testid="release-notice">
           The stock reserved for this order was released automatically — no
           manual cleanup, and nothing is left held. That compensation is the
           whole point of the saga.
