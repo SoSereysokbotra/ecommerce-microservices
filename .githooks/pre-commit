@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+#
+# Blocks a commit that would put a credential into history.
+#
+# CI runs the same scan, but on a PUBLIC repository that is one moment too
+# late: the push is already visible, and GitHub is scraped continuously. This
+# hook is the one that actually protects you.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+set -uo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+
+if ! bash "$ROOT/scripts/scan-secrets.sh" >/dev/null 2>&1; then
+  echo
+  echo "COMMIT BLOCKED — scripts/scan-secrets.sh found a credential."
+  echo
+  bash "$ROOT/scripts/scan-secrets.sh" 2>&1 | sed 's/^/  /'
+  echo
+  echo "Fix the file, or bypass with --no-verify if you are certain it is a false"
+  echo "positive. If a real credential was already pushed, rotate it — removing"
+  echo "the file does not remove it from history."
+  exit 1
+fi
