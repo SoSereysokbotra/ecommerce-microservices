@@ -20,23 +20,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/inventory/reservations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Reserve stock for an order */
-        post: operations["ReservationsController_reserve"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/inventory/stock": {
         parameters: {
             query?: never;
@@ -118,19 +101,6 @@ export interface components {
             /** @example stock-take correction */
             reason: string;
         };
-        ReservationItemDto: {
-            productId: string;
-            /** @example 2 */
-            qty: number;
-        };
-        ReservationResultDto: {
-            orderId: string;
-            stock: components["schemas"]["StockResponseDto"][];
-        };
-        ReserveStockDto: {
-            items: components["schemas"]["ReservationItemDto"][];
-            orderId: string;
-        };
         SetStockDto: {
             /** @example 100 */
             availableQty: number;
@@ -168,29 +138,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-        };
-    };
-    ReservationsController_reserve: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReserveStockDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReservationResultDto"];
-                };
             };
         };
     };

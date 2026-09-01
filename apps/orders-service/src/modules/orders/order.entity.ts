@@ -9,8 +9,14 @@ import {
 import { OrderItemEntity } from './order-item.entity';
 
 export enum OrderStatus {
+  /** Written, event queued, nothing reserved yet. */
   PENDING = 'pending',
+  /** Stock is held; payment has not been taken. M4 moves it on from here. */
+  AWAITING_PAYMENT = 'awaiting_payment',
   CONFIRMED = 'confirmed',
+  /** A business outcome: out of stock, or payment refused. */
+  CANCELLED = 'cancelled',
+  /** Something broke that was not the customer's doing. */
   FAILED = 'failed',
 }
 

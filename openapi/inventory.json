@@ -19,58 +19,6 @@
         ],
         "type": "object"
       },
-      "ReservationItemDto": {
-        "properties": {
-          "productId": {
-            "type": "string"
-          },
-          "qty": {
-            "example": 2,
-            "type": "number"
-          }
-        },
-        "required": [
-          "productId",
-          "qty"
-        ],
-        "type": "object"
-      },
-      "ReservationResultDto": {
-        "properties": {
-          "orderId": {
-            "type": "string"
-          },
-          "stock": {
-            "items": {
-              "$ref": "#/components/schemas/StockResponseDto"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "orderId",
-          "stock"
-        ],
-        "type": "object"
-      },
-      "ReserveStockDto": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/ReservationItemDto"
-            },
-            "type": "array"
-          },
-          "orderId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "orderId",
-          "items"
-        ],
-        "type": "object"
-      },
       "SetStockDto": {
         "properties": {
           "availableQty": {
@@ -141,38 +89,6 @@
         },
         "tags": [
           "health"
-        ]
-      }
-    },
-    "/api/v1/inventory/reservations": {
-      "post": {
-        "operationId": "ReservationsController_reserve",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReserveStockDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReservationResultDto"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "summary": "Reserve stock for an order",
-        "tags": [
-          "inventory"
         ]
       }
     },

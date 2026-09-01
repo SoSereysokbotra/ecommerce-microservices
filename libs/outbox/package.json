@@ -1,0 +1,18 @@
+{
+  "name": "@libs/outbox",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "description": "Transactional outbox and idempotent consumption",
+  "peerDependencies": {
+    "@nestjs/common": "^10.3.0",
+    "@nestjs/core": "^10.3.0",
+    "@nestjs/typeorm": "^10.0.2",
+    "reflect-metadata": "^0.2.2",
+    "typeorm": "^0.3.20"
+  },
+  "dependencies": {
+    "@libs/rabbitmq": "file:../rabbitmq"
+  }
+}

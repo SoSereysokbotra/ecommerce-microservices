@@ -66,7 +66,8 @@
       "^@nestjs/core$": "<rootDir>/node_modules/@nestjs/core",
       "^@libs/shared-types(|/.*)$": "<rootDir>/../../libs/shared-types/src$1",
       "^@libs/common(|/.*)$": "<rootDir>/../../libs/common/src$1",
-      "^@libs/rabbitmq(|/.*)$": "<rootDir>/../../libs/rabbitmq/src$1"
+      "^@libs/rabbitmq(|/.*)$": "<rootDir>/../../libs/rabbitmq/src$1",
+      "^@libs/outbox(|/.*)$": "<rootDir>/../../libs/outbox/src$1"
     }
   }
 }

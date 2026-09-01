@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { StockEntity } from './stock.entity';
 
 @Injectable()
@@ -72,31 +72,43 @@ export class StockService {
    * this with a reservations table carrying an order id and an expiry.
    */
   async reserve(items: { productId: string; qty: number }[]): Promise<StockEntity[]> {
-    return this.dataSource.transaction(async (manager) => {
-      const repo = manager.getRepository(StockEntity);
-      const updated: StockEntity[] = [];
+    return this.dataSource.transaction((manager) => this.reserveWithManager(manager, items));
+  }
 
-      for (const item of items) {
-        const row = await repo.findOne({ where: { productId: item.productId } });
+  /**
+   * Reserve inside a transaction the caller already opened.
+   *
+   * The event handler needs this: its processed-event marker, this stock
+   * change, and the outgoing reply all have to commit together. Opening a
+   * second transaction here would break that guarantee.
+   */
+  async reserveWithManager(
+    manager: EntityManager,
+    items: { productId: string; qty: number }[],
+  ): Promise<StockEntity[]> {
+    const repo = manager.getRepository(StockEntity);
+    const updated: StockEntity[] = [];
 
-        if (!row) {
-          throw new NotFoundException(`No stock record for product '${item.productId}'`);
-        }
+    for (const item of items) {
+      const row = await repo.findOne({ where: { productId: item.productId } });
 
-        if (row.availableQty < item.qty) {
-          throw new ConflictException(
-            `Insufficient stock for product '${item.productId}': ` +
-              `requested ${item.qty}, available ${row.availableQty}`,
-          );
-        }
-
-        row.availableQty -= item.qty;
-        row.reservedQty += item.qty;
-        updated.push(await repo.save(row));
+      if (!row) {
+        throw new NotFoundException(`No stock record for product '${item.productId}'`);
       }
 
-      return updated;
-    });
+      if (row.availableQty < item.qty) {
+        throw new ConflictException(
+          `Insufficient stock for product '${item.productId}': ` +
+            `requested ${item.qty}, available ${row.availableQty}`,
+        );
+      }
+
+      row.availableQty -= item.qty;
+      row.reservedQty += item.qty;
+      updated.push(await repo.save(row));
+    }
+
+    return updated;
   }
 
   async set(productId: string, availableQty: number): Promise<StockEntity> {

@@ -2,6 +2,7 @@ import { config as loadEnv } from 'dotenv';
 import { resolve } from 'path';
 import { DataSource, DataSourceOptions } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
+import { OutboxEventEntity, ProcessedEventEntity } from '@libs/outbox';
 import { OrderEntity } from '../modules/orders/order.entity';
 import { OrderItemEntity } from '../modules/orders/order-item.entity';
 
@@ -68,7 +69,7 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
       username: DB_USER,
       password: DB_PASSWORD,
       database: DB_NAME,
-      entities: [OrderEntity, OrderItemEntity],
+      entities: [OrderEntity, OrderItemEntity, OutboxEventEntity, ProcessedEventEntity],
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
       synchronize: false,
       logging: !isProduction,
@@ -89,7 +90,7 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
       username: parsed.username || 'postgres',
       password: parsed.password || localPassword,
       database: parsed.pathname.replace(/^\//, ''),
-      entities: [OrderEntity, OrderItemEntity],
+      entities: [OrderEntity, OrderItemEntity, OutboxEventEntity, ProcessedEventEntity],
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
       synchronize: false,
       logging: !isProduction,
@@ -103,7 +104,7 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
   return {
     type: 'postgres',
     url: DATABASE_URL,
-    entities: [OrderEntity, OrderItemEntity],
+    entities: [OrderEntity, OrderItemEntity, OutboxEventEntity, ProcessedEventEntity],
     migrations: [__dirname + '/migrations/*{.ts,.js}'],
     synchronize: false,
     logging: !isProduction,

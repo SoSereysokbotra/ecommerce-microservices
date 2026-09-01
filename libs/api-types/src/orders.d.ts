@@ -101,7 +101,7 @@ export interface components {
             id: string;
             items: components["schemas"]["OrderItemResponseDto"][];
             /** @enum {string} */
-            status: "pending" | "confirmed" | "failed";
+            status: "pending" | "awaiting_payment" | "confirmed" | "cancelled" | "failed";
             /** @description Integer minor units. */
             totalMinor: number;
             /** Format: date-time */

@@ -91,7 +91,9 @@
           "status": {
             "enum": [
               "pending",
+              "awaiting_payment",
               "confirmed",
+              "cancelled",
               "failed"
             ],
             "type": "string"

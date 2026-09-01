@@ -27,7 +27,19 @@
       "@libs/shared-types": ["./libs/shared-types/src"],
       "@libs/shared-types/*": ["./libs/shared-types/src/*"],
       "@libs/rabbitmq": ["./libs/rabbitmq/src"],
-      "@libs/rabbitmq/*": ["./libs/rabbitmq/src/*"]
+      "@libs/rabbitmq/*": ["./libs/rabbitmq/src/*"],
+      "@libs/outbox": ["./libs/outbox/src"],
+      "@libs/outbox/*": ["./libs/outbox/src/*"],
+
+      // Pin the shared runtime packages to a single copy for typechecking.
+      // Without this, code in libs/ resolves a different copy of typeorm than
+      // code in apps/, and an EntityManager passed across that boundary is
+      // reported as two unrelated types. Runtime resolution is unaffected —
+      // each service still loads its own installed copy.
+      "typeorm": ["./node_modules/typeorm"],
+      "@nestjs/common": ["./node_modules/@nestjs/common"],
+      "@nestjs/core": ["./node_modules/@nestjs/core"],
+      "@nestjs/typeorm": ["./node_modules/@nestjs/typeorm"]
     }
   }
 }
