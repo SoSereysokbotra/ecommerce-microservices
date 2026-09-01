@@ -20,7 +20,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/payments/charge": {
+    "/api/v1/payments/by-order/{orderId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the payment for an order */
+        get: operations["PaymentsController_byOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments/refund": {
         parameters: {
             query?: never;
             header?: never;
@@ -29,25 +46,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Charge an order (stub — always succeeds unless forced to decline) */
-        post: operations["ChargesController_charge"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/payments/mode": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Report whether the stub is forcing declines */
-        get: operations["ChargesController_mode"];
-        put?: never;
-        post?: never;
+        /** Refund an order (idempotent) */
+        post: operations["PaymentsController_refund"];
         delete?: never;
         options?: never;
         head?: never;
@@ -74,24 +74,23 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        ChargeDto: {
-            /**
-             * @description Integer minor units.
-             * @example 4998
-             */
+        PaymentResponseDto: {
+            /** @description Integer minor units. */
             amountMinor: number;
-            /** @example USD */
+            /** @description For Stripe.js on the storefront. */
+            clientSecret?: Record<string, never> | null;
+            /** Format: date-time */
+            createdAt: string;
             currency: string;
+            failureReason?: Record<string, never> | null;
+            id: string;
             orderId: string;
-        };
-        ChargeResultDto: {
-            amountMinor: number;
-            currency: string;
-            orderId: string;
-            /** @description Fake provider reference. */
-            reference: string;
             /** @enum {string} */
-            status: "AUTHORIZED" | "DECLINED";
+            status: "requires_payment" | "authorized" | "declined" | "refunded";
+        };
+        RefundRequestDto: {
+            orderId: string;
+            reason?: string;
         };
     };
     responses: never;
@@ -119,7 +118,28 @@ export interface operations {
             };
         };
     };
-    ChargesController_charge: {
+    PaymentsController_byOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentResponseDto"];
+                };
+            };
+        };
+    };
+    PaymentsController_refund: {
         parameters: {
             query?: never;
             header?: never;
@@ -128,30 +148,11 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ChargeDto"];
+                "application/json": components["schemas"]["RefundRequestDto"];
             };
         };
         responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChargeResultDto"];
-                };
-            };
-        };
-    };
-    ChargesController_mode: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

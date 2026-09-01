@@ -1,57 +1,65 @@
 {
   "components": {
     "schemas": {
-      "ChargeDto": {
+      "PaymentResponseDto": {
         "properties": {
           "amountMinor": {
             "description": "Integer minor units.",
-            "example": 4998,
             "type": "number"
           },
-          "currency": {
-            "example": "USD",
-            "type": "string"
+          "clientSecret": {
+            "description": "For Stripe.js on the storefront.",
+            "nullable": true,
+            "type": "object"
           },
-          "orderId": {
+          "createdAt": {
+            "format": "date-time",
             "type": "string"
-          }
-        },
-        "required": [
-          "orderId",
-          "amountMinor",
-          "currency"
-        ],
-        "type": "object"
-      },
-      "ChargeResultDto": {
-        "properties": {
-          "amountMinor": {
-            "type": "number"
           },
           "currency": {
             "type": "string"
           },
-          "orderId": {
+          "failureReason": {
+            "nullable": true,
+            "type": "object"
+          },
+          "id": {
             "type": "string"
           },
-          "reference": {
-            "description": "Fake provider reference.",
+          "orderId": {
             "type": "string"
           },
           "status": {
             "enum": [
-              "AUTHORIZED",
-              "DECLINED"
+              "requires_payment",
+              "authorized",
+              "declined",
+              "refunded"
             ],
             "type": "string"
           }
         },
         "required": [
-          "status",
+          "id",
           "orderId",
+          "status",
           "amountMinor",
           "currency",
-          "reference"
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "RefundRequestDto": {
+        "properties": {
+          "orderId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "orderId"
         ],
         "type": "object"
       }
@@ -66,7 +74,7 @@
   },
   "info": {
     "contact": {},
-    "description": "Payment stub — replaced by Stripe in M4",
+    "description": "Stripe payment intents, webhooks and refunds",
     "title": "Payments Service",
     "version": "1.0"
   },
@@ -86,48 +94,57 @@
         ]
       }
     },
-    "/api/v1/payments/charge": {
-      "post": {
-        "operationId": "ChargesController_charge",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChargeDto"
-              }
+    "/api/v1/payments/by-order/{orderId}": {
+      "get": {
+        "operationId": "PaymentsController_byOrder",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "orderId",
+            "required": true,
+            "schema": {
+              "type": "string"
             }
-          },
-          "required": true
-        },
+          }
+        ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ChargeResultDto"
+                  "$ref": "#/components/schemas/PaymentResponseDto"
                 }
               }
             },
             "description": ""
           }
         },
-        "summary": "Charge an order (stub — always succeeds unless forced to decline)",
+        "summary": "Get the payment for an order",
         "tags": [
           "payments"
         ]
       }
     },
-    "/api/v1/payments/mode": {
-      "get": {
-        "operationId": "ChargesController_mode",
+    "/api/v1/payments/refund": {
+      "post": {
+        "operationId": "PaymentsController_refund",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefundRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "200": {
+          "201": {
             "description": ""
           }
         },
-        "summary": "Report whether the stub is forcing declines",
+        "summary": "Refund an order (idempotent)",
         "tags": [
           "payments"
         ]
