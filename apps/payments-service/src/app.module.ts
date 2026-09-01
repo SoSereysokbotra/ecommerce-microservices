@@ -22,7 +22,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
       url: process.env.RABBITMQ_URL ?? 'amqp://rabbitmq:5672',
       exchange: process.env.RABBITMQ_EXCHANGE ?? 'commerce.events',
       queue: process.env.RABBITMQ_QUEUE ?? 'payments-service',
-      bindingKeys: ['payment.requested'],
+      bindingKeys: ['payment.requested', 'payment.refund_requested'],
     }),
     OutboxModule.forRoot({ pollIntervalMs: 1000 }),
     PaymentsModule,

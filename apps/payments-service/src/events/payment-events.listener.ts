@@ -11,6 +11,11 @@ interface PaymentRequestedPayload {
   currency: string;
 }
 
+interface RefundRequestedPayload {
+  orderId: string;
+  reason?: string;
+}
+
 @Injectable()
 export class PaymentEventsListener implements OnModuleInit {
   private readonly logger = new Logger(PaymentEventsListener.name);
@@ -30,6 +35,11 @@ export class PaymentEventsListener implements OnModuleInit {
   }
 
   private async handle(event: DomainEvent<PaymentRequestedPayload>): Promise<void> {
+    if (event.eventType === 'payment.refund_requested') {
+      await this.onRefundRequested(event as unknown as DomainEvent<RefundRequestedPayload>);
+      return;
+    }
+
     if (event.eventType !== 'payment.requested') {
       return;
     }
@@ -55,6 +65,29 @@ export class PaymentEventsListener implements OnModuleInit {
 
     if (!ran) {
       this.logger.debug(`Duplicate payment.requested (${event.eventId}) ignored`);
+    }
+  }
+
+  /**
+   * Compensation for a failure that happened after the money was taken.
+   *
+   * The refund itself is idempotent — the Stripe idempotency key is derived
+   * from the payment id — so a redelivered command returns the original refund
+   * instead of issuing a second one.
+   */
+  private async onRefundRequested(event: DomainEvent<RefundRequestedPayload>): Promise<void> {
+    const { orderId, reason } = event.payload ?? ({} as RefundRequestedPayload);
+    if (!orderId) {
+      this.logger.warn(`payment.refund_requested (${event.eventId}) has no orderId; dropping`);
+      return;
+    }
+
+    const ran = await this.idempotency.handleOnce(event.eventId, CONSUMER, async () => {
+      await this.payments.refund(orderId, reason);
+    });
+
+    if (!ran) {
+      this.logger.debug(`Duplicate payment.refund_requested (${event.eventId}) ignored`);
     }
   }
 }

@@ -10,6 +10,7 @@ import { DataSource, Repository } from 'typeorm';
 import { OrderEntity, OrderStatus } from './order.entity';
 import { OrderItemEntity } from './order-item.entity';
 import { CreateOrderDto } from './dto/order.dto';
+import { OrderSagaService } from './order-saga.service';
 
 interface CatalogProduct {
   id: string;
@@ -30,18 +31,16 @@ interface PricedLine {
 }
 
 /**
- * M3: checkout is now asynchronous.
+ * Order creation and reads.
  *
- *   POST /orders  ->  order PENDING + `order.created` in ONE transaction
- *                     relay publishes it
- *                     inventory reserves, replies with an event
- *                     this service moves the order on
+ * All saga transitions live in OrderSagaService; this class only creates the
+ * order and starts the saga. Keeping them apart means the state machine can be
+ * read in one file without the pricing and HTTP details around it.
  *
- * The synchronous calls that made M2 unsafe are gone. What remains synchronous
- * is the catalog price lookup, deliberately: it is a *read* that happens before
- * anything is committed, so a failure there rejects the request with nothing
- * left half-done. The calls that had to go were the ones changing another
- * service's state.
+ * The catalog price lookup stays synchronous on purpose: it is a *read* before
+ * anything is committed, so a failure rejects the request with nothing left
+ * half-done. The calls that had to go were the ones changing another service's
+ * state.
  */
 @Injectable()
 export class OrdersService {
@@ -52,6 +51,7 @@ export class OrdersService {
     private readonly orders: Repository<OrderEntity>,
     private readonly dataSource: DataSource,
     private readonly outbox: OutboxService,
+    private readonly saga: OrderSagaService,
     private readonly http: HttpService,
     private readonly config: ConfigService,
   ) {}
@@ -87,6 +87,9 @@ export class OrdersService {
         }),
       );
 
+      // Order, saga state and first event all commit together.
+      await this.saga.start(manager, order.id, correlationId);
+
       await this.outbox.append(manager, {
         eventType: 'order.created',
         aggregateId: order.id,
@@ -108,104 +111,6 @@ export class OrdersService {
     // Returns PENDING. The caller polls GET /orders/:id — checkout is no
     // longer resolved inside the request.
     return this.orders.findOneOrFail({ where: { id: orderId } });
-  }
-
-  /** Inventory held the stock: the order can now wait for payment. */
-  async onStockReserved(orderId: string, correlationId?: string): Promise<void> {
-    const order = await this.orders.findOne({ where: { id: orderId } });
-
-    if (!order || order.status !== OrderStatus.PENDING) {
-      // Not an error: a redelivery arriving after the order already moved on.
-      this.logger.debug(
-        `Ignoring inventory.reserved for ${orderId}; status is ${order?.status ?? 'missing'}`,
-      );
-      return;
-    }
-
-    // Status change and the request for payment commit together, so an order
-    // can never sit in awaiting_payment with nothing asking to be charged.
-    await this.dataSource.transaction(async (manager) => {
-      order.status = OrderStatus.AWAITING_PAYMENT;
-      await manager.save(OrderEntity, order);
-
-      await this.outbox.append(manager, {
-        eventType: 'payment.requested',
-        aggregateId: order.id,
-        correlationId,
-        payload: {
-          orderId: order.id,
-          amountMinor: order.totalMinor,
-          currency: order.currency,
-          customerId: order.customerId,
-        },
-      });
-    });
-
-    this.logger.log(`Order ${orderId} -> awaiting_payment, payment requested [${correlationId}]`);
-  }
-
-  /** Stripe took the money. */
-  async onPaymentAuthorized(orderId: string, correlationId?: string): Promise<void> {
-    const order = await this.orders.findOne({ where: { id: orderId } });
-
-    if (!order || order.status !== OrderStatus.AWAITING_PAYMENT) {
-      this.logger.debug(
-        `Ignoring payment.authorized for ${orderId}; status is ${order?.status ?? 'missing'}`,
-      );
-      return;
-    }
-
-    order.status = OrderStatus.CONFIRMED;
-    await this.orders.save(order);
-    this.logger.log(`Order ${orderId} -> confirmed [${correlationId}]`);
-  }
-
-  /**
-   * The card was refused.
-   *
-   * M4 stops here: the order is cancelled but the stock reserved earlier is
-   * still held. Releasing it is compensation, and compensation is M5 — this is
-   * the last remaining piece of the problem ADR-0002 documented.
-   */
-  async onPaymentDeclined(orderId: string, reason: string, correlationId?: string): Promise<void> {
-    const order = await this.orders.findOne({ where: { id: orderId } });
-
-    if (!order || order.status !== OrderStatus.AWAITING_PAYMENT) {
-      this.logger.debug(
-        `Ignoring payment.declined for ${orderId}; status is ${order?.status ?? 'missing'}`,
-      );
-      return;
-    }
-
-    order.status = OrderStatus.CANCELLED;
-    order.failureReason = reason;
-    await this.orders.save(order);
-    this.logger.warn(
-      `Order ${orderId} -> cancelled (${reason}); reserved stock is NOT yet released — M5 [${correlationId}]`,
-    );
-  }
-
-  /** Inventory could not hold the stock. Nothing was committed, so just cancel. */
-  async onReservationFailed(
-    orderId: string,
-    reason: string,
-    correlationId?: string,
-  ): Promise<void> {
-    const order = await this.orders.findOne({ where: { id: orderId } });
-
-    if (!order || order.status !== OrderStatus.PENDING) {
-      this.logger.debug(
-        `Ignoring inventory.reservation_failed for ${orderId}; status is ${
-          order?.status ?? 'missing'
-        }`,
-      );
-      return;
-    }
-
-    order.status = OrderStatus.CANCELLED;
-    order.failureReason = reason;
-    await this.orders.save(order);
-    this.logger.log(`Order ${orderId} -> cancelled (${reason}) [${correlationId}]`);
   }
 
   findOne(id: string, customerId: string): Promise<OrderEntity | null> {

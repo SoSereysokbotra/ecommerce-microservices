@@ -4,6 +4,7 @@ import { DataSource, DataSourceOptions } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { OutboxEventEntity, ProcessedEventEntity } from '@libs/outbox';
 import { StockEntity } from '../modules/stock/stock.entity';
+import { ReservationEntity } from '../modules/stock/reservation.entity';
 
 loadEnv({ path: resolve(process.cwd(), '../../.env') });
 loadEnv({ path: resolve(__dirname, '../../.env'), override: true });
@@ -68,7 +69,7 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
       username: DB_USER,
       password: DB_PASSWORD,
       database: DB_NAME,
-      entities: [StockEntity, OutboxEventEntity, ProcessedEventEntity],
+      entities: [StockEntity, ReservationEntity, OutboxEventEntity, ProcessedEventEntity],
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
       synchronize: false,
       logging: !isProduction,
@@ -89,7 +90,7 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
       username: parsed.username || 'postgres',
       password: parsed.password || localPassword,
       database: parsed.pathname.replace(/^\//, ''),
-      entities: [StockEntity, OutboxEventEntity, ProcessedEventEntity],
+      entities: [StockEntity, ReservationEntity, OutboxEventEntity, ProcessedEventEntity],
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
       synchronize: false,
       logging: !isProduction,
@@ -103,7 +104,7 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
   return {
     type: 'postgres',
     url: DATABASE_URL,
-    entities: [StockEntity, OutboxEventEntity, ProcessedEventEntity],
+    entities: [StockEntity, ReservationEntity, OutboxEventEntity, ProcessedEventEntity],
     migrations: [__dirname + '/migrations/*{.ts,.js}'],
     synchronize: false,
     logging: !isProduction,

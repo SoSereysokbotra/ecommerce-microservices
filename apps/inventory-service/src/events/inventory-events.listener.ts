@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { DomainEvent, RabbitMQService } from '@libs/rabbitmq';
 import { IdempotencyService, OutboxService } from '@libs/outbox';
 import { EntityManager } from 'typeorm';
-import { StockService } from '../modules/stock/stock.service';
+import { ReservationsService } from '../modules/stock/reservations.service';
 
 const CONSUMER = 'inventory-service';
 
@@ -11,6 +11,17 @@ interface OrderCreatedPayload {
   items: { productId: string; qty: number }[];
 }
 
+interface OrderIdPayload {
+  orderId: string;
+}
+
+/**
+ * Inventory's side of the saga.
+ *
+ * `order.created` is an event — something that happened. The other two are
+ * commands the orchestrator sends: do this thing. Keeping the distinction in
+ * the names makes the direction of control readable from the routing key alone.
+ */
 @Injectable()
 export class InventoryEventsListener implements OnModuleInit {
   private readonly logger = new Logger(InventoryEventsListener.name);
@@ -19,59 +30,65 @@ export class InventoryEventsListener implements OnModuleInit {
     private readonly rabbitmq: RabbitMQService,
     private readonly idempotency: IdempotencyService,
     private readonly outbox: OutboxService,
-    private readonly stock: StockService,
+    private readonly reservations: ReservationsService,
   ) {}
 
   async onModuleInit(): Promise<void> {
     const queue = process.env.RABBITMQ_QUEUE ?? 'inventory-service';
-
     await this.rabbitmq.subscribe(queue, async (message) => {
-      await this.handle(message as DomainEvent<OrderCreatedPayload>);
+      await this.handle(message as DomainEvent<Record<string, unknown>>);
     });
-
     this.logger.log(`Listening on ${queue}`);
   }
 
-  private async handle(event: DomainEvent<OrderCreatedPayload>): Promise<void> {
-    if (event.eventType !== 'order.created') {
+  private async handle(event: DomainEvent<Record<string, unknown>>): Promise<void> {
+    const handled = ['order.created', 'inventory.commit_requested', 'inventory.release_requested'];
+    if (!handled.includes(event.eventType)) {
       return;
     }
 
-    const { orderId, items } = event.payload ?? ({} as OrderCreatedPayload);
-    if (!orderId || !Array.isArray(items)) {
-      this.logger.warn(`order.created (${event.eventId}) is malformed; dropping`);
+    const orderId = event.payload?.orderId as string | undefined;
+    if (!orderId) {
+      this.logger.warn(`${event.eventType} (${event.eventId}) has no orderId; dropping`);
       return;
     }
 
     const ran = await this.idempotency.handleOnce(event.eventId, CONSUMER, async (manager) => {
-      await this.reserveAndReply(manager, event, orderId, items);
+      switch (event.eventType) {
+        case 'order.created':
+          await this.onOrderCreated(manager, event as unknown as DomainEvent<OrderCreatedPayload>);
+          break;
+        case 'inventory.commit_requested':
+          await this.onCommitRequested(manager, event as unknown as DomainEvent<OrderIdPayload>);
+          break;
+        case 'inventory.release_requested':
+          await this.onReleaseRequested(manager, event as unknown as DomainEvent<OrderIdPayload>);
+          break;
+      }
     });
 
     if (!ran) {
-      this.logger.debug(`Duplicate order.created (${event.eventId}) ignored`);
+      this.logger.debug(`Duplicate ${event.eventType} (${event.eventId}) ignored`);
     }
   }
 
-  /**
-   * Reserve the stock and queue the reply, both inside the transaction the
-   * idempotency guard opened.
-   *
-   * Everything that matters is in one transaction: the processed-event marker,
-   * the stock change, and the outgoing event. Any failure rolls back all three,
-   * and the message is redelivered to try again cleanly.
-   */
-  private async reserveAndReply(
+  private async onOrderCreated(
     manager: EntityManager,
     event: DomainEvent<OrderCreatedPayload>,
-    orderId: string,
-    items: { productId: string; qty: number }[],
   ): Promise<void> {
+    const { orderId, items } = event.payload;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      this.logger.warn(`order.created for ${orderId} has no items; dropping`);
+      return;
+    }
+
     try {
-      await this.stock.reserveWithManager(manager, items);
+      await this.reservations.reserve(manager, orderId, items);
     } catch (error) {
-      // A shortfall is a business outcome, not a bug: report it as an event
-      // rather than throwing, which would nack the message and retry forever
-      // against stock that is not coming back.
+      // Being short of stock is a business outcome, not a fault. Reporting it
+      // as an event lets the saga decide; throwing would nack the message and
+      // retry forever against stock that is not coming back.
       const reason = error instanceof Error ? error.message : String(error);
 
       await this.outbox.append(manager, {
@@ -91,7 +108,41 @@ export class InventoryEventsListener implements OnModuleInit {
       correlationId: event.correlationId,
       payload: { orderId, items },
     });
+  }
 
-    this.logger.log(`Reserved stock for order ${orderId} [${event.correlationId}]`);
+  /** The order was paid: the held units leave inventory permanently. */
+  private async onCommitRequested(
+    manager: EntityManager,
+    event: DomainEvent<OrderIdPayload>,
+  ): Promise<void> {
+    const { orderId } = event.payload;
+    const committed = await this.reservations.commit(manager, orderId);
+
+    await this.outbox.append(manager, {
+      eventType: 'inventory.committed',
+      aggregateId: orderId,
+      correlationId: event.correlationId,
+      payload: { orderId, lines: committed },
+    });
+  }
+
+  /**
+   * Compensation. The single most important handler in the project: this is
+   * the step whose absence in M2 left stock held for orders that never
+   * completed.
+   */
+  private async onReleaseRequested(
+    manager: EntityManager,
+    event: DomainEvent<OrderIdPayload>,
+  ): Promise<void> {
+    const { orderId } = event.payload;
+    const released = await this.reservations.release(manager, orderId);
+
+    await this.outbox.append(manager, {
+      eventType: 'inventory.released',
+      aggregateId: orderId,
+      correlationId: event.correlationId,
+      payload: { orderId, lines: released },
+    });
   }
 }

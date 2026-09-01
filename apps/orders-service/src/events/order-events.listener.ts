@@ -1,10 +1,18 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { DomainEvent, RabbitMQService } from '@libs/rabbitmq';
 import { IdempotencyService } from '@libs/outbox';
-import { OrdersService } from '../modules/orders/orders.service';
+import { OrderSagaService } from '../modules/orders/order-saga.service';
 
 const CONSUMER = 'orders-service';
 
+/**
+ * Feeds saga replies into the orchestrator.
+ *
+ * Two independent layers keep repeats harmless: `handleOnce` stops the same
+ * event being processed twice, and each saga transition additionally refuses to
+ * fire unless the saga is on the step it expects. Either alone would mostly
+ * work; together they also cover a republished event carrying a *new* id.
+ */
 @Injectable()
 export class OrderEventsListener implements OnModuleInit {
   private readonly logger = new Logger(OrderEventsListener.name);
@@ -12,7 +20,7 @@ export class OrderEventsListener implements OnModuleInit {
   constructor(
     private readonly rabbitmq: RabbitMQService,
     private readonly idempotency: IdempotencyService,
-    private readonly orders: OrdersService,
+    private readonly saga: OrderSagaService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -22,18 +30,39 @@ export class OrderEventsListener implements OnModuleInit {
       await this.handle(message as DomainEvent<Record<string, unknown>>);
     });
 
+    // Re-drive anything left mid-flight by a previous process. Runs after the
+    // subscription so replies to resumed commands are not missed.
+    //
+    // Never fatal: a service that cannot resume old sagas can still accept new
+    // orders, and refusing to start would turn a recoverable problem into an
+    // outage. It also breaks the deadlock where an unmigrated database stops
+    // the service booting, which stops the migration being run.
+    try {
+      const resumed = await this.saga.resumeAll();
+      if (resumed > 0) {
+        this.logger.warn(`Resumed ${resumed} in-flight sagas on startup`);
+      }
+    } catch (error) {
+      this.logger.error(
+        `Saga resume failed on startup: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
     this.logger.log(`Listening on ${queue}`);
   }
 
   private async handle(event: DomainEvent<Record<string, unknown>>): Promise<void> {
-    // The queue is bound to several routing keys, including ones this service
-    // publishes itself. Only act on what is actually addressed to us.
     const handled = [
       'inventory.reserved',
       'inventory.reservation_failed',
+      'inventory.committed',
+      'inventory.released',
+      'inventory.reservation_expired',
       'payment.authorized',
       'payment.declined',
+      'payment.refunded',
     ];
+
     if (!handled.includes(event.eventType)) {
       return;
     }
@@ -44,28 +73,37 @@ export class OrderEventsListener implements OnModuleInit {
       return;
     }
 
-    // Every effect below is wrapped so a redelivery cannot apply it twice.
     const ran = await this.idempotency.handleOnce(event.eventId, CONSUMER, async () => {
+      const reason = (event.payload?.reason as string) ?? undefined;
+
       switch (event.eventType) {
         case 'inventory.reserved':
-          await this.orders.onStockReserved(orderId, event.correlationId);
+          await this.saga.onStockReserved(orderId, event.correlationId);
           break;
         case 'inventory.reservation_failed':
-          await this.orders.onReservationFailed(
-            orderId,
-            (event.payload?.reason as string) ?? 'Reservation failed',
-            event.correlationId,
-          );
+          await this.saga.onReservationFailed(orderId, reason ?? 'Reservation failed');
           break;
         case 'payment.authorized':
-          await this.orders.onPaymentAuthorized(orderId, event.correlationId);
+          await this.saga.onPaymentAuthorized(orderId, event.correlationId);
           break;
         case 'payment.declined':
-          await this.orders.onPaymentDeclined(
+          await this.saga.onPaymentDeclined(
             orderId,
-            (event.payload?.reason as string) ?? 'Payment declined',
+            reason ?? 'Payment declined',
             event.correlationId,
           );
+          break;
+        case 'inventory.committed':
+          await this.saga.onInventoryCommitted(orderId);
+          break;
+        case 'inventory.released':
+          await this.saga.onInventoryReleased(orderId);
+          break;
+        case 'payment.refunded':
+          await this.saga.onPaymentRefunded(orderId, event.correlationId);
+          break;
+        case 'inventory.reservation_expired':
+          await this.saga.onReservationExpired(orderId);
           break;
       }
     });

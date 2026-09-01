@@ -24,7 +24,16 @@ import { OrdersModule } from './modules/orders/orders.module';
       queue: process.env.RABBITMQ_QUEUE ?? 'orders-service',
       // Bind only what this service reacts to, so it does not receive the
       // events it publishes itself.
-      bindingKeys: ['inventory.*', 'payment.authorized', 'payment.declined'],
+      bindingKeys: [
+        'inventory.reserved',
+        'inventory.reservation_failed',
+        'inventory.committed',
+        'inventory.released',
+        'inventory.reservation_expired',
+        'payment.authorized',
+        'payment.declined',
+        'payment.refunded',
+      ],
     }),
     OutboxModule.forRoot({ pollIntervalMs: 1000 }),
     OrdersModule,

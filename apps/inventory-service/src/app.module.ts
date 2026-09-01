@@ -24,7 +24,7 @@ import { StockModule } from './modules/stock/stock.module';
       queue: process.env.RABBITMQ_QUEUE ?? 'inventory-service',
       // Bind only what this service reacts to, so it does not receive the
       // events it publishes itself.
-      bindingKeys: ['order.*'],
+      bindingKeys: ['order.created', 'inventory.commit_requested', 'inventory.release_requested'],
     }),
     OutboxModule.forRoot({ pollIntervalMs: 1000 }),
     StockModule,
