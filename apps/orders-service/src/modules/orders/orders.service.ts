@@ -162,7 +162,7 @@ export class OrdersService {
     try {
       await firstValueFrom(
         this.http.post(
-          `${base}/api/v1/inventory/reserve`,
+          `${base}/api/v1/inventory/reservations`,
           { orderId: order.id, items: items.map(({ productId, qty }) => ({ productId, qty })) },
           { headers: this.headers(correlationId), timeout: 5000 },
         ),

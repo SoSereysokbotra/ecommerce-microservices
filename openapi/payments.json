@@ -1,0 +1,153 @@
+{
+  "components": {
+    "schemas": {
+      "ChargeDto": {
+        "properties": {
+          "amountMinor": {
+            "description": "Integer minor units.",
+            "example": 4998,
+            "type": "number"
+          },
+          "currency": {
+            "example": "USD",
+            "type": "string"
+          },
+          "orderId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "orderId",
+          "amountMinor",
+          "currency"
+        ],
+        "type": "object"
+      },
+      "ChargeResultDto": {
+        "properties": {
+          "amountMinor": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "orderId": {
+            "type": "string"
+          },
+          "reference": {
+            "description": "Fake provider reference.",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "AUTHORIZED",
+              "DECLINED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "orderId",
+          "amountMinor",
+          "currency",
+          "reference"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "bearerFormat": "JWT",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "contact": {},
+    "description": "Payment stub — replaced by Stripe in M4",
+    "title": "Payments Service",
+    "version": "1.0"
+  },
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "operationId": "AppController_health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/payments/charge": {
+      "post": {
+        "operationId": "ChargesController_charge",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChargeDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChargeResultDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Charge an order (stub — always succeeds unless forced to decline)",
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/api/v1/payments/mode": {
+      "get": {
+        "operationId": "ChargesController_mode",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Report whether the stub is forcing declines",
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/api/v1/ready": {
+      "get": {
+        "operationId": "AppController_ready",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  },
+  "servers": [],
+  "tags": []
+}
