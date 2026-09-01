@@ -9,6 +9,8 @@ import { firstValueFrom } from 'rxjs';
 type AuthenticatedRequest = Request & {
   user?: { sub?: string; role?: string };
   correlationId?: string;
+  /** Present only for routes registered with a raw body parser. */
+  rawBody?: Buffer;
 };
 
 /** Route prefix -> config key holding that service's base URL. */
@@ -82,8 +84,10 @@ export class ProxyService {
       {
         method: request.method,
         url: targetUrl,
+        // Forward the untouched bytes when we captured them, so a provider
+        // signature over the body still verifies downstream.
         headers,
-        data: request.body,
+        data: request.rawBody ?? request.body,
         params: request.query,
         timeout,
         validateStatus: () => true,

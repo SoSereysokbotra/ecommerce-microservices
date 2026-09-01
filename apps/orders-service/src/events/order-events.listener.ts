@@ -28,7 +28,13 @@ export class OrderEventsListener implements OnModuleInit {
   private async handle(event: DomainEvent<Record<string, unknown>>): Promise<void> {
     // The queue is bound to several routing keys, including ones this service
     // publishes itself. Only act on what is actually addressed to us.
-    if (!['inventory.reserved', 'inventory.reservation_failed'].includes(event.eventType)) {
+    const handled = [
+      'inventory.reserved',
+      'inventory.reservation_failed',
+      'payment.authorized',
+      'payment.declined',
+    ];
+    if (!handled.includes(event.eventType)) {
       return;
     }
 
@@ -40,14 +46,27 @@ export class OrderEventsListener implements OnModuleInit {
 
     // Every effect below is wrapped so a redelivery cannot apply it twice.
     const ran = await this.idempotency.handleOnce(event.eventId, CONSUMER, async () => {
-      if (event.eventType === 'inventory.reserved') {
-        await this.orders.onStockReserved(orderId, event.correlationId);
-      } else {
-        await this.orders.onReservationFailed(
-          orderId,
-          (event.payload?.reason as string) ?? 'Reservation failed',
-          event.correlationId,
-        );
+      switch (event.eventType) {
+        case 'inventory.reserved':
+          await this.orders.onStockReserved(orderId, event.correlationId);
+          break;
+        case 'inventory.reservation_failed':
+          await this.orders.onReservationFailed(
+            orderId,
+            (event.payload?.reason as string) ?? 'Reservation failed',
+            event.correlationId,
+          );
+          break;
+        case 'payment.authorized':
+          await this.orders.onPaymentAuthorized(orderId, event.correlationId);
+          break;
+        case 'payment.declined':
+          await this.orders.onPaymentDeclined(
+            orderId,
+            (event.payload?.reason as string) ?? 'Payment declined',
+            event.correlationId,
+          );
+          break;
       }
     });
 

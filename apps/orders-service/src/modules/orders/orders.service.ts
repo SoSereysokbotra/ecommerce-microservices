@@ -122,9 +122,67 @@ export class OrdersService {
       return;
     }
 
-    order.status = OrderStatus.AWAITING_PAYMENT;
+    // Status change and the request for payment commit together, so an order
+    // can never sit in awaiting_payment with nothing asking to be charged.
+    await this.dataSource.transaction(async (manager) => {
+      order.status = OrderStatus.AWAITING_PAYMENT;
+      await manager.save(OrderEntity, order);
+
+      await this.outbox.append(manager, {
+        eventType: 'payment.requested',
+        aggregateId: order.id,
+        correlationId,
+        payload: {
+          orderId: order.id,
+          amountMinor: order.totalMinor,
+          currency: order.currency,
+          customerId: order.customerId,
+        },
+      });
+    });
+
+    this.logger.log(`Order ${orderId} -> awaiting_payment, payment requested [${correlationId}]`);
+  }
+
+  /** Stripe took the money. */
+  async onPaymentAuthorized(orderId: string, correlationId?: string): Promise<void> {
+    const order = await this.orders.findOne({ where: { id: orderId } });
+
+    if (!order || order.status !== OrderStatus.AWAITING_PAYMENT) {
+      this.logger.debug(
+        `Ignoring payment.authorized for ${orderId}; status is ${order?.status ?? 'missing'}`,
+      );
+      return;
+    }
+
+    order.status = OrderStatus.CONFIRMED;
     await this.orders.save(order);
-    this.logger.log(`Order ${orderId} -> awaiting_payment [${correlationId}]`);
+    this.logger.log(`Order ${orderId} -> confirmed [${correlationId}]`);
+  }
+
+  /**
+   * The card was refused.
+   *
+   * M4 stops here: the order is cancelled but the stock reserved earlier is
+   * still held. Releasing it is compensation, and compensation is M5 — this is
+   * the last remaining piece of the problem ADR-0002 documented.
+   */
+  async onPaymentDeclined(orderId: string, reason: string, correlationId?: string): Promise<void> {
+    const order = await this.orders.findOne({ where: { id: orderId } });
+
+    if (!order || order.status !== OrderStatus.AWAITING_PAYMENT) {
+      this.logger.debug(
+        `Ignoring payment.declined for ${orderId}; status is ${order?.status ?? 'missing'}`,
+      );
+      return;
+    }
+
+    order.status = OrderStatus.CANCELLED;
+    order.failureReason = reason;
+    await this.orders.save(order);
+    this.logger.warn(
+      `Order ${orderId} -> cancelled (${reason}); reserved stock is NOT yet released — M5 [${correlationId}]`,
+    );
   }
 
   /** Inventory could not hold the stock. Nothing was committed, so just cancel. */

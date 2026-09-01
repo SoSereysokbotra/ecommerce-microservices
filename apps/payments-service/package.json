@@ -7,10 +7,13 @@
     "start:dev": "ts-node --transpile-only -r ./register-node-path.js -r tsconfig-paths/register src/main.ts",
     "start:prod": "node dist/apps/payments-service/src/main.js",
     "lint": "eslint \"src/**/*.ts\"",
-    "test": "jest"
+    "test": "jest",
+    "migration:run": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:run -d src/database/typeorm.config.ts",
+    "migration:revert": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:revert -d src/database/typeorm.config.ts"
   },
   "dependencies": {
     "@libs/common": "file:../../libs/common",
+    "@libs/outbox": "file:../../libs/outbox",
     "@libs/rabbitmq": "file:../../libs/rabbitmq",
     "@libs/shared-types": "file:../../libs/shared-types",
     "@nestjs/axios": "^3.0.2",
@@ -19,11 +22,16 @@
     "@nestjs/core": "^10.3.0",
     "@nestjs/platform-express": "^10.3.0",
     "@nestjs/swagger": "^7.3.1",
+    "@nestjs/typeorm": "^10.0.2",
     "axios": "^1.7.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "dotenv": "^16.4.5",
+    "pg": "^8.11.5",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "stripe": "^17.5.0",
+    "typeorm": "^0.3.20"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.4.9",
@@ -61,7 +69,8 @@
       "^@nestjs/core$": "<rootDir>/node_modules/@nestjs/core",
       "^@libs/shared-types(|/.*)$": "<rootDir>/../../libs/shared-types/src$1",
       "^@libs/common(|/.*)$": "<rootDir>/../../libs/common/src$1",
-      "^@libs/rabbitmq(|/.*)$": "<rootDir>/../../libs/rabbitmq/src$1"
+      "^@libs/rabbitmq(|/.*)$": "<rootDir>/../../libs/rabbitmq/src$1",
+      "^@libs/outbox(|/.*)$": "<rootDir>/../../libs/outbox/src$1"
     }
   }
 }
