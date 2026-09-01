@@ -6,6 +6,18 @@ import { useMemo, useState } from 'react';
 
 const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
 
+// NEXT_PUBLIC_ variables are compiled into the JavaScript every visitor
+// downloads. A secret key here would be published to the world, so fail loudly
+// rather than quietly shipping one. Confusing the two keys is an easy mistake:
+// they differ by three characters and sit next to each other in the dashboard.
+if (publishableKey && !publishableKey.startsWith('pk_')) {
+  throw new Error(
+    'NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY must be a publishable key (pk_...). ' +
+      'A secret key (sk_...) must never reach the browser — it can read every ' +
+      'payment and issue refunds.',
+  );
+}
+
 /**
  * Card entry, hosted by Stripe.
  *
