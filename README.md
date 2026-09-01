@@ -4,8 +4,11 @@ An order–inventory–payment system built to demonstrate distributed-systems
 techniques that a CRUD application cannot: **saga-orchestrated checkout with
 compensating transactions, the transactional outbox, and idempotent consumers.**
 
-> **Status: M1 complete.** Gateway, auth, catalog and inventory run. Orders and
-> payments are not built yet. See `docs/IMPLEMENTATION_PLAN.md`.
+> **Status: M0–M5 complete, M6 all but deployment.** Six services, the full
+> checkout saga with compensation, and a storefront — running locally only.
+>
+> **New here, or picking this up in a fresh session? Read
+> [`docs/HANDOFF.md`](docs/HANDOFF.md) first.**
 
 ---
 
@@ -169,6 +172,7 @@ Services run under `ts-node` without watch mode, so a code change needs
 
 | Document | Contents |
 |---|---|
+| `docs/HANDOFF.md` | **Start here** — state, setup, gotchas, next task |
 | `docs/PROJECT_PLAN.md` | Scope, releases, risks, definition of done |
 | `docs/IMPLEMENTATION_PLAN.md` | Build order, conventions, milestone tasks |
 | `docs/adr/` | Architecture decision records |
