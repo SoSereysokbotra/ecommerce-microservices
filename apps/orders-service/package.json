@@ -5,7 +5,7 @@
   "scripts": {
     "build": "nest build orders-service",
     "start:dev": "ts-node --transpile-only -r ./register-node-path.js -r tsconfig-paths/register src/main.ts",
-    "start:prod": "node dist/apps/orders-service/src/main.js",
+    "start:prod": "node -r ./register-node-path.js dist/apps/orders-service/src/main.js",
     "lint": "eslint \"src/**/*.ts\"",
     "test": "jest",
     "migration:run": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:run -d src/database/typeorm.config.ts",

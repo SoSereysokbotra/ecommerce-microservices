@@ -22,7 +22,16 @@ FROM base AS build
 
 COPY . .
 
-RUN ln -s apps/api-gateway/node_modules node_modules
+# The compiler needs two dependency sets the runtime does not: the root
+# devDependencies, which tsconfig.base.json pins typeorm and @nestjs/* to so
+# libs/ and apps/ typecheck against one copy, and each lib's own @types
+# packages. .dockerignore keeps every node_modules out of the image and the
+# development target only has them because it bind-mounts the host tree, so
+# the production build has to install them explicitly.
+RUN npm install --ignore-scripts \
+ && npm install --ignore-scripts --prefix libs/common \
+ && npm install --ignore-scripts --prefix libs/rabbitmq
+
 RUN npm --prefix apps/api-gateway run build
 
 FROM node:20-alpine AS production
@@ -37,7 +46,7 @@ COPY apps/api-gateway/package*.json ./apps/api-gateway/
 COPY apps/api-gateway/register-node-path.js ./apps/api-gateway/
 COPY libs ./libs
 
-RUN npm install --omit=dev --prefix apps/api-gateway
+RUN npm install --omit=dev --install-links --prefix apps/api-gateway
 
 COPY --from=build /app/apps/api-gateway/dist ./apps/api-gateway/dist
 

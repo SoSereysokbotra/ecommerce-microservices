@@ -15,6 +15,13 @@ async function bootstrap(): Promise<void> {
 
   // bodyParser: false so the webhook route can keep the exact bytes Stripe
   // signed. The parsers below are then registered by hand, in order.
+  // Same allowlist contract as the gateway. Stripe's webhook is server to
+  // server and unaffected by CORS; this only bounds browser callers.
+  const corsOrigins = (process.env.CORS_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
   const app = await NestFactory.create(AppModule, { cors: true, bodyParser: false });
 
   // Raw body FIRST, and only for the webhook path. Stripe signs the literal
@@ -41,7 +48,7 @@ async function bootstrap(): Promise<void> {
   app.use(express.urlencoded({ extended: true }));
 
   app.enableCors({
-    origin: '*',
+    origin: corsOrigins.length > 0 ? corsOrigins : '*',
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-correlation-id', 'stripe-signature'],
   });

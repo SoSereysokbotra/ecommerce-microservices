@@ -16,7 +16,18 @@ async function bootstrap(): Promise<void> {
   // byte. Stripe signs the raw request body; parsing it to an object here and
   // re-serialising it downstream changes the bytes and signature verification
   // fails in payments-service.
-  const app = await NestFactory.create(AppModule, { cors: true, bodyParser: false });
+  // The storefront is the only browser origin in production. CORS_ORIGINS is a
+  // comma-separated allowlist; leaving it unset keeps the permissive
+  // development behaviour, so local work and Playwright are unaffected.
+  const corsOrigins = (process.env.CORS_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  const app = await NestFactory.create(AppModule, {
+    cors: corsOrigins.length > 0 ? { origin: corsOrigins, credentials: true } : true,
+    bodyParser: false,
+  });
 
   app.use(
     STRIPE_WEBHOOK_PATH,
@@ -52,9 +63,12 @@ async function bootstrap(): Promise<void> {
   SwaggerModule.setup('api/v1/docs', app, document, {
     explorer: true,
     swaggerOptions: {
+      // Relative, so the explorer works on whatever host serves it rather than
+      // only on localhost. The per-service documents stay on the internal
+      // network in production, so they are listed only when configured.
       urls: [
-        { name: 'Gateway', url: 'http://localhost:3000/api/v1/docs-json' },
-        { name: 'Users', url: 'http://localhost:3001/api/v1/docs-json' },
+        { name: 'Gateway', url: '/api/v1/docs-json' },
+        ...(process.env.USERS_DOCS_URL ? [{ name: 'Users', url: process.env.USERS_DOCS_URL }] : []),
       ],
     },
   });

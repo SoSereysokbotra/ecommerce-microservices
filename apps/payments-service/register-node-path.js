@@ -1,3 +1,4 @@
+const fs = require('fs');
 const path = require('path');
 const Module = require('module');
 
@@ -10,14 +11,25 @@ Module._initPaths();
 
 const appResolvePaths = [appNodeModules];
 const resolveFilename = Module._resolveFilename;
-const distAliases = new Map([
-  ['@libs/common', path.resolve(__dirname, 'dist/libs/common/src/index.js')],
-  ['@libs/shared-types', path.resolve(__dirname, 'dist/libs/shared-types/src/index.js')],
-]);
-const distAliasPrefixes = new Map([
-  ['@libs/common/', path.resolve(__dirname, 'dist/libs/common/src')],
-  ['@libs/shared-types/', path.resolve(__dirname, 'dist/libs/shared-types/src')],
-]);
+
+// Every workspace lib declares "main": "src/index.ts". That is correct for
+// ts-node in development, but `node` cannot require TypeScript, so a compiled
+// service resolving @libs/* through node_modules crashes on boot. nest build
+// emits the compiled libs alongside the app under dist/libs/, and this map
+// points compiled code at them instead.
+//
+// All four are listed even though no single service uses all of them: the file
+// is byte-identical across every service, so an unused entry is simply never
+// consulted. Entries whose dist output is absent fall through to normal
+// resolution rather than masking the real error.
+const LIB_NAMES = ['common', 'outbox', 'rabbitmq', 'shared-types'];
+
+const distAliases = new Map(
+  LIB_NAMES.map((name) => [`@libs/${name}`, path.resolve(__dirname, `dist/libs/${name}/src/index.js`)]),
+);
+const distAliasPrefixes = new Map(
+  LIB_NAMES.map((name) => [`@libs/${name}/`, path.resolve(__dirname, `dist/libs/${name}/src`)]),
+);
 
 function resolveDistAlias(request, parent) {
   const parentFile = parent?.filename ?? '';
@@ -28,13 +40,17 @@ function resolveDistAlias(request, parent) {
 
   const exactMatch = distAliases.get(request);
   if (exactMatch) {
-    return exactMatch;
+    return fs.existsSync(exactMatch) ? exactMatch : null;
   }
 
   for (const [prefix, targetRoot] of distAliasPrefixes) {
     if (request.startsWith(prefix)) {
       const target = path.join(targetRoot, request.slice(prefix.length));
-      return require.resolve(target);
+      try {
+        return require.resolve(target);
+      } catch {
+        return null;
+      }
     }
   }
 

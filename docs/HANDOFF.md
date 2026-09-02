@@ -39,15 +39,19 @@ finished and must not be modified. See §9 — it has a live security problem.
 | M3 | Transactional outbox + idempotent consumers | done |
 | M4 | Stripe payments, webhooks, refunds | done |
 | M5 | **The saga** — compensation, expiry, crash recovery | done |
-| M6 | Storefront + Playwright | **partial** |
+| M6 | Storefront + Playwright + public deployment | done |
 | M7–M22 | Releases 2–5 | not started |
 
-**M6's only remaining piece is public deployment.** Its acceptance criterion is
-"a stranger can place a test-mode order end to end on a public URL", and the
-system currently runs only on this machine. Everything else in M6 is done and
-tested.
+**M6 is complete.** Its acceptance criterion — "a stranger can place a test-mode
+order end to end on a public URL" — was met on 2026-09-02 via Cloudflare Tunnel,
+verified with real Stripe test-mode webhooks over the public URL, including the
+declined-card compensation path. See `docs/DEPLOYMENT.md`.
 
-**Next task: deploy.** See §8.
+Caveat worth stating plainly: the tunnel serves from **this machine**, so the
+site is up only while it is. That satisfies M6 but is not a 24/7 deployment.
+Part B of DEPLOYMENT.md is the managed-platform path, blocked on a Railway plan.
+
+**Next task: R2 (M7+), or make the deployment permanent.** See §8.
 
 ---
 
@@ -260,12 +264,18 @@ Plus 39 unit tests and 5 Playwright E2E tests, all green. CI on GitHub is green.
 
 ---
 
-## 8. Next task: deploy (finishes M6)
+## 8. Deployment — done, with a caveat
 
-Nothing is deployed. This is the last piece of R1 and the highest-value work
-left — without it the project can only be read, not experienced.
+M6 was finished with Cloudflare Tunnel (`bash scripts/tunnel-up.sh`), not a
+managed platform: the Railway trial had expired on both available accounts.
 
-What it involves:
+Two defects were found and fixed on the way, both in code that had never been
+run: the **production Docker stage did not boot** for five of six services
+(`@libs/*` resolved to TypeScript), and `npm install --omit=dev` never installed
+the libs' own dependencies because the app lockfiles were generated while
+`libs/*/node_modules` existed. Details in `docs/DEPLOYMENT.md` §5 (Part B).
+
+To make the deployment permanent, the original plan still stands:
 
 1. A host — Railway is the pragmatic choice (free tier, Docker support). Fly.io
    also works. Kubernetes is M21 and deliberately later.

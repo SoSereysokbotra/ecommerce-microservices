@@ -27,3 +27,7 @@ storefront/.env.local
 storefront/.next/
 storefront/test-results/
 storefront/playwright-report/
+
+# Cloudflare Tunnel runtime state and the downloaded cloudflared binary
+.tunnel/
+.tools/
