@@ -1,7 +1,7 @@
 # M7 — Cart: implementation plan
 
 **Written:** 2026-09-03
-**Status:** Accepted. Steps 1-2 of §11 built; steps 3-7 outstanding.
+**Status:** Accepted. Steps 1-3 of §11 built; steps 4-7 outstanding.
 **Milestone:** M7, first of R2
 
 Read §3 and §4 before agreeing to this. They contain the two places where I
@@ -265,7 +265,7 @@ Per IMPLEMENTATION_PLAN §1.6, plus what is specific here:
 1. ~~`cart-merge.ts` and its unit tests~~ — **done**, 16 tests
 2. ~~Service scaffold, Postgres store, migrations~~ — **done**; migration applied
    to Neon and its `down` verified by reverting and re-running
-3. Redis guest store and token resolution
+3. ~~Redis guest store and token resolution~~ — **done**
 4. Automatic merge on authenticated request
 5. `order.created` consumer that clears the cart
 6. Storefront cart UI
@@ -284,5 +284,32 @@ wholesale, `clear` empties the cart while keeping the row so `updated_at` stays
 meaningful for the sweep, and the `CHK_cart_items_qty_positive` constraint
 rejects a negative quantity at the database rather than trusting the caller.
 
-There is **no HTTP surface yet** — `CartModule` exports the store and nothing
-else. Endpoints arrive with step 4, once there is a guest store to merge from.
+### What exists after step 3
+
+`GuestCartStore` keeps anonymous carts in Redis under `cart:guest:<token>`,
+with the TTL reset on every write so an actively used cart does not expire
+mid-shop. Reads deliberately do not extend it — a cart nobody has touched for
+the whole window is precisely what the expiry is for.
+
+The token is 24 random bytes, base64url. It is a **bearer credential**: whoever
+holds it owns that cart, so unguessability is the only thing protecting it, and
+tokens are format-checked before ever being concatenated into a Redis key.
+
+Guest carts are read back as untrusted input — unparseable JSON is discarded and
+the key deleted, and negative, fractional or malformed lines are filtered out —
+because the key may have been written by an older build. `cart-merge` makes the
+same assumption for the same reason.
+
+`/ready` now checks **Redis as well as Postgres**, unlike every other service.
+Guest carts are half of what this service does and it cannot serve them without
+Redis, so readiness has to mean both.
+
+Verified against the real Redis container: add accumulates, `setItemQty(0)`
+removes, TTL lands at 2592000s, emptying the cart deletes the key rather than
+leaving an empty one, corrupt JSON reads as empty and self-heals, and junk lines
+are filtered. **Running it caught a real bug**: `setItemQty` originally removed
+and re-appended the line, so changing a quantity reordered a guest cart but not a
+signed-in one. Both stores now return the same order.
+
+There is still **no HTTP surface** — `CartModule` exports both stores and
+nothing else. Endpoints and the merge trigger arrive together in step 4.

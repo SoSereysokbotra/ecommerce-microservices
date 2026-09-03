@@ -3,11 +3,15 @@ import { ApiTags } from '@nestjs/swagger';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { Public } from '@libs/common';
+import { GuestCartStore } from './modules/cart/guest-cart.store';
 
 @ApiTags('health')
 @Controller()
 export class AppController {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly guestCarts: GuestCartStore,
+  ) {}
 
   /** Liveness: the process is up. Must not touch the database. */
   @Public()
@@ -27,6 +31,16 @@ export class AppController {
         status: 'not-ready',
         service: 'cart-service',
         reason: 'database unreachable',
+      });
+    }
+
+    // Unlike the other services, readiness here also covers Redis: guest carts
+    // are half of what this service does, and it cannot serve them without it.
+    if (!(await this.guestCarts.ping())) {
+      throw new ServiceUnavailableException({
+        status: 'not-ready',
+        service: 'cart-service',
+        reason: 'redis unreachable',
       });
     }
 
