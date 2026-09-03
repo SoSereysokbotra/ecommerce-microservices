@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import * as jwt from 'jsonwebtoken';
 import { IS_PUBLIC_KEY } from '@libs/common/decorators/public.decorator';
+import { IS_OPTIONAL_AUTH_KEY } from '@libs/common/decorators/optional-auth.decorator';
 import { JwtPayload } from '@libs/shared-types';
 
 @Injectable()
@@ -22,10 +23,20 @@ export class GatewayJwtGuard implements CanActivate {
       return true;
     }
 
+    const isOptional = this.reflector.getAllAndOverride<boolean>(IS_OPTIONAL_AUTH_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
     const request = context.switchToHttp().getRequest();
     const token = this.extractToken(request.headers.authorization);
 
     if (!token) {
+      // Optional routes serve anonymous callers; the upstream sees no
+      // x-user-id and treats the request as a guest.
+      if (isOptional) {
+        return true;
+      }
       throw new UnauthorizedException('Missing authentication token');
     }
 

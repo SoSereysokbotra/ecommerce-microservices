@@ -11,6 +11,7 @@ export * from './guards/jwt.guard';
 
 // Decorators
 export * from './decorators/public.decorator';
+export * from './decorators/optional-auth.decorator';
 export * from './decorators/current-user.decorator';
 
 // Filters

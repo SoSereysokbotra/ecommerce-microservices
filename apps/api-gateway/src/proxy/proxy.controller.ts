@@ -1,6 +1,6 @@
 import { All, Controller, Get, Req, Res } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
-import { Public } from '@libs/common';
+import { OptionalAuth, Public } from '@libs/common';
 import { Request, Response } from 'express';
 import { ProxyService } from './proxy.service';
 
@@ -44,6 +44,17 @@ export class ProxyController {
     return this.sendProxy(request, response);
   }
 
+  /**
+   * Carts work signed in or not, so this must precede the guarded `@All` below
+   * — Nest registers routes in declaration order. Without it a guest gets 401
+   * and can never build a cart at all.
+   */
+  @OptionalAuth()
+  @All(['cart', 'cart/*'])
+  async proxyCart(@Req() request: Request, @Res() response: Response): Promise<void> {
+    return this.sendProxy(request, response);
+  }
+
   @All([
     'users',
     'users/*',
@@ -55,8 +66,6 @@ export class ProxyController {
     'orders/*',
     'payments',
     'payments/*',
-    'cart',
-    'cart/*',
     'pricing',
     'pricing/*',
     'shipping',

@@ -1,7 +1,7 @@
 # M7 — Cart: implementation plan
 
 **Written:** 2026-09-03
-**Status:** Accepted. Steps 1-3 of §11 built; steps 4-7 outstanding.
+**Status:** Accepted. Steps 1-4 of §11 built; steps 5-7 outstanding.
 **Milestone:** M7, first of R2
 
 Read §3 and §4 before agreeing to this. They contain the two places where I
@@ -127,9 +127,20 @@ so it should be testable without Redis, Postgres, or HTTP.
 
 ### Gateway
 
-**No work required.** `/api/v1/cart` already routes to
-`http://cart-service:3006` — see `services.config.ts:22`. The route is live right
-now, proxying to a service that does not exist yet.
+**Correction (step 4).** This section originally said "no work required"
+because `/api/v1/cart` already routes to `http://cart-service:3006`. The
+*routing* was there; the *auth posture* was wrong. `cart` sat in the guarded
+`@All` list, so the JWT guard returned 401 to anyone without a token and a guest
+could never build a cart at all.
+
+Fixed with a third state between `@Public()` and guarded: `@OptionalAuth()`
+verifies a token when one is present and attaches the identity, and allows the
+request through when there is none. A token that is present but **invalid is
+still rejected** — treating it as anonymous would hand a shopper whose session
+just expired an empty stranger's cart instead of asking them to log in again.
+
+The cart route is declared before the guarded `@All`, because Nest matches in
+declaration order.
 
 ### Data
 
@@ -266,7 +277,7 @@ Per IMPLEMENTATION_PLAN §1.6, plus what is specific here:
 2. ~~Service scaffold, Postgres store, migrations~~ — **done**; migration applied
    to Neon and its `down` verified by reverting and re-running
 3. ~~Redis guest store and token resolution~~ — **done**
-4. Automatic merge on authenticated request
+4. ~~Automatic merge on authenticated request~~ — **done**
 5. `order.created` consumer that clears the cart
 6. Storefront cart UI
 7. Abandonment job — or drop it, per §7
@@ -311,5 +322,36 @@ are filtered. **Running it caught a real bug**: `setItemQty` originally removed
 and re-appended the line, so changing a quantity reordered a guest cart but not a
 signed-in one. Both stores now return the same order.
 
-There is still **no HTTP surface** — `CartModule` exports both stores and
-nothing else. Endpoints and the merge trigger arrive together in step 4.
+### What exists after step 4
+
+The cart is usable end to end through the gateway. `CartService` is the only
+place that knows there are two stores; every entry point runs `resolve()`, which
+is also where the merge happens.
+
+**Merging is not an endpoint.** When a request carries both a verified
+`x-user-id` and a valid `x-cart-token`, the guest cart is summed into the user's,
+capped at stock, discarded, and the response sets `cartToken: null` so the client
+forgets it. The storefront cannot forget to trigger it, and it works whichever
+page the shopper logged in on.
+
+`InventoryClient` is the one cross-service call in M7. It returns `null` when
+inventory cannot be reached, which `mergeCarts` reads as "do not cap" — failing a
+login because a stock lookup timed out would be worse than a briefly optimistic
+cart, and the order path re-checks stock regardless.
+
+Verified through the gateway, not just against the service:
+
+| Scenario | Result |
+|---|---|
+| Guest adds with no auth at all | `201`, token minted |
+| Guest re-reads with the token | cart intact |
+| **The mug problem:** guest 2 + account 3 | **5** |
+| Client told to forget the token | `cartToken: null` |
+| Old guest token replayed | empty — spent |
+| Same merge request repeated | still 5, no double-merge |
+| Guest 32 + account 32, 45 in stock | capped to **45**, adjustment reported |
+| Invalid JWT on a cart route | `401` — optional auth is not a bypass |
+| `/orders` without a JWT | still `401`, no regression |
+
+Still missing: the `order.created` consumer that clears a cart (step 5), the
+storefront UI (step 6), and the abandonment job (step 7).

@@ -1,17 +1,21 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { CartController } from './cart.controller';
+import { CartService } from './cart.service';
 import { CartEntity } from './cart.entity';
 import { CartItemEntity } from './cart-item.entity';
 import { GuestCartStore } from './guest-cart.store';
+import { InventoryClient } from './inventory.client';
 import { UserCartStore } from './user-cart.store';
 
 /**
- * Steps 2-3 of M7: both stores, no HTTP surface yet. The merge trigger and the
- * controller arrive in step 4 - see docs/M7_CART_PLAN.md §11.
+ * Steps 2-4 of M7. What is still missing: the order.created consumer that
+ * clears a cart (step 5) and the abandonment job (step 7).
  */
 @Module({
   imports: [TypeOrmModule.forFeature([CartEntity, CartItemEntity])],
-  providers: [UserCartStore, GuestCartStore],
-  exports: [UserCartStore, GuestCartStore],
+  controllers: [CartController],
+  providers: [CartService, UserCartStore, GuestCartStore, InventoryClient],
+  exports: [CartService, UserCartStore, GuestCartStore],
 })
 export class CartModule {}
