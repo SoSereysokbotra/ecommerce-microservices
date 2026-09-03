@@ -35,4 +35,12 @@ export class CartEntity {
   /** Drives the abandonment sweep, so every mutation must touch it. */
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+
+  /**
+   * When `cart.abandoned` was emitted for this cart, or null if it has not
+   * been. Cleared on every mutation, so a shopper who returns and later drifts
+   * off is flagged again rather than never again.
+   */
+  @Column({ name: 'abandoned_at', type: 'timestamptz', nullable: true })
+  abandonedAt: Date | null;
 }

@@ -135,9 +135,17 @@ export class UserCartStore {
     }
   }
 
-  /** @UpdateDateColumn only fires on a real change, and the sweep depends on it. */
+  /**
+   * @UpdateDateColumn only fires on a real change, and the sweep depends on it.
+   *
+   * Clearing `abandonedAt` here is what makes the sweep repeatable: a shopper
+   * who was flagged, came back, and drifted off again gets flagged a second
+   * time instead of being permanently marked as already-notified.
+   */
   private async touch(manager: EntityManager, cart: CartEntity): Promise<void> {
-    await manager.getRepository(CartEntity).update({ id: cart.id }, { updatedAt: new Date() });
+    await manager
+      .getRepository(CartEntity)
+      .update({ id: cart.id }, { updatedAt: new Date(), abandonedAt: null });
   }
 
   private async itemsOf(manager: EntityManager, cartId: string): Promise<CartLine[]> {

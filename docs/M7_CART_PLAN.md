@@ -1,7 +1,7 @@
 # M7 — Cart: implementation plan
 
 **Written:** 2026-09-03
-**Status:** Accepted. Steps 1-6 of §11 built; only step 7 outstanding.
+**Status:** Complete. All seven steps of §11 built and verified.
 **Milestone:** M7, first of R2
 
 Read §3 and §4 before agreeing to this. They contain the two places where I
@@ -280,7 +280,7 @@ Per IMPLEMENTATION_PLAN §1.6, plus what is specific here:
 4. ~~Automatic merge on authenticated request~~ — **done**
 5. ~~`order.created` consumer that clears the cart~~ — **done**
 6. ~~Storefront cart UI~~ — **done**
-7. Abandonment job — or drop it, per §7
+7. ~~Abandonment job~~ — **done** (built rather than cut; see below)
 
 ### What exists after step 2
 
@@ -415,5 +415,38 @@ Verified in a real browser, 9 Playwright tests green: the 4 new cart tests and
 all 5 existing checkout tests, including the successful purchase and the
 declined-card compensation path.
 
-Still missing: the abandonment job (step 7), which §7 argues could reasonably be
-cut.
+### What exists after step 7
+
+A sweep flags signed-in carts nobody has touched for `CART_ABANDON_AFTER_DAYS`
+and appends `cart.abandoned` to the outbox. Guest carts need no job at all —
+Redis expires them — which is the clearest illustration of why the two stores
+differ.
+
+§7 argued this could be cut, and that argument still stands: **nothing consumes
+`cart.abandoned`** until recovery email in R3. It was built anyway, and the
+interesting part turned out not to be the sweep but making it *not* misbehave:
+
+- **A plain "untouched since X" query re-emits forever**, because the condition
+  stays true. An `abandoned_at` column records that the event was already sent,
+  and is cleared on every mutation so a shopper who returns and later drifts off
+  is flagged again rather than never again.
+- **Flagging must not look like activity.** `repository.update()` fires
+  `@UpdateDateColumn`, so marking a cart would have bumped its own `updated_at`
+  and made a week-old cart appear freshly active. The flag is written with raw
+  SQL to avoid that.
+- The event and the flag commit in one transaction, for the same reason the
+  outbox exists at all.
+- An empty cart is not an abandoned one — usually it is a cart that became an
+  order and has not been touched since.
+
+Verified against the real database with a backdated cart: flagged once; not
+re-emitted on later ticks; `updated_at` untouched; the flag cleared when the
+shopper returned; flagged a second time after drifting off again; an empty cart
+never flagged.
+
+### One operational note
+
+cart-service's healthcheck `start_period` was raised to 90s. Its `/ready` also
+pings Redis, and a cold Neon endpoint took ~50s to accept the first connection —
+long enough to mark the container unhealthy while it was still starting, which
+matters because the gateway waits on it.

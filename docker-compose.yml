@@ -210,7 +210,11 @@ services:
       interval: 10s
       timeout: 10s
       retries: 12
-      start_period: 40s
+      # Longer than the other services: /ready here also pings Redis, and a cold
+      # Neon endpoint has taken ~50s to accept the first connection, which was
+      # enough to mark this container unhealthy while it was still starting —
+      # and the gateway waits on it being healthy.
+      start_period: 90s
     networks: [commerce]
 
   api-gateway:
