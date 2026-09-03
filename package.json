@@ -17,7 +17,7 @@
     "seed:inventory": "npm run seed --prefix apps/inventory-service",
     "gen:spec": "bash scripts/gen-api-spec.sh",
     "gen:types": "bash scripts/gen-api-types.sh",
-    "test:all": "npm test --prefix apps/users-service -- --passWithNoTests && npm test --prefix apps/catalog-service -- --passWithNoTests && npm test --prefix apps/inventory-service -- --passWithNoTests && npm test --prefix apps/orders-service -- --passWithNoTests && npm test --prefix apps/payments-service -- --passWithNoTests",
+    "test:all": "npm test --prefix apps/users-service -- --passWithNoTests && npm test --prefix apps/catalog-service -- --passWithNoTests && npm test --prefix apps/inventory-service -- --passWithNoTests && npm test --prefix apps/orders-service -- --passWithNoTests && npm test --prefix apps/payments-service -- --passWithNoTests && npm test --prefix apps/cart-service -- --passWithNoTests",
     "lint": "eslint \"{apps,libs}/**/*.ts\"",
     "format": "prettier --write \"{apps,libs}/**/*.ts\"",
     "scan:secrets": "bash scripts/scan-secrets.sh",
