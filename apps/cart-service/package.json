@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "@libs/common": "file:../../libs/common",
+    "@libs/outbox": "file:../../libs/outbox",
+    "@libs/rabbitmq": "file:../../libs/rabbitmq",
     "@libs/shared-types": "file:../../libs/shared-types",
     "@nestjs/common": "^10.3.0",
     "@nestjs/config": "^3.2.0",
@@ -62,7 +64,9 @@
       "^@nestjs/common$": "<rootDir>/node_modules/@nestjs/common",
       "^@nestjs/core$": "<rootDir>/node_modules/@nestjs/core",
       "^@libs/shared-types(|/.*)$": "<rootDir>/../../libs/shared-types/src$1",
-      "^@libs/common(|/.*)$": "<rootDir>/../../libs/common/src$1"
+      "^@libs/common(|/.*)$": "<rootDir>/../../libs/common/src$1",
+      "^@libs/rabbitmq(|/.*)$": "<rootDir>/../../libs/rabbitmq/src$1",
+      "^@libs/outbox(|/.*)$": "<rootDir>/../../libs/outbox/src$1"
     }
   }
 }

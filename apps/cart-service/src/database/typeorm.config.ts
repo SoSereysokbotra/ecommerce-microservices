@@ -2,6 +2,7 @@ import { config as loadEnv } from 'dotenv';
 import { resolve } from 'path';
 import { DataSource, DataSourceOptions } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
+import { OutboxEventEntity, ProcessedEventEntity } from '@libs/outbox';
 import { CartEntity } from '../modules/cart/cart.entity';
 import { CartItemEntity } from '../modules/cart/cart-item.entity';
 
@@ -68,7 +69,7 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
       username: DB_USER,
       password: DB_PASSWORD,
       database: DB_NAME,
-      entities: [CartEntity, CartItemEntity],
+      entities: [CartEntity, CartItemEntity, OutboxEventEntity, ProcessedEventEntity],
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
       synchronize: false,
       logging: !isProduction,
@@ -89,7 +90,7 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
       username: parsed.username || 'postgres',
       password: parsed.password || localPassword,
       database: parsed.pathname.replace(/^\//, ''),
-      entities: [CartEntity, CartItemEntity],
+      entities: [CartEntity, CartItemEntity, OutboxEventEntity, ProcessedEventEntity],
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
       synchronize: false,
       logging: !isProduction,
@@ -103,7 +104,7 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
   return {
     type: 'postgres',
     url: DATABASE_URL,
-    entities: [CartEntity, CartItemEntity],
+    entities: [CartEntity, CartItemEntity, OutboxEventEntity, ProcessedEventEntity],
     migrations: [__dirname + '/migrations/*{.ts,.js}'],
     synchronize: false,
     logging: !isProduction,

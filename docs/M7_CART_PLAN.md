@@ -1,7 +1,7 @@
 # M7 — Cart: implementation plan
 
 **Written:** 2026-09-03
-**Status:** Accepted. Steps 1-4 of §11 built; steps 5-7 outstanding.
+**Status:** Accepted. Steps 1-5 of §11 built; steps 6-7 outstanding.
 **Milestone:** M7, first of R2
 
 Read §3 and §4 before agreeing to this. They contain the two places where I
@@ -278,7 +278,7 @@ Per IMPLEMENTATION_PLAN §1.6, plus what is specific here:
    to Neon and its `down` verified by reverting and re-running
 3. ~~Redis guest store and token resolution~~ — **done**
 4. ~~Automatic merge on authenticated request~~ — **done**
-5. `order.created` consumer that clears the cart
+5. ~~`order.created` consumer that clears the cart~~ — **done**
 6. Storefront cart UI
 7. Abandonment job — or drop it, per §7
 
@@ -353,5 +353,35 @@ Verified through the gateway, not just against the service:
 | Invalid JWT on a cart route | `401` — optional auth is not a bypass |
 | `/orders` without a JWT | still `401`, no regression |
 
-Still missing: the `order.created` consumer that clears a cart (step 5), the
-storefront UI (step 6), and the abandonment job (step 7).
+### What exists after step 5
+
+cart-service joined the event system. It binds only `order.created` and empties
+that customer's cart, so the dependency runs cart → events and `POST /orders`
+stays untouched, exactly as §4 argued.
+
+The emptying runs inside `IdempotencyService.handleOnce`, so the
+`processed_events` marker and the delete commit together. That matters more here
+than it first appears: without it, a redelivered `order.created` would empty a
+cart the shopper had already started refilling.
+
+Deliberately **not** subscribed to `order.cancelled`. A cancelled order does not
+put the cart back — re-populating it minutes later, possibly while the shopper is
+building a new one, would be surprising. That is what a "reorder" button is for.
+
+cart-service now owns `outbox` and `processed_events` tables. Only the second is
+used today; the outbox exists so step 7's `cart.abandoned` needs no further
+migration, and the relay polls an empty table meanwhile.
+
+Verified:
+
+| Scenario | Result |
+|---|---|
+| Order placed from a cart | cart emptied in ~2s via the event |
+| Cart row after emptying | kept, so `updated_at` still feeds the sweep |
+| **Duplicate `order.created` replayed with the same eventId** | **ignored — refilled cart untouched** |
+| Order with no matching cart | handled and marked, no error |
+
+The duplicate was a real message republished onto `commerce.events` with the
+original event id, the same way M3's redelivery test was done.
+
+Still missing: the storefront UI (step 6) and the abandonment job (step 7).
