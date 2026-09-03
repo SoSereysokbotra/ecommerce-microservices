@@ -60,6 +60,28 @@ export interface Payment {
   failureReason?: string | null;
 }
 
+export interface CartLine {
+  productId: string;
+  qty: number;
+}
+
+export type MergeReason = 'capped_to_stock' | 'out_of_stock' | 'unavailable';
+
+export interface MergeAdjustment {
+  productId: string;
+  requestedQty: number;
+  finalQty: number;
+  reason: MergeReason;
+}
+
+export interface Cart {
+  items: CartLine[];
+  /** Present only on the response that merged a guest cart in. */
+  merged?: { adjustments: MergeAdjustment[] };
+  /** A token to store, or null once the guest cart has been consumed. */
+  cartToken?: string | null;
+}
+
 /** Money is integer minor units everywhere; format only at the edge. */
 export function formatMoney(amountMinor: number, currency: string): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amountMinor / 100);

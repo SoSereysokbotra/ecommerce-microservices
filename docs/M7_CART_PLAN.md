@@ -1,7 +1,7 @@
 # M7 — Cart: implementation plan
 
 **Written:** 2026-09-03
-**Status:** Accepted. Steps 1-5 of §11 built; steps 6-7 outstanding.
+**Status:** Accepted. Steps 1-6 of §11 built; only step 7 outstanding.
 **Milestone:** M7, first of R2
 
 Read §3 and §4 before agreeing to this. They contain the two places where I
@@ -279,7 +279,7 @@ Per IMPLEMENTATION_PLAN §1.6, plus what is specific here:
 3. ~~Redis guest store and token resolution~~ — **done**
 4. ~~Automatic merge on authenticated request~~ — **done**
 5. ~~`order.created` consumer that clears the cart~~ — **done**
-6. Storefront cart UI
+6. ~~Storefront cart UI~~ — **done**
 7. Abandonment job — or drop it, per §7
 
 ### What exists after step 2
@@ -384,4 +384,36 @@ Verified:
 The duplicate was a real message republished onto `commerce.events` with the
 original event id, the same way M3's redelivery test was done.
 
-Still missing: the storefront UI (step 6) and the abandonment job (step 7).
+### What exists after step 6
+
+A cart you can actually use: a header count, a `/cart` page with quantity
+editing and removal, "Add to cart" on the product page, and a notice explaining
+what a merge changed.
+
+`CartProvider` is the single source of truth, so the header count and the cart
+page cannot disagree. It also owns the guest token — every cart response may
+carry a `cartToken` to store or a `null` to forget — which means no page has to
+remember to handle it.
+
+**"Buy now" was kept** alongside "Add to cart". It is the single-product path
+the existing Playwright suite drives, and removing it would have rewritten those
+tests for no benefit.
+
+Two things surfaced only by running it:
+
+- `CartProvider` mounts once in the layout, so a client-side login did **not**
+  re-request the cart and the merge never fired. The login page now refreshes
+  the cart after storing the token, which is the request that carries both
+  credentials. Without this the whole merge feature was unreachable through the
+  UI while working perfectly through the API.
+- The cart page loads once on mount, so navigating to `/cart` immediately after
+  checkout can show the pre-order contents until the next load. The e2e test
+  reloads rather than the app pretending — the same stance as the order page
+  polling instead of the browser declaring an order paid.
+
+Verified in a real browser, 9 Playwright tests green: the 4 new cart tests and
+all 5 existing checkout tests, including the successful purchase and the
+declined-card compensation path.
+
+Still missing: the abandonment job (step 7), which §7 argues could reasonably be
+cut.

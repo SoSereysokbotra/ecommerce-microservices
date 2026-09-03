@@ -4,6 +4,7 @@ import { use, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, ApiError, getToken } from '@/lib/api';
+import { useCart } from '@/components/CartProvider';
 import { formatMoney, type Order, type Product, type Stock } from '@/lib/types';
 
 export default function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -15,6 +16,9 @@ export default function ProductPage({ params }: { params: Promise<{ slug: string
   const [qty, setQty] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [placing, setPlacing] = useState(false);
+  const [added, setAdded] = useState(false);
+
+  const { addItem } = useCart();
 
   useEffect(() => {
     (async () => {
@@ -28,6 +32,22 @@ export default function ProductPage({ params }: { params: Promise<{ slug: string
       }
     })();
   }, [slug]);
+
+  async function addToCart() {
+    if (!product) return;
+
+    setError(null);
+    setAdded(false);
+
+    try {
+      // No login required: an anonymous shopper gets a guest cart, and it is
+      // merged into their account's cart when they sign in.
+      await addItem(product.id, qty);
+      setAdded(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   async function placeOrder() {
     if (!product) return;
@@ -97,10 +117,22 @@ export default function ProductPage({ params }: { params: Promise<{ slug: string
             onChange={(e) => setQty(Math.max(1, Number(e.target.value)))}
             style={{ width: 80 }}
           />
-          <button onClick={placeOrder} disabled={placing || outOfStock}>
+          <button onClick={addToCart} disabled={outOfStock} data-testid="add-to-cart">
+            Add to cart
+          </button>
+          {/* Buy now is kept deliberately: it is the single-product path the
+              Playwright suite drives, and removing it would rewrite those
+              tests for no benefit. */}
+          <button className="ghost" onClick={placeOrder} disabled={placing || outOfStock}>
             {placing ? 'Placing…' : 'Buy now'}
           </button>
         </div>
+
+        {added && (
+          <div className="notice small" data-testid="added-notice">
+            Added to your cart. <Link href="/cart">View cart</Link>
+          </div>
+        )}
 
         {error && <div className="notice crit small">{error}</div>}
 

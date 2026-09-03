@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, setToken } from '@/lib/api';
+import { useCart } from '@/components/CartProvider';
 
 interface AuthResponse {
   accessToken: string;
@@ -18,6 +19,8 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const { refresh: refreshCart } = useCart();
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
@@ -27,6 +30,12 @@ export default function LoginPage() {
       const body = mode === 'register' ? { email, name, password } : { email, password };
       const result = await api.post<AuthResponse>(`/auth/${mode}`, body);
       setToken(result.accessToken);
+
+      // CartProvider lives in the layout and mounts once, so a client-side
+      // navigation would not re-request the cart. Refreshing here is what sends
+      // the JWT and the guest token together, which is what triggers the merge.
+      await refreshCart();
+
       router.push('/');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
