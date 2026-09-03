@@ -1,7 +1,7 @@
 # M7 — Cart: implementation plan
 
 **Written:** 2026-09-03
-**Status:** Draft for review — no code written yet
+**Status:** Accepted. Steps 1-2 of §11 built; steps 3-7 outstanding.
 **Milestone:** M7, first of R2
 
 Read §3 and §4 before agreeing to this. They contain the two places where I
@@ -262,12 +262,27 @@ Per IMPLEMENTATION_PLAN §1.6, plus what is specific here:
 
 ## 11. Suggested order of work
 
-1. `cart-merge.ts` and its unit tests — no I/O, pure logic, the actual milestone
-2. Service scaffold, Postgres store, migrations
+1. ~~`cart-merge.ts` and its unit tests~~ — **done**, 16 tests
+2. ~~Service scaffold, Postgres store, migrations~~ — **done**; migration applied
+   to Neon and its `down` verified by reverting and re-running
 3. Redis guest store and token resolution
 4. Automatic merge on authenticated request
 5. `order.created` consumer that clears the cart
 6. Storefront cart UI
 7. Abandonment job — or drop it, per §7
 
-Steps 1–2 are a reasonable first sitting and produce something reviewable.
+### What exists after step 2
+
+`cart-service` boots on 3006, is in `docker-compose.yml`, and answers
+`/health` and `/ready` (the latter querying Neon). The gateway already routed
+`/api/v1/cart` there before the service existed, and now waits for it to be
+healthy.
+
+`UserCartStore` was exercised against the real database: adding the same product
+accumulates, `setItemQty(0)` removes the line, `replaceItems` swaps the contents
+wholesale, `clear` empties the cart while keeping the row so `updated_at` stays
+meaningful for the sweep, and the `CHK_cart_items_qty_positive` constraint
+rejects a negative quantity at the database rather than trusting the caller.
+
+There is **no HTTP surface yet** — `CartModule` exports the store and nothing
+else. Endpoints arrive with step 4, once there is a guest store to merge from.

@@ -184,6 +184,35 @@ services:
       start_period: 40s
     networks: [commerce]
 
+  cart-service:
+    build:
+      context: .
+      dockerfile: ./apps/cart-service/Dockerfile
+      target: development
+    container_name: commerce-cart-service
+    restart: unless-stopped
+    ports:
+      - "3006:3006"
+    env_file:
+      - ./apps/cart-service/.env
+    volumes:
+      - .:/app
+      - cart_service_node_modules:/app/apps/cart-service/node_modules
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      # Unlike every other service, this one genuinely uses Redis: guest carts
+      # live there with a TTL rather than in Postgres.
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3006/api/v1/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 40s
+    networks: [commerce]
+
   api-gateway:
     build:
       context: .
@@ -209,6 +238,8 @@ services:
         condition: service_healthy
       payments-service:
         condition: service_healthy
+      cart-service:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/v1/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 10s
@@ -226,6 +257,7 @@ volumes:
   orders_service_node_modules:
   payments_service_node_modules:
   api_gateway_node_modules:
+  cart_service_node_modules:
 
 networks:
   commerce:
