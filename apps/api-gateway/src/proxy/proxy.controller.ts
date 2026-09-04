@@ -55,6 +55,25 @@ export class ProxyController {
     return this.sendProxy(request, response);
   }
 
+  /**
+   * Pricing, like carts, must work for a shopper who has not signed in.
+   *
+   * A guest has been able to hold a cart since M7, and a cart page that cannot
+   * show tax or a total is not a cart page — so a quote cannot require a token.
+   * This must precede the guarded `@All` below for the same declaration-order
+   * reason as the cart route above.
+   *
+   * `@OptionalAuth()` rather than `@Public()` on purpose. A quote needs no
+   * identity in M8, but an *invalid* token is still rejected rather than
+   * silently treated as anonymous, and M9's per-customer coupons will need the
+   * identity this already attaches when a token is present.
+   */
+  @OptionalAuth()
+  @All(['pricing', 'pricing/*'])
+  async proxyPricing(@Req() request: Request, @Res() response: Response): Promise<void> {
+    return this.sendProxy(request, response);
+  }
+
   @All([
     'users',
     'users/*',
@@ -66,8 +85,6 @@ export class ProxyController {
     'orders/*',
     'payments',
     'payments/*',
-    'pricing',
-    'pricing/*',
     'shipping',
     'shipping/*',
     'search',
