@@ -217,6 +217,38 @@ services:
       start_period: 90s
     networks: [commerce]
 
+  pricing-service:
+    build:
+      context: .
+      dockerfile: ./apps/pricing-service/Dockerfile
+      target: development
+    container_name: commerce-pricing-service
+    restart: unless-stopped
+    ports:
+      - "3007:3007"
+    env_file:
+      - ./apps/pricing-service/.env
+    volumes:
+      - .:/app
+      - pricing_service_node_modules:/app/apps/pricing-service/node_modules
+    depends_on:
+      # No rabbitmq and no redis, unlike every other service here: pricing
+      # publishes nothing, consumes nothing and caches nothing. It reads prices
+      # and categories from catalog, and that is its only dependency.
+      catalog-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3007/api/v1/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      # Same 90s as cart-service, and for the same reason: a cold Neon endpoint
+      # has taken ~50s to accept its first connection, which is long enough to
+      # mark the container unhealthy while it is still starting — and the
+      # gateway waits on it being healthy.
+      start_period: 90s
+    networks: [commerce]
+
   api-gateway:
     build:
       context: .
@@ -244,6 +276,8 @@ services:
         condition: service_healthy
       cart-service:
         condition: service_healthy
+      pricing-service:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/v1/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 10s
@@ -262,6 +296,7 @@ volumes:
   payments_service_node_modules:
   api_gateway_node_modules:
   cart_service_node_modules:
+  pricing_service_node_modules:
 
 networks:
   commerce:

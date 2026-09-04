@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "setup": "bash scripts/setup.sh",
-    "build:all": "npm run build --prefix apps/api-gateway && npm run build --prefix apps/users-service && npm run build --prefix apps/catalog-service && npm run build --prefix apps/inventory-service && npm run build --prefix apps/orders-service && npm run build --prefix apps/payments-service",
+    "build:all": "npm run build --prefix apps/api-gateway && npm run build --prefix apps/users-service && npm run build --prefix apps/catalog-service && npm run build --prefix apps/inventory-service && npm run build --prefix apps/orders-service && npm run build --prefix apps/payments-service && npm run build --prefix apps/cart-service && npm run build --prefix apps/pricing-service",
     "start:gateway": "npm run start:dev --prefix apps/api-gateway",
     "start:users": "npm run start:dev --prefix apps/users-service",
     "start:catalog": "npm run start:dev --prefix apps/catalog-service",
@@ -26,7 +26,11 @@
     "docker:logs": "docker compose logs -f",
     "start:orders": "npm run start:dev --prefix apps/orders-service",
     "start:payments": "npm run start:dev --prefix apps/payments-service",
-    "migrate:orders": "npm run migration:run --prefix apps/orders-service"
+    "migrate:orders": "npm run migration:run --prefix apps/orders-service",
+    "migrate:cart": "npm run migration:run --prefix apps/cart-service",
+    "migrate:pricing": "npm run migration:run --prefix apps/pricing-service",
+    "seed:pricing": "npm run seed --prefix apps/pricing-service",
+    "start:pricing": "npm run start:dev --prefix apps/pricing-service"
   },
   "devDependencies": {
     "@nestjs/common": "^10.4.22",
