@@ -5,6 +5,7 @@ import { CorrelationIdMiddleware } from '@libs/common';
 import { AppController } from './app.controller';
 import { databaseConfig } from './config/database.config';
 import { typeOrmConfig } from './database/typeorm.config';
+import { PricingModule } from './modules/pricing/pricing.module';
 
 /**
  * Note what is **not** here: no `RabbitMQModule`, no `OutboxModule`, no
@@ -28,6 +29,7 @@ import { typeOrmConfig } from './database/typeorm.config';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => typeOrmConfig(config),
     }),
+    PricingModule,
   ],
   controllers: [AppController],
 })

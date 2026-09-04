@@ -1,0 +1,334 @@
+{
+  "components": {
+    "schemas": {
+      "AppliedDiscountResponseDto": {
+        "properties": {
+          "amountMinor": {
+            "description": "Integer minor units.",
+            "type": "number"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "amountMinor"
+        ],
+        "type": "object"
+      },
+      "CreateQuoteDto": {
+        "properties": {
+          "destination": {
+            "$ref": "#/components/schemas/DestinationDto"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/QuoteLineDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "DestinationDto": {
+        "properties": {
+          "country": {
+            "description": "ISO 3166-1 alpha-2.",
+            "example": "US",
+            "type": "string"
+          },
+          "region": {
+            "description": "State or province code.",
+            "example": "CA",
+            "type": "string"
+          }
+        },
+        "required": [
+          "country"
+        ],
+        "type": "object"
+      },
+      "QuoteLineDto": {
+        "properties": {
+          "productId": {
+            "type": "string"
+          },
+          "qty": {
+            "example": 2,
+            "type": "number"
+          }
+        },
+        "required": [
+          "productId",
+          "qty"
+        ],
+        "type": "object"
+      },
+      "QuoteLineResponseDto": {
+        "properties": {
+          "lineDiscountMinor": {
+            "description": "This line’s share of every discount that applied.",
+            "type": "number"
+          },
+          "lineSubtotalMinor": {
+            "description": "Integer minor units.",
+            "type": "number"
+          },
+          "name": {
+            "type": "string"
+          },
+          "productId": {
+            "type": "string"
+          },
+          "qty": {
+            "type": "number"
+          },
+          "sku": {
+            "type": "string"
+          },
+          "taxMinor": {
+            "description": "This line’s share of its tax group’s single rounded figure.",
+            "type": "number"
+          },
+          "taxRateBp": {
+            "description": "Basis points: 725 is 7.25%.",
+            "type": "number"
+          },
+          "taxableMinor": {
+            "description": "Subtotal less discount — what tax is charged on.",
+            "type": "number"
+          },
+          "unitPriceMinor": {
+            "description": "Integer minor units.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "productId",
+          "sku",
+          "name",
+          "qty",
+          "unitPriceMinor",
+          "lineSubtotalMinor",
+          "lineDiscountMinor",
+          "taxableMinor",
+          "taxRateBp",
+          "taxMinor"
+        ],
+        "type": "object"
+      },
+      "QuoteResponseDto": {
+        "properties": {
+          "appliedDiscounts": {
+            "items": {
+              "$ref": "#/components/schemas/AppliedDiscountResponseDto"
+            },
+            "type": "array"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/DestinationDto"
+          },
+          "discountMinor": {
+            "type": "number"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/QuoteLineResponseDto"
+            },
+            "type": "array"
+          },
+          "netMinor": {
+            "description": "The amount excluding tax.",
+            "type": "number"
+          },
+          "subtotalMinor": {
+            "description": "Before any discount or tax.",
+            "type": "number"
+          },
+          "taxBreakdown": {
+            "description": "One entry per tax rate in the basket. Tax is rounded once per group, and this is that rounding made visible.",
+            "items": {
+              "$ref": "#/components/schemas/TaxGroupResponseDto"
+            },
+            "type": "array"
+          },
+          "taxMinor": {
+            "type": "number"
+          },
+          "totalMinor": {
+            "description": "What the customer pays.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "currency",
+          "destination",
+          "lines",
+          "subtotalMinor",
+          "discountMinor",
+          "appliedDiscounts",
+          "taxBreakdown",
+          "taxMinor",
+          "netMinor",
+          "totalMinor"
+        ],
+        "type": "object"
+      },
+      "TaxGroupResponseDto": {
+        "properties": {
+          "baseMinor": {
+            "description": "Sum of the group’s taxable amounts, exact.",
+            "type": "number"
+          },
+          "pricesIncludeTax": {
+            "description": "Whether the price already contained this tax.",
+            "type": "boolean"
+          },
+          "rateBp": {
+            "description": "Basis points: 725 is 7.25%.",
+            "type": "number"
+          },
+          "taxMinor": {
+            "description": "Rounded exactly once, for the whole group.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "rateBp",
+          "pricesIncludeTax",
+          "baseMinor",
+          "taxMinor"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "bearerFormat": "JWT",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "contact": {},
+    "description": "Tax and discounts: what a basket actually costs",
+    "title": "Pricing Service",
+    "version": "1.0"
+  },
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "operationId": "AppController_health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/pricing/discounts": {
+      "get": {
+        "operationId": "PricingController_discounts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Promotions currently active",
+        "tags": [
+          "pricing"
+        ]
+      }
+    },
+    "/api/v1/pricing/quote": {
+      "post": {
+        "operationId": "PricingController_quote",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateQuoteDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuoteResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Price a basket: subtotal, discounts, tax, total",
+        "tags": [
+          "pricing"
+        ]
+      }
+    },
+    "/api/v1/pricing/tax-rates": {
+      "get": {
+        "operationId": "PricingController_taxRates",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Every tax rule, most general first",
+        "tags": [
+          "pricing"
+        ]
+      }
+    },
+    "/api/v1/ready": {
+      "get": {
+        "operationId": "AppController_ready",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  },
+  "servers": [],
+  "tags": []
+}
