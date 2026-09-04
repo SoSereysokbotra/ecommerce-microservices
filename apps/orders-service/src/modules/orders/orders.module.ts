@@ -7,6 +7,7 @@ import { OrderSagaEntity } from './order-saga.entity';
 import { OrderSagaService } from './order-saga.service';
 import { OrdersService } from './orders.service';
 import { OrdersController } from './orders.controller';
+import { PricingClient } from './pricing.client';
 
 @Module({
   imports: [
@@ -14,7 +15,7 @@ import { OrdersController } from './orders.controller';
     HttpModule.register({ timeout: 5000 }),
   ],
   controllers: [OrdersController],
-  providers: [OrdersService, OrderSagaService],
+  providers: [OrdersService, OrderSagaService, PricingClient],
   exports: [OrdersService, OrderSagaService],
 })
 export class OrdersModule {}

@@ -170,7 +170,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      catalog-service:
+      # M8: orders no longer calls catalog directly — it asks pricing, which
+      # reads catalog itself and already waits for it. Depending on pricing is
+      # the real dependency and still covers catalog transitively.
+      pricing-service:
         condition: service_healthy
       inventory-service:
         condition: service_healthy
@@ -181,7 +184,12 @@ services:
       interval: 10s
       timeout: 10s
       retries: 12
-      start_period: 40s
+      # Raised from 40s in M8. ts-node registration alone takes ~29s in this
+      # environment before Nest logs a line, and orders now waits on pricing as
+      # well as a cold Neon endpoint — 40s marked the container unhealthy while
+      # it was still starting, which the gateway then refused to start behind.
+      # Matches cart-service and pricing-service.
+      start_period: 90s
     networks: [commerce]
 
   cart-service:

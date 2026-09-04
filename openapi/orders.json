@@ -3,6 +3,9 @@
     "schemas": {
       "CreateOrderDto": {
         "properties": {
+          "destination": {
+            "$ref": "#/components/schemas/OrderDestinationDto"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/OrderLineDto"
@@ -15,10 +18,32 @@
         ],
         "type": "object"
       },
+      "OrderDestinationDto": {
+        "properties": {
+          "country": {
+            "description": "ISO 3166-1 alpha-2.",
+            "example": "US",
+            "type": "string"
+          },
+          "region": {
+            "description": "State or province code.",
+            "example": "CA",
+            "type": "string"
+          }
+        },
+        "required": [
+          "country"
+        ],
+        "type": "object"
+      },
       "OrderItemResponseDto": {
         "properties": {
           "id": {
             "type": "string"
+          },
+          "lineDiscountMinor": {
+            "description": "This line’s share of every discount that applied.",
+            "type": "number"
           },
           "name": {
             "type": "string"
@@ -32,6 +57,14 @@
           "sku": {
             "type": "string"
           },
+          "taxMinor": {
+            "description": "This line’s share of its tax group’s single rounded figure.",
+            "type": "number"
+          },
+          "taxRateBp": {
+            "description": "Basis points: 725 is 7.25%.",
+            "type": "number"
+          },
           "unitPriceMinor": {
             "description": "Integer minor units.",
             "type": "number"
@@ -43,7 +76,10 @@
           "sku",
           "name",
           "qty",
-          "unitPriceMinor"
+          "unitPriceMinor",
+          "lineDiscountMinor",
+          "taxRateBp",
+          "taxMinor"
         ],
         "type": "object"
       },
@@ -75,6 +111,10 @@
           "customerId": {
             "type": "string"
           },
+          "discountMinor": {
+            "description": "What promotions took off, summed.",
+            "type": "number"
+          },
           "failureReason": {
             "nullable": true,
             "type": "object"
@@ -98,8 +138,25 @@
             ],
             "type": "string"
           },
-          "totalMinor": {
+          "subtotalMinor": {
+            "description": "The basket before anything was applied.",
+            "type": "number"
+          },
+          "taxCountry": {
+            "description": "Null for orders placed before M8.",
+            "nullable": true,
+            "type": "object"
+          },
+          "taxMinor": {
             "description": "Integer minor units.",
+            "type": "number"
+          },
+          "taxRegion": {
+            "nullable": true,
+            "type": "object"
+          },
+          "totalMinor": {
+            "description": "What the customer pays. Includes tax from M8.",
             "type": "number"
           },
           "updatedAt": {
@@ -112,6 +169,9 @@
           "customerId",
           "status",
           "currency",
+          "subtotalMinor",
+          "discountMinor",
+          "taxMinor",
           "totalMinor",
           "items",
           "createdAt",

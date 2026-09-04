@@ -76,14 +76,33 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         CreateOrderDto: {
+            destination?: components["schemas"]["OrderDestinationDto"];
             items: components["schemas"]["OrderLineDto"][];
+        };
+        OrderDestinationDto: {
+            /**
+             * @description ISO 3166-1 alpha-2.
+             * @example US
+             */
+            country: string;
+            /**
+             * @description State or province code.
+             * @example CA
+             */
+            region?: string;
         };
         OrderItemResponseDto: {
             id: string;
+            /** @description This line’s share of every discount that applied. */
+            lineDiscountMinor: number;
             name: string;
             productId: string;
             qty: number;
             sku: string;
+            /** @description This line’s share of its tax group’s single rounded figure. */
+            taxMinor: number;
+            /** @description Basis points: 725 is 7.25%. */
+            taxRateBp: number;
             /** @description Integer minor units. */
             unitPriceMinor: number;
         };
@@ -97,12 +116,21 @@ export interface components {
             createdAt: string;
             currency: string;
             customerId: string;
+            /** @description What promotions took off, summed. */
+            discountMinor: number;
             failureReason?: Record<string, never> | null;
             id: string;
             items: components["schemas"]["OrderItemResponseDto"][];
             /** @enum {string} */
             status: "pending" | "awaiting_payment" | "confirmed" | "cancelled" | "failed";
+            /** @description The basket before anything was applied. */
+            subtotalMinor: number;
+            /** @description Null for orders placed before M8. */
+            taxCountry?: Record<string, never> | null;
             /** @description Integer minor units. */
+            taxMinor: number;
+            taxRegion?: Record<string, never> | null;
+            /** @description What the customer pays. Includes tax from M8. */
             totalMinor: number;
             /** Format: date-time */
             updatedAt: string;

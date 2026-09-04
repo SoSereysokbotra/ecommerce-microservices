@@ -33,4 +33,23 @@ export class OrderItemEntity {
 
   @Column({ name: 'unit_price_minor', type: 'integer' })
   unitPriceMinor: number;
+
+  /** This line's share of every discount that applied to it. */
+  @Column({ name: 'line_discount_minor', type: 'integer', default: 0 })
+  lineDiscountMinor: number;
+
+  /** Basis points, matching pricing-service: 725 is 7.25%. */
+  @Column({ name: 'tax_rate_bp', type: 'integer', default: 0 })
+  taxRateBp: number;
+
+  /**
+   * This line's share of its tax group's tax.
+   *
+   * Not an independently rounded figure: pricing rounds once per tax rate group
+   * and then allocates that single number across the group's lines, so these
+   * always sum back to the order's `tax_minor`. Recomputing one from
+   * `unit_price_minor * tax_rate_bp` would not reproduce it, and would be wrong.
+   */
+  @Column({ name: 'tax_minor', type: 'integer', default: 0 })
+  taxMinor: number;
 }

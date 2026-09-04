@@ -1,34 +1,12 @@
-import { HttpService } from '@nestjs/axios';
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { CORRELATION_ID_HEADER } from '@libs/common';
 import { OutboxService } from '@libs/outbox';
-import { AxiosError } from 'axios';
-import { firstValueFrom } from 'rxjs';
 import { DataSource, Repository } from 'typeorm';
 import { OrderEntity, OrderStatus } from './order.entity';
 import { OrderItemEntity } from './order-item.entity';
 import { CreateOrderDto } from './dto/order.dto';
 import { OrderSagaService } from './order-saga.service';
-
-interface CatalogProduct {
-  id: string;
-  sku: string;
-  name: string;
-  priceMinor: number;
-  currency: string;
-  active: boolean;
-}
-
-interface PricedLine {
-  productId: string;
-  sku: string;
-  name: string;
-  qty: number;
-  unitPriceMinor: number;
-  currency: string;
-}
+import { PricingClient } from './pricing.client';
 
 /**
  * Order creation and reads.
@@ -37,10 +15,18 @@ interface PricedLine {
  * order and starts the saga. Keeping them apart means the state machine can be
  * read in one file without the pricing and HTTP details around it.
  *
- * The catalog price lookup stays synchronous on purpose: it is a *read* before
- * anything is committed, so a failure rejects the request with nothing left
- * half-done. The calls that had to go were the ones changing another service's
- * state.
+ * **M8 moved the pricing out entirely.** This used to loop over the basket
+ * asking catalog for each product's price and summing them, which meant the
+ * storefront's cart page and this method were two separate implementations of
+ * "what does this basket cost" — and a customer finds out they disagreed by
+ * seeing one number and being charged another. Now there is one: a single call
+ * to pricing-service, which reads catalog itself and returns the priced lines,
+ * the discounts, the tax and the total.
+ *
+ * That call stays synchronous for the same reason the catalog lookup did: it is
+ * a *read* before anything is committed, so a failure rejects the request with
+ * nothing left half-done. The calls that had to become events were the ones
+ * changing another service's state.
  */
 @Injectable()
 export class OrdersService {
@@ -52,8 +38,7 @@ export class OrdersService {
     private readonly dataSource: DataSource,
     private readonly outbox: OutboxService,
     private readonly saga: OrderSagaService,
-    private readonly http: HttpService,
-    private readonly config: ConfigService,
+    private readonly pricing: PricingClient,
   ) {}
 
   async create(
@@ -61,9 +46,18 @@ export class OrdersService {
     input: CreateOrderDto,
     correlationId?: string,
   ): Promise<OrderEntity> {
-    const priced = await this.priceItems(input, correlationId);
-    const totalMinor = priced.reduce((sum, i) => sum + i.unitPriceMinor * i.qty, 0);
-    const currency = priced[0].currency;
+    if (input.items.length === 0) {
+      throw new BadRequestException('An order must contain at least one item');
+    }
+
+    // The whole quote — prices, promotions, tax, total — in one call.
+    const quote = await this.pricing.quote(
+      {
+        items: input.items.map(({ productId, qty }) => ({ productId, qty })),
+        destination: input.destination,
+      },
+      correlationId,
+    );
 
     // The order row and its event commit together or not at all. That is the
     // point of the outbox: no window where an order exists with no event, or
@@ -73,15 +67,26 @@ export class OrdersService {
         manager.create(OrderEntity, {
           customerId,
           status: OrderStatus.PENDING,
-          currency,
-          totalMinor,
-          items: priced.map((i) =>
+          currency: quote.currency,
+          // The quote is frozen onto the order here. Nothing ever re-reads
+          // tax_rates to display it, so a rate change tomorrow cannot re-price
+          // an order placed today.
+          subtotalMinor: quote.subtotalMinor,
+          discountMinor: quote.discountMinor,
+          taxMinor: quote.taxMinor,
+          totalMinor: quote.totalMinor,
+          taxCountry: quote.destination.country,
+          taxRegion: quote.destination.region,
+          items: quote.lines.map((line) =>
             Object.assign(new OrderItemEntity(), {
-              productId: i.productId,
-              sku: i.sku,
-              name: i.name,
-              qty: i.qty,
-              unitPriceMinor: i.unitPriceMinor,
+              productId: line.productId,
+              sku: line.sku,
+              name: line.name,
+              qty: line.qty,
+              unitPriceMinor: line.unitPriceMinor,
+              lineDiscountMinor: line.lineDiscountMinor,
+              taxRateBp: line.taxRateBp,
+              taxMinor: line.taxMinor,
             }),
           ),
         }),
@@ -90,6 +95,9 @@ export class OrdersService {
       // Order, saga state and first event all commit together.
       await this.saga.start(manager, order.id, correlationId);
 
+      // Deliberately unchanged by M8. This event's consumer is inventory, which
+      // cares about product ids and quantities; adding money to it would be
+      // payload for an imagined future.
       await this.outbox.append(manager, {
         eventType: 'order.created',
         aggregateId: order.id,
@@ -97,16 +105,21 @@ export class OrdersService {
         payload: {
           orderId: order.id,
           customerId,
-          currency,
-          totalMinor,
-          items: priced.map(({ productId, qty }) => ({ productId, qty })),
+          currency: quote.currency,
+          totalMinor: quote.totalMinor,
+          items: quote.lines.map(({ productId, qty }) => ({ productId, qty })),
         },
       });
 
       return order.id;
     });
 
-    this.logger.log(`Order ${orderId} created, awaiting reservation [${correlationId}]`);
+    this.logger.log(
+      `Order ${orderId} created: subtotal ${quote.subtotalMinor}, ` +
+        `discount ${quote.discountMinor}, tax ${quote.taxMinor}, total ${quote.totalMinor} ` +
+        `(${quote.destination.country}${quote.destination.region ? `-${quote.destination.region}` : ''}), ` +
+        `awaiting reservation [${correlationId}]`,
+    );
 
     // Returns PENDING. The caller polls GET /orders/:id — checkout is no
     // longer resolved inside the request.
@@ -120,73 +133,4 @@ export class OrdersService {
   list(customerId: string): Promise<OrderEntity[]> {
     return this.orders.find({ where: { customerId }, order: { createdAt: 'DESC' }, take: 50 });
   }
-
-  private async priceItems(input: CreateOrderDto, correlationId?: string): Promise<PricedLine[]> {
-    const base = this.config.get<string>('catalogServiceUrl');
-    const priced: PricedLine[] = [];
-
-    for (const item of input.items) {
-      const product = await this.get<CatalogProduct>(
-        `${base}/api/v1/catalog/products/${item.productId}`,
-        correlationId,
-        `Product '${item.productId}' not found`,
-      );
-
-      if (!product.active) {
-        throw new BadRequestException(`Product '${product.sku}' is not available`);
-      }
-
-      priced.push({
-        productId: product.id,
-        sku: product.sku,
-        name: product.name,
-        qty: item.qty,
-        unitPriceMinor: product.priceMinor,
-        currency: product.currency,
-      });
-    }
-
-    const currencies = new Set(priced.map((i) => i.currency));
-    if (currencies.size > 1) {
-      throw new BadRequestException(
-        `An order cannot mix currencies (got ${[...currencies].join(', ')})`,
-      );
-    }
-
-    return priced;
-  }
-
-  private async get<T>(
-    url: string,
-    correlationId: string | undefined,
-    notFound: string,
-  ): Promise<T> {
-    try {
-      const response = await firstValueFrom(
-        this.http.get<T>(url, {
-          headers: correlationId ? { [CORRELATION_ID_HEADER]: correlationId } : {},
-          timeout: 5000,
-        }),
-      );
-      return response.data;
-    } catch (error) {
-      if ((error as AxiosError).response?.status === 404) {
-        throw new NotFoundException(notFound);
-      }
-      throw new BadRequestException(describe(error));
-    }
-  }
-}
-
-function describe(error: unknown): string {
-  const axiosError = error as AxiosError<{ message?: string | string[] }>;
-  const body = axiosError.response?.data?.message;
-
-  if (body) {
-    return Array.isArray(body) ? body.join(', ') : body;
-  }
-  if (axiosError.code) {
-    return `${axiosError.code}: ${axiosError.message}`;
-  }
-  return error instanceof Error ? error.message : String(error);
 }
