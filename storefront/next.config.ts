@@ -5,6 +5,16 @@ const nextConfig: NextConfig = {
   // node_modules. Railway runs that directly, so the runtime image never
   // installs dependencies and honours $PORT / $HOSTNAME without a wrapper.
   output: "standalone",
+
+  // Next's dev server refuses cross-origin requests for its own dev resources,
+  // and it treats 127.0.0.1 as a different origin from localhost. The documented
+  // Playwright command uses E2E_BASE_URL=http://127.0.0.1:3100 (handoff §5:
+  // "localhost and 127.0.0.1 are not interchangeable here"), which meant HMR was
+  // blocked, client components never hydrated, and every browser test failed
+  // waiting for a button that was never rendered.
+  //
+  // Development only — it has no effect on the production build.
+  allowedDevOrigins: ["127.0.0.1"],
 };
 
 export default nextConfig;

@@ -115,12 +115,50 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
               <td className="num">{formatMoney(i.unitPriceMinor * i.qty, order.currency)}</td>
             </tr>
           ))}
+          {/* The stored breakdown, never a recomputed one. These numbers were
+              frozen onto the order when it was placed; a tax rate or promotion
+              changing tomorrow must not move what this customer was charged. */}
+          <tr>
+            <td colSpan={3} className="muted">
+              Subtotal
+            </td>
+            <td className="num" data-testid="order-subtotal">
+              {formatMoney(order.subtotalMinor, order.currency)}
+            </td>
+          </tr>
+          {order.discountMinor > 0 && (
+            <tr>
+              <td colSpan={3} className="muted">
+                Discount
+              </td>
+              <td className="num" data-testid="order-discount">
+                −{formatMoney(order.discountMinor, order.currency)}
+              </td>
+            </tr>
+          )}
+          <tr>
+            <td colSpan={3} className="muted">
+              Tax
+              {order.taxCountry && (
+                <span className="small muted">
+                  {' '}
+                  ({order.taxCountry}
+                  {order.taxRegion ? `-${order.taxRegion}` : ''})
+                </span>
+              )}
+            </td>
+            <td className="num" data-testid="order-tax">
+              {formatMoney(order.taxMinor, order.currency)}
+            </td>
+          </tr>
           <tr>
             <td colSpan={3}>
               <strong>Total</strong>
             </td>
             <td className="num">
-              <strong>{formatMoney(order.totalMinor, order.currency)}</strong>
+              <strong data-testid="order-total">
+                {formatMoney(order.totalMinor, order.currency)}
+              </strong>
             </td>
           </tr>
         </tbody>

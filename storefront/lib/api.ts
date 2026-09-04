@@ -45,6 +45,41 @@ export function setCartToken(token: string | null): void {
   }
 }
 
+/**
+ * The destination a basket is priced for.
+ *
+ * Stored here, beside the cart token, because until M10 nothing in the system
+ * knows a customer's address — the destination travels on the request, so the
+ * browser is where the shopper's choice lives. Once shipping addresses exist
+ * this becomes a default rather than the source of truth.
+ */
+const DESTINATION_KEY = 'commerce.destination';
+
+export interface StoredDestination {
+  country: string;
+  region?: string | null;
+}
+
+export function getDestination(): StoredDestination | null {
+  if (typeof window === 'undefined') return null;
+  const raw = window.localStorage.getItem(DESTINATION_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as StoredDestination;
+    // Written by an older build, or by hand. Treat it as untrusted rather than
+    // sending nonsense to the API and rendering the validation error.
+    return typeof parsed?.country === 'string' && parsed.country.length === 2 ? parsed : null;
+  } catch {
+    window.localStorage.removeItem(DESTINATION_KEY);
+    return null;
+  }
+}
+
+export function setDestination(destination: StoredDestination): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(DESTINATION_KEY, JSON.stringify(destination));
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,

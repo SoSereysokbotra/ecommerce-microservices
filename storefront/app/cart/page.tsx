@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, ApiError, getToken } from '@/lib/api';
 import { useCart } from '@/components/CartProvider';
-import { formatMoney, type Order, type Product } from '@/lib/types';
+import { RegionSelector, useDestination } from '@/components/RegionSelector';
+import { formatMoney, taxLabel, type Order, type Product, type Quote } from '@/lib/types';
 
 export default function CartPage() {
   const router = useRouter();
@@ -16,6 +17,14 @@ export default function CartPage() {
   const [products, setProducts] = useState<Record<string, Product>>({});
   const [error, setError] = useState<string | null>(null);
   const [placing, setPlacing] = useState(false);
+
+  // The totals are no longer computed here. Summing prices in the browser was
+  // a second implementation of "what does this basket cost" alongside
+  // orders-service, and the way you find out they disagreed is a customer
+  // seeing one number and being charged another. pricing-service answers both.
+  const [destination, chooseDestination] = useDestination();
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const [quoting, setQuoting] = useState(false);
 
   useEffect(() => {
     if (items.length === 0) return;
@@ -37,12 +46,42 @@ export default function CartPage() {
     })();
   }, [items, products]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    // Every setState lives inside this callback rather than the effect body:
+    // React 19 flags synchronous setState in an effect as a cascading render.
+    void (async () => {
+      if (items.length === 0) {
+        if (!cancelled) setQuote(null);
+        return;
+      }
+
+      setQuoting(true);
+      try {
+        const next = await api.post<Quote>('/pricing/quote', {
+          items: items.map((line) => ({ productId: line.productId, qty: line.qty })),
+          ...(destination
+            ? { destination: { country: destination.country, ...(destination.region ? { region: destination.region } : {}) } }
+            : {}),
+        });
+        // The basket may have changed while this was in flight; a stale quote
+        // showing the wrong total is worse than showing none.
+        if (!cancelled) setQuote(next);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (!cancelled) setQuoting(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [items, destination]);
+
   const priced = items.map((line) => ({ ...line, product: products[line.productId] }));
-  const currency = priced.find((line) => line.product)?.product?.currency ?? 'USD';
-  const total = priced.reduce(
-    (sum, line) => sum + (line.product ? line.product.priceMinor * line.qty : 0),
-    0,
-  );
+  const currency = quote?.currency ?? priced.find((line) => line.product)?.product?.currency ?? 'USD';
 
   async function checkout() {
     if (!getToken()) {
@@ -58,6 +97,11 @@ export default function CartPage() {
     try {
       const order = await api.post<Order>('/orders', {
         items: items.map((line) => ({ productId: line.productId, qty: line.qty })),
+        // Sent so the order is taxed where the shopper was shown it would be.
+        // Omitted when unset, and pricing applies the store default to both.
+        ...(destination
+          ? { destination: { country: destination.country, ...(destination.region ? { region: destination.region } : {}) } }
+          : {}),
       });
       // The cart is emptied by cart-service consuming order.created, not here.
       router.push(`/orders/${order.id}`);
@@ -137,10 +181,55 @@ export default function CartPage() {
           ))}
 
           <div className="row" style={{ justifyContent: 'space-between' }}>
-            <strong>Total</strong>
-            <strong className="price" data-testid="cart-total">
-              {formatMoney(total, currency)}
-            </strong>
+            <RegionSelector value={destination} onChange={chooseDestination} />
+            {quoting && <span className="small muted">pricing…</span>}
+          </div>
+
+          <div className="stack" style={{ gap: '0.25rem' }}>
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <span className="muted">Subtotal</span>
+              <span className="price" data-testid="cart-subtotal">
+                {quote ? formatMoney(quote.subtotalMinor, currency) : '—'}
+              </span>
+            </div>
+
+            {quote?.appliedDiscounts.map((discount) => (
+              <div
+                className="row"
+                style={{ justifyContent: 'space-between' }}
+                key={discount.id}
+                data-testid="cart-discount"
+              >
+                <span className="muted">{discount.name}</span>
+                <span className="price" data-testid="cart-discount-amount">
+                  −{formatMoney(discount.amountMinor, currency)}
+                </span>
+              </div>
+            ))}
+
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <span className="muted" data-testid="cart-tax-label">
+                {quote ? taxLabel(quote.taxBreakdown) : 'Tax'}
+              </span>
+              <span className="price" data-testid="cart-tax">
+                {quote ? formatMoney(quote.taxMinor, currency) : '—'}
+              </span>
+            </div>
+
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <strong>Total</strong>
+              <strong className="price" data-testid="cart-total">
+                {quote ? formatMoney(quote.totalMinor, currency) : '—'}
+              </strong>
+            </div>
+
+            {/* Inclusive tax means the total does not go up when it is added,
+                which looks like a bug unless it is said out loud. */}
+            {quote && quote.taxBreakdown.some((g) => g.pricesIncludeTax && g.rateBp > 0) && (
+              <p className="small muted" data-testid="cart-tax-note">
+                Prices include tax.
+              </p>
+            )}
           </div>
 
           <div className="row">
