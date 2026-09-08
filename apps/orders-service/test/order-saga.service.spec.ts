@@ -135,6 +135,54 @@ describe('OrderSagaService', () => {
     });
   });
 
+  describe('reservation expiry', () => {
+    it('cancels outright when the hold lapses before payment', async () => {
+      const { service, saga, order, outbox } = setup(SagaStep.AWAITING_PAYMENT);
+
+      await service.onReservationExpired('order-1', 'corr-1');
+
+      expect(order.status).toBe(OrderStatus.CANCELLED);
+      expect(saga.currentStep).toBe(SagaStep.DONE);
+      expect(saga.outcome).toBe(SagaOutcome.COMPENSATED);
+      // Nothing was taken, so there is nothing to give back.
+      expect(outbox.append).not.toHaveBeenCalled();
+    });
+
+    it('refunds instead of cancelling when the hold lapses AFTER payment', async () => {
+      // The saga reaches AWAITING_COMMIT only once the card has been charged.
+      // Cancelling here without refunding keeps the customer's money — which is
+      // exactly what happened in M8's end-to-end run before this was fixed.
+      const { service, saga, order, outbox } = setup(SagaStep.AWAITING_COMMIT);
+
+      await service.onReservationExpired('order-1', 'corr-1');
+
+      expect(saga.currentStep).toBe(SagaStep.AWAITING_REFUND);
+      expect(saga.compensating).toBe(true);
+      expect(outbox.append).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          eventType: 'payment.refund_requested',
+          aggregateId: 'order-1',
+        }),
+      );
+
+      // Not cancelled yet: the order must not read as cancelled while the money
+      // is still held. onInventoryReleased finishes the job.
+      expect(order.status).not.toBe(OrderStatus.CANCELLED);
+      expect(saga.outcome).toBe(SagaOutcome.RUNNING);
+    });
+
+    it('ignores expiry once compensation is already under way', async () => {
+      const { service, saga, order, outbox } = setup(SagaStep.AWAITING_REFUND);
+
+      await service.onReservationExpired('order-1');
+
+      expect(saga.currentStep).toBe(SagaStep.AWAITING_REFUND);
+      expect(order.status).not.toBe(OrderStatus.CANCELLED);
+      expect(outbox.append).not.toHaveBeenCalled();
+    });
+  });
+
   describe('idempotency', () => {
     it('ignores a reply for a step the saga has already left', async () => {
       // A redelivered inventory.reserved arriving after payment was requested

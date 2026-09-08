@@ -169,10 +169,28 @@ export class OrderSagaService {
   /**
    * The hold lapsed before the saga finished.
    *
-   * Inventory has already returned the stock, so there is nothing to release —
-   * the order just has to catch up with a decision made without it.
+   * Inventory has already returned the stock, so there is nothing to release.
+   * What happens next depends entirely on **whether the customer has paid**:
+   *
+   *   before payment (AWAITING_RESERVATION, AWAITING_PAYMENT)
+   *     Nothing was taken. Cancel outright; there is nothing to undo.
+   *
+   *   after payment (AWAITING_COMMIT)
+   *     The card was charged and the order cannot be fulfilled, so the money
+   *     must go back. Hand over to the ordinary refund compensation rather than
+   *     cancelling here.
+   *
+   * That distinction was missing until M8's end-to-end testing surfaced it: an
+   * order whose commit failed sat at AWAITING_COMMIT until its hold lapsed, and
+   * this handler then cancelled it and marked the saga COMPENSATED **with the
+   * payment still authorized and no refund**. The stock came back; the money
+   * did not. The saga reported success for an outcome that had taken a
+   * customer's money for nothing.
+   *
+   * Any other step means compensation is already under way — a release or a
+   * refund is in flight — so expiry is a no-op rather than a second decision.
    */
-  async onReservationExpired(orderId: string): Promise<void> {
+  async onReservationExpired(orderId: string, correlationId?: string): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
       const saga = await manager.findOne(OrderSagaEntity, { where: { orderId } });
       const order = await manager.findOne(OrderEntity, { where: { id: orderId } });
@@ -181,11 +199,43 @@ export class OrderSagaService {
         return;
       }
 
+      const reason = 'Reservation expired before the order completed';
+
+      if (saga.currentStep === SagaStep.AWAITING_COMMIT) {
+        // Paid, but the stock is gone. Refund first; the order is cancelled
+        // when the refund and the (already no-op) release come back, so it is
+        // never shown as cancelled while the money is still held.
+        saga.currentStep = SagaStep.AWAITING_REFUND;
+        saga.compensating = true;
+        saga.lastError = reason;
+
+        await manager.save(OrderSagaEntity, saga);
+
+        await this.outbox.append(manager, {
+          eventType: 'payment.refund_requested',
+          aggregateId: orderId,
+          correlationId: correlationId ?? saga.correlationId ?? undefined,
+          payload: { orderId, reason },
+        });
+
+        this.logger.warn(`[saga ${orderId}] expired after payment -> refunding`);
+        return;
+      }
+
+      if (
+        saga.currentStep !== SagaStep.AWAITING_RESERVATION &&
+        saga.currentStep !== SagaStep.AWAITING_PAYMENT
+      ) {
+        // Already compensating. Whatever is in flight owns the outcome.
+        this.logger.debug(`[saga ${orderId}] expiry ignored on step ${saga.currentStep}`);
+        return;
+      }
+
       order.status = OrderStatus.CANCELLED;
-      order.failureReason = 'Reservation expired before the order completed';
+      order.failureReason = reason;
       saga.currentStep = SagaStep.DONE;
       saga.outcome = SagaOutcome.COMPENSATED;
-      saga.lastError = order.failureReason;
+      saga.lastError = reason;
 
       await manager.save(OrderEntity, order);
       await manager.save(OrderSagaEntity, saga);

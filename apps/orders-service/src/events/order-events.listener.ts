@@ -103,7 +103,7 @@ export class OrderEventsListener implements OnModuleInit {
           await this.saga.onPaymentRefunded(orderId, event.correlationId);
           break;
         case 'inventory.reservation_expired':
-          await this.saga.onReservationExpired(orderId);
+          await this.saga.onReservationExpired(orderId, event.correlationId);
           break;
       }
     });
