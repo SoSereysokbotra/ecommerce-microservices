@@ -51,30 +51,60 @@ export class ReservationExpiryJob implements OnModuleInit, OnModuleDestroy {
     this.running = true;
 
     try {
-      return await this.dataSource.transaction(async (manager) => {
-        const orderIds = await this.reservations.findExpired(manager);
+      const orderIds = await this.dataSource.transaction((manager) =>
+        this.reservations.findExpired(manager),
+      );
 
-        for (const orderId of orderIds) {
-          // Marked EXPIRED rather than RELEASED so the two causes stay
-          // distinguishable: a compensated saga and an abandoned one are very
-          // different things when you are trying to understand a stock report.
-          const released = await this.reservations.release(
-            manager,
-            orderId,
-            ReservationStatus.EXPIRED,
-          );
+      let swept = 0;
+      let failed = 0;
 
-          await this.outbox.append(manager, {
-            eventType: 'inventory.reservation_expired',
-            aggregateId: orderId,
-            payload: { orderId, lines: released },
+      // **One transaction per order, not one for the sweep.**
+      //
+      // Sweeping every order in a single transaction sounds tidier and is a
+      // trap: one order that cannot be released fails the whole batch, so no
+      // stock anywhere comes back. That is not hypothetical — during M8 a
+      // single stock row with a drifted `reserved_qty` made every sweep throw
+      // on CHK_stock_reserved_non_negative, every 30 seconds, and the saga's
+      // safety net was down for the entire service until the row was repaired.
+      //
+      // These orders are independent of each other, so their failures should be
+      // independent too. A poisoned one is logged and skipped; the rest still
+      // get their stock back.
+      for (const orderId of orderIds) {
+        try {
+          await this.dataSource.transaction(async (manager) => {
+            // Marked EXPIRED rather than RELEASED so the two causes stay
+            // distinguishable: a compensated saga and an abandoned one are very
+            // different things when you are trying to understand a stock report.
+            const released = await this.reservations.release(
+              manager,
+              orderId,
+              ReservationStatus.EXPIRED,
+            );
+
+            await this.outbox.append(manager, {
+              eventType: 'inventory.reservation_expired',
+              aggregateId: orderId,
+              payload: { orderId, lines: released },
+            });
+
+            this.logger.warn(`Expired ${released} stale reservations for order ${orderId}`);
           });
-
-          this.logger.warn(`Expired ${released} stale reservations for order ${orderId}`);
+          swept += 1;
+        } catch (error) {
+          failed += 1;
+          this.logger.error(
+            `Could not expire reservations for order ${orderId}: ` +
+              `${error instanceof Error ? error.message : String(error)}`,
+          );
         }
+      }
 
-        return orderIds.length;
-      });
+      if (failed > 0) {
+        this.logger.error(`Expiry sweep: ${swept} orders expired, ${failed} could not be`);
+      }
+
+      return swept;
     } catch (error) {
       this.logger.error(
         `Expiry sweep failed: ${error instanceof Error ? error.message : String(error)}`,

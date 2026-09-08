@@ -27,6 +27,31 @@ export class ReservationsService {
   /** How long a hold survives without the saga completing. */
   private readonly holdMinutes = Number(process.env.RESERVATION_HOLD_MINUTES ?? 15);
 
+  /**
+   * Read a stock row **for update**, so nobody else can change it until this
+   * transaction ends.
+   *
+   * Every operation here is a read-modify-write: load the row, add or subtract,
+   * save. Without the lock two of them interleave and one update is lost —
+   * `reserved_qty` then disagrees with the reservations that actually exist.
+   * That is not a theoretical risk: it happened during M8's end-to-end testing,
+   * when the expiry sweep and a commit touched the same product at the same
+   * moment, and the resulting drift made `reserved_qty` too low. Every
+   * subsequent commit *and* release for that product then violated
+   * CHK_stock_reserved_non_negative, which wedged the expiry sweep for the
+   * whole service — the saga's last line of defence — until the row was
+   * repaired by hand.
+   *
+   * The constraint did its job by refusing the bad write. The lock is what
+   * stops the bad write being attempted.
+   */
+  private lockStock(manager: EntityManager, productId: string): Promise<StockEntity | null> {
+    return manager.getRepository(StockEntity).findOne({
+      where: { productId },
+      lock: { mode: 'pessimistic_write' },
+    });
+  }
+
   async reserve(
     manager: EntityManager,
     orderId: string,
@@ -47,8 +72,13 @@ export class ReservationsService {
     const expiresAt = new Date(Date.now() + this.holdMinutes * 60_000);
     const created: ReservationEntity[] = [];
 
-    for (const line of lines) {
-      const row = await stock.findOne({ where: { productId: line.productId } });
+    // Locks are taken in a fixed order — by product id — so two orders holding
+    // an overlapping basket can never each hold the row the other is waiting
+    // for. Without this, deadlocks are a matter of timing rather than luck.
+    const ordered = [...lines].sort((a, b) => a.productId.localeCompare(b.productId));
+
+    for (const line of ordered) {
+      const row = await this.lockStock(manager, line.productId);
 
       if (!row) {
         throw new NotFoundException(`No stock record for product '${line.productId}'`);
@@ -106,8 +136,8 @@ export class ReservationsService {
 
     const stock = manager.getRepository(StockEntity);
 
-    for (const reservation of held) {
-      const row = await stock.findOne({ where: { productId: reservation.productId } });
+    for (const reservation of [...held].sort((a, b) => a.productId.localeCompare(b.productId))) {
+      const row = await this.lockStock(manager, reservation.productId);
       if (row) {
         row.reservedQty -= reservation.qty;
         await stock.save(row);
@@ -144,8 +174,8 @@ export class ReservationsService {
 
     const stock = manager.getRepository(StockEntity);
 
-    for (const reservation of held) {
-      const row = await stock.findOne({ where: { productId: reservation.productId } });
+    for (const reservation of [...held].sort((a, b) => a.productId.localeCompare(b.productId))) {
+      const row = await this.lockStock(manager, reservation.productId);
       if (row) {
         row.availableQty += reservation.qty;
         row.reservedQty -= reservation.qty;
