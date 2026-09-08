@@ -3,6 +3,7 @@ import { IsNull } from 'typeorm';
 import { AppDataSource } from './typeorm.config';
 import { TaxRateEntity } from '../modules/pricing/tax-rate.entity';
 import { DiscountEntity, DiscountScope, DiscountType } from '../modules/pricing/discount.entity';
+import { CouponEntity } from '../modules/coupons/coupon.entity';
 
 /**
  * Idempotent seed — safe to re-run. Matches on the natural key and updates
@@ -95,6 +96,56 @@ const DISCOUNTS = [
   },
 ];
 
+/**
+ * Coupons, and the discounts they unlock.
+ *
+ * The discount rows are ordinary M8 promotions with one difference: they carry
+ * a `code`, so `PricingService` must **exclude them** from the automatic set. A
+ * coupon discount that also applied automatically would be a discount everyone
+ * gets and nobody has to ask for.
+ *
+ * SAVE10USES exists for the concurrency test: ten uses, and the acceptance
+ * criterion is that fifty simultaneous attempts yield exactly ten.
+ */
+const COUPONS = [
+  {
+    code: 'SAVE10USES',
+    maxUses: 10,
+    perCustomerLimit: 1,
+    discount: {
+      name: 'Coupon SAVE10USES — 10% off',
+      code: 'SAVE10USES',
+      type: DiscountType.PERCENTAGE,
+      valueBp: 1000,
+      valueMinor: null,
+      scope: DiscountScope.ORDER,
+      scopeRef: null,
+      minSubtotalMinor: 0,
+      startsAt: null,
+      endsAt: null,
+      active: true,
+    },
+  },
+  {
+    code: 'FIVEOFF',
+    maxUses: null, // unlimited
+    perCustomerLimit: null,
+    discount: {
+      name: 'Coupon FIVEOFF — $5 off',
+      code: 'FIVEOFF',
+      type: DiscountType.FIXED,
+      valueBp: null,
+      valueMinor: 500,
+      scope: DiscountScope.ORDER,
+      scopeRef: null,
+      minSubtotalMinor: 2000,
+      startsAt: null,
+      endsAt: null,
+      active: true,
+    },
+  },
+];
+
 async function seed(): Promise<void> {
   await AppDataSource.initialize();
 
@@ -125,6 +176,39 @@ async function seed(): Promise<void> {
 
     await discounts.save(existing ? { ...existing, ...discount } : discounts.create(discount));
     console.log(`  promo ${discount.name}`);
+  }
+
+  const coupons = AppDataSource.getRepository(CouponEntity);
+
+  for (const coupon of COUPONS) {
+    const discounts2 = AppDataSource.getRepository(DiscountEntity);
+    const existingDiscount = await discounts2.findOne({ where: { name: coupon.discount.name } });
+    const saved = await discounts2.save(
+      existingDiscount
+        ? { ...existingDiscount, ...coupon.discount }
+        : discounts2.create(coupon.discount),
+    );
+
+    const existing = await coupons.findOne({ where: { code: coupon.code } });
+    // usedCount is deliberately NOT reset on re-seed: re-running the seed must
+    // not hand back uses that customers have already taken.
+    await coupons.save(
+      existing
+        ? { ...existing, maxUses: coupon.maxUses, perCustomerLimit: coupon.perCustomerLimit }
+        : coupons.create({
+            code: coupon.code,
+            discountId: saved.id,
+            maxUses: coupon.maxUses,
+            perCustomerLimit: coupon.perCustomerLimit,
+            usedCount: 0,
+            active: true,
+          }),
+    );
+
+    console.log(
+      `  coupon ${coupon.code} (${coupon.maxUses ?? 'unlimited'} uses` +
+        `${coupon.perCustomerLimit ? `, ${coupon.perCustomerLimit} per customer` : ''})`,
+    );
   }
 
   await AppDataSource.destroy();

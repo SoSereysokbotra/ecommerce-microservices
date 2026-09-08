@@ -4,6 +4,8 @@ import { DataSource, DataSourceOptions } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { TaxRateEntity } from '../modules/pricing/tax-rate.entity';
 import { DiscountEntity } from '../modules/pricing/discount.entity';
+import { CouponEntity } from '../modules/coupons/coupon.entity';
+import { CouponRedemptionEntity } from '../modules/coupons/coupon-redemption.entity';
 
 loadEnv({ path: resolve(process.cwd(), '../../.env') });
 loadEnv({ path: resolve(__dirname, '../../.env'), override: true });
@@ -68,7 +70,7 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
       username: DB_USER,
       password: DB_PASSWORD,
       database: DB_NAME,
-      entities: [TaxRateEntity, DiscountEntity],
+      entities: [TaxRateEntity, DiscountEntity, CouponEntity, CouponRedemptionEntity],
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
       synchronize: false,
       logging: !isProduction,
@@ -89,7 +91,7 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
       username: parsed.username || 'postgres',
       password: parsed.password || localPassword,
       database: parsed.pathname.replace(/^\//, ''),
-      entities: [TaxRateEntity, DiscountEntity],
+      entities: [TaxRateEntity, DiscountEntity, CouponEntity, CouponRedemptionEntity],
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
       synchronize: false,
       logging: !isProduction,
@@ -103,7 +105,7 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
   return {
     type: 'postgres',
     url: DATABASE_URL,
-    entities: [TaxRateEntity, DiscountEntity],
+    entities: [TaxRateEntity, DiscountEntity, CouponEntity, CouponRedemptionEntity],
     migrations: [__dirname + '/migrations/*{.ts,.js}'],
     synchronize: false,
     logging: !isProduction,
