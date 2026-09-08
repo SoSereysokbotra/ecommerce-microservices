@@ -441,10 +441,22 @@ cart-service; Redis-backed guest carts keyed by cookie; Postgres carts for logge
 users; **merge on login** (the interesting part); abandonment job.
 *Watch for:* merge conflicts when the same product exists in both carts.
 
-### M8 — Tax and discounts
+### M8 — Tax and discounts — **done (2026-09-04)**
 pricing-service; `tax_rates` by country/region/category; percentage and fixed
 discounts; a single `POST /pricing/quote` that orders calls to price a basket.
 *Watch for:* rounding. Round once, at the end. Test totals across three regions.
+
+> **Correction, from building it.** "Round once, at the end" is not implementable
+> as written: lines in one basket can carry different rates, so there is no single
+> end. The rule is **round once per tax rate group**. Rounding per line and
+> summing gives a different answer — three cents on six sticker packs, and the
+> error does not even have a consistent sign. See ADR-0007 and
+> `docs/M8_PRICING_PLAN.md` §3.
+>
+> Two other things the entry did not anticipate: nothing in the system knows a
+> customer's country until M10, so the destination travels on the request; and
+> pricing-service needs **no outbox and no consumers**, because a quote changes
+> no state. Full design in `docs/M8_PRICING_PLAN.md`.
 
 ### M9 — Coupons
 Coupon codes with usage limits and validity windows; **optimistic locking on
@@ -564,3 +576,4 @@ Write one whenever a choice has a defensible alternative. Keep them short.
 | 0004 | Stripe hosted Checkout over custom card form (PCI SAQ-A) | M4 |
 | 0005 | OpenSearch over Postgres full-text | M12 |
 | 0006 | Service boundaries — what was deliberately *not* split | M0 |
+| 0007 | Round once per tax group; pricing owns money, orders stops pricing | M8 |

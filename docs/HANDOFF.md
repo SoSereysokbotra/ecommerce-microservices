@@ -1,6 +1,6 @@
 # Handoff — read this first
 
-**Written:** 2026-09-01. **Last updated:** 2026-09-03 (M7 complete).
+**Written:** 2026-09-01. **Last updated:** 2026-09-08 (M8 complete; two saga/inventory bugs fixed).
 **Repo:** https://github.com/SoSereysokbotra/ecommerce-microservices (public, `main`)
 **Local:** `d:\Year2\Microservices\Order‑Inventory‑Payment Microservices\ecommerce-microservices`
 
@@ -8,9 +8,16 @@ This document exists so a new session can continue without re-deriving anything.
 Read it fully before touching code — several things here were learned the hard
 way and will cost hours to rediscover.
 
-**Where things stand (2026-09-03):** R1 is finished and deployed (via Cloudflare
-Tunnel, from this machine). R2 has begun: **M7 (cart) is complete**, all seven
-steps committed. **The next milestone is M8 — tax and discounts.**
+**Where things stand (2026-09-04):** R1 is finished and deployed (via Cloudflare
+Tunnel, from this machine). R2 is under way: **M7 (cart) is complete**, and
+**M8 (tax and discounts) is complete**, all seven steps, and `pricing-service`
+is live on port 3007. Real test-mode cards were charged the exact tax-inclusive
+total in all three regions.
+
+**That end-to-end test found three defects in older code**, two of them serious:
+inventory lost updates on the stock row, the expiry sweep failed atomically so
+one bad row took the saga's backstop down service-wide, and the saga cancelled a
+**paid** order without refunding it. All three are fixed — see §7 and ADR-0007.
 
 If you are starting fresh, read in this order:
 
@@ -57,8 +64,9 @@ finished and must not be modified. See §9 — it has a live security problem.
 | M5 | **The saga** — compensation, expiry, crash recovery | done |
 | M6 | Storefront + Playwright + public deployment | done |
 | **M7** | **Cart: guest carts, merge on login, abandonment** | **done** |
-| M8 | Pricing: tax + discounts | **next** |
-| M9–M22 | Rest of R2, then R3–R5 | not started |
+| **M8** | **Pricing: tax + discounts** | **done** |
+| M9 | Coupons — the concurrency milestone | **next** |
+| M10–M22 | Rest of R2, then R3–R5 | not started |
 
 **M6** was met on 2026-09-02 via **Cloudflare Tunnel**, not a managed platform —
 Railway's trial had expired on the available account. Verified with real Stripe
@@ -74,9 +82,18 @@ The full design, every decision and what was verified is in
 two deliberate departures from `IMPLEMENTATION_PLAN.md` (§3 and §4 of that file)
 and would otherwise look like mistakes.
 
-**Next task: M8 — tax and discounts (`pricing-service`).** The plan's warning
-for it is rounding: round once, at the end, and test totals across three tax
-regions.
+**M8** was built on 2026-09-04 in six committed steps. The full design and every
+decision is in **`docs/M8_PRICING_PLAN.md`**; the two decisions that depart from
+`IMPLEMENTATION_PLAN.md` are recorded in **ADR-0007**. Read both before touching
+pricing-service or `OrdersService.create()`.
+
+**Next task: M9 — coupons.** That is the concurrency milestone: codes with usage
+limits, optimistic locking on `coupons.version`, a redemption row unique per
+order, and release when a saga compensates. Its acceptance is a load test — 50
+parallel redemptions of a 10-use coupon yielding exactly 10 — and the plan says
+not to skip it. pricing-service currently has **no outbox and no consumers**
+because a quote changes no state; M9 is when that wiring arrives, and the
+always-NULL `discounts.code` column is there to mark the boundary.
 
 ### What M7 added, in one paragraph
 
@@ -87,6 +104,20 @@ cart with no account; when they sign in, the guest cart is **summed** into their
 account's cart, capped at available stock. The cart is emptied by consuming
 `order.created`, so `POST /orders` — the saga's entry point — was not touched.
 A sweep flags carts nobody has touched for a week with `cart.abandoned`.
+
+### What M8 added, in one paragraph
+
+An eighth service, `pricing-service` on **port 3007**, with its own Neon
+database and — uniquely — **no outbox, no consumers and no queue**, because a
+quote changes no state. It owns `tax_rates` (by country, region and product
+category) and automatic promotions, and answers one endpoint, `POST
+/pricing/quote`. Orders **stopped pricing baskets itself**: `priceItems()` and
+its catalog loop are deleted, so there is now exactly one implementation of
+"what does this basket cost" and the cart page and the order cannot disagree.
+Tax and discounts are **frozen onto the order** in new columns, the way sku and
+price already were. The two hard ideas are that tax is rounded **once per tax
+rate group, never per line**, and that inclusive tax (EU VAT) is backed *out* of
+the price while exclusive tax (US sales tax) is added *on top* — see ADR-0007.
 
 ---
 
@@ -104,6 +135,7 @@ PostgreSQL database. Nothing is reachable from a browser except the gateway.
 | orders-service | 3004 | Orders + **saga orchestrator** |
 | payments-service | 3005 | Stripe intents, webhooks, refunds |
 | cart-service | 3006 | Guest + signed-in carts, merge on login, abandonment sweep |
+| pricing-service | 3007 | Tax rules, automatic promotions, `POST /pricing/quote` |
 | storefront | 3100 | Next.js UI |
 
 Supporting: RabbitMQ (5672 / 15672), Redis (6379 — **actually used since M7**,
@@ -176,6 +208,7 @@ recreated on a new machine**. `.env.example` files show the shape.
 | `apps/orders-service/.env` | `DATABASE_URL`, `JWT_SECRET` |
 | `apps/payments-service/.env` | `DATABASE_URL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `JWT_SECRET` |
 | `apps/cart-service/.env` | `DATABASE_URL` (its own Neon db), `REDIS_URL`, `RABBITMQ_URL`, `JWT_SECRET`, `INVENTORY_SERVICE_URL` |
+| `apps/pricing-service/.env` | `DATABASE_URL` (its own Neon db), `CATALOG_SERVICE_URL`, `DEFAULT_TAX_COUNTRY`, `DEFAULT_TAX_REGION`, `JWT_SECRET` |
 | `apps/api-gateway/.env` | `JWT_SECRET`, `CORS_ORIGINS` |
 | `storefront/.env.local` | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` |
 
@@ -189,7 +222,7 @@ takes:
 
 ```bash
 docker stop jobfit-redis          # it holds port 6379; see §5
-docker compose up -d              # 7 services + RabbitMQ + Redis
+docker compose up -d              # 8 services + RabbitMQ + Redis
 cd storefront && npm run dev      # http://localhost:3100
 ```
 
@@ -214,17 +247,20 @@ that works.
 
 ### First time on a new machine
 
-Migrations and seeds, once per database. Six databases now — cart-service was
-added in M7:
+Migrations and seeds, once per database. **Seven** databases now —
+pricing-service was added in M8:
 
 ```bash
-for s in users catalog inventory orders payments cart; do
+for s in users catalog inventory orders payments cart pricing; do
   npm run migration:run --prefix apps/$s-service
 done
 
 # Seed in this order — the inventory seed asks catalog for ids over HTTP
 npm run seed --prefix apps/catalog-service
 npm run seed --prefix apps/inventory-service
+
+# Tax rules and promotions. Independent of the other two.
+npm run seed:pricing
 ```
 
 Run migrations **from the host**, not `docker compose exec`: Neon is reachable
@@ -235,13 +271,14 @@ cannot be exec'd into.
 
 ```bash
 npm run lint
-npm run test:all                    # 55 unit tests, no database needed
+npm run test:all                    # 92 unit tests, no database needed
 npm run gen:spec && npm run gen:types   # gen:spec needs the stack running
 bash scripts/scan-secrets.sh
 ```
 
-The 9 Playwright tests need the stack, the storefront on :3100, `stripe listen`
-running, **and the Stripe key exported** — without the last one the two payment
+The 13 Playwright tests need the stack, the storefront on :3100, `stripe listen`
+running, **and the Stripe key exported**. Only the 2 payment tests need
+`stripe listen`; the other 11 (cart, pricing, browsing) run without it — without the last one the two payment
 tests fail with an error that looks like a code bug:
 
 ```bash
@@ -322,6 +359,40 @@ allow everything, or point it at the origin you are actually using.
 **Playwright's payment tests need `STRIPE_SECRET_KEY` in the shell**, not just in
 `.env`. Without it they fail with an error that reads like a code bug. See §4.
 
+**The E2E suite exceeds the gateway's rate limit, and the failure looks like
+anything but that.** The default is 100 requests per minute per address; the
+suite passes it easily, and a *different* test failed on each run. Once it
+surfaced as `quote failed: 400` from pricing — a test helper had fed the 429
+body's `undefined` id into a quote request, so the error appeared two services
+away from its cause. Hours went into chasing that. The limit is now
+`RATE_LIMIT_MAX` (default 100, unchanged); `apps/api-gateway/.env` sets 2000
+locally. **A helper that does not check its own HTTP status will turn one clear
+failure into a misleading one** — the pricing spec's now do.
+
+**"Connection terminated unexpectedly" from Neon is normal under load** and is
+not a bug in your code. Serverless Postgres drops idle connections; the outbox
+relay logs `Outbox drain failed` and retries. Nothing is lost — verify with
+`SELECT count(*) FROM outbox WHERE published_at IS NULL` rather than assuming a
+stuck saga. One E2E run failed purely because an event was delivered a few
+seconds after the test stopped polling.
+
+**Next 16 blocks cross-origin requests to its own dev resources, and treats
+`127.0.0.1` as a different origin from `localhost`.** The documented Playwright
+command uses `E2E_BASE_URL=http://127.0.0.1:3100`, so HMR was refused, client
+components never hydrated, and *every* browser test failed waiting for a button
+that was never rendered — including M7's, which had passed when written. Fixed in
+M8 with `allowedDevOrigins: ["127.0.0.1"]` in `storefront/next.config.ts`. If
+browser tests ever fail like this again, check the dev-server log for "Blocked
+cross-origin request" before suspecting the code.
+
+**The storefront is Next 16 / React 19, and it is not the Next you remember.**
+`next lint` no longer exists (use `npm run lint`, which runs `eslint`), and
+React 19 rejects `setState` called synchronously inside an effect. Reading
+`localStorage` uses the lazy `useState` initializer documented in
+`node_modules/next/dist/docs/01-app/02-guides/preventing-flash-before-hydration.md`.
+`storefront/AGENTS.md` says to read the bundled docs before writing code; it is
+right.
+
 **`next start` does not work with `output: "standalone"`.** The page returns 200
 but static assets 404, so it looks subtly broken. Run
 `node .next/standalone/storefront/server.js`, and copy `public/` and
@@ -362,6 +433,27 @@ All against the live stack with real Stripe test-mode payments.
 | Invalid JWT on a cart route | `401` — optional auth is not a bypass |
 | Duplicate `order.created` replayed | ignored; a refilled cart was untouched |
 | Abandonment sweep | flags once, does not re-emit, clears when the shopper returns, never flags an empty cart |
+
+### Added by M8 — also do not redo
+
+One basket (3 tees, 1 mug, 2 cables; subtotal 10047) with both seeded
+promotions, placed as real orders through the gateway:
+
+| Scenario | Result |
+|---|---|
+| US-CA, 7.25% added on top | quote and order both **10038**; Stripe intent 10038 |
+| US-PA, 6% with **apparel exempt** | two tax groups (0% and 6%); both **9579** |
+| DE, 19% **inclusive** | both **9359**, equal to the discounted subtotal |
+| Destination with no rule (KH) | explicit 0% group, quote still returned |
+| `payment.requested` amount | tax-inclusive in all three regions |
+| Pre-M8 order after the migration | unchanged total, breakdown 0/0/0, `taxCountry` null |
+| Guest quote through the gateway | 200; a **tampered** token still 401 |
+| Six units at 600 in US-CA | **261**, not the 264 that per-line rounding gives |
+| Cart page across three regions | three different totals, each matching the API |
+
+All figures were computed by hand before being run. **92 unit tests** (55 → 92
+with M8's 37) and **13 Playwright tests** (9 → 13), of which 11 pass; the two
+Stripe payment tests are unrun — see §9.
 
 **55 unit tests and 9 Playwright E2E tests, all green** (39 → 55 with M7's merge
 tests; 5 → 9 with the cart suite). CI on GitHub is green.
@@ -408,6 +500,48 @@ tests; 5 → 9 with the cart suite). CI on GitHub is green.
   would cost nothing today. It was built anyway; that is the one piece of M7
   written for an imagined future.
 
+### Added by M8 — full reasoning in ADR-0007
+
+- **Tax is rounded once per tax rate group, never per line.** The plan's "round
+  once, at the end" cannot be followed literally, because lines in one basket can
+  carry different rates. Per-line figures exist (orders stores them) but are an
+  *allocation* of the group's single rounded number. Do not "simplify" that.
+- **`pricing-service` reads catalog itself**, and orders no longer calls catalog
+  at all. Two implementations of a basket's cost can disagree; one cannot.
+- **pricing-service has no outbox and no consumers.** Deliberate, not
+  unfinished — a quote changes no state. M9 adds them.
+- **The destination travels on the request**, with a configured default, because
+  no address exists until M10. It is frozen onto the order.
+- **`order.created` kept its payload.** Its consumer is inventory, which cares
+  about ids and quantities; adding money would be for an imagined future.
+- **`discounts.code` is always NULL in M8.** It marks where M9 begins: the test
+  for which milestone something belongs to is "does applying it write anything
+  down".
+
+### Fixed during M8, in older code — do not undo these
+
+- **Stock rows are read `FOR UPDATE`.** `reserve`, `commit` and `release` all do
+  a read-modify-write; without the lock two of them interleave and one update is
+  lost, so `reserved_qty` drifts away from the reservations that exist. Locks are
+  taken in **product-id order** so overlapping baskets cannot deadlock.
+- **The expiry sweep runs one transaction per order**, not one for the batch.
+  Batching meant a single unreleasable order failed the whole sweep, so no stock
+  anywhere came back — every 30 seconds, for hours. Independent orders should
+  fail independently.
+- **Expiry refunds a paid order rather than just cancelling it.**
+  `onReservationExpired` used to cancel and mark the saga COMPENSATED without
+  checking whether the card had been charged. It now branches on the step: unpaid
+  → cancel; paid (`AWAITING_COMMIT`) → `payment.refund_requested` and let the
+  existing compensation finish. **This one is covered by unit tests only** —
+  reproducing it live needs the commit to fail while a payment is authorized,
+  which is the rare interleaving that caused it. A test-only fault-injection flag
+  in inventory would let it be proven end to end and is worth doing.
+- **An unreachable upstream is 503, not 400.** `CatalogClient` used to map every
+  non-404 failure to `BadRequestException`, so a catalog timeout told the client
+  its valid basket was malformed — and told it not to retry. Both pricing's
+  catalog client and orders' pricing client now distinguish "you sent something
+  wrong" from "we could not reach a dependency".
+
 ---
 
 ## 8. Deployment — done, with a caveat
@@ -436,9 +570,12 @@ account available, and free tiers that sleep idle services would break the
 of the project. A single always-free VM running the existing `docker-compose.yml`
 (Oracle Cloud) was the other option discussed and is still open.
 
-Note that Part B's service list is now **seven** services, not six: cart-service
+Note that Part B's service list is now **eight** services, not six: cart-service
 was added in M7 and needs its own Railway service, its own Neon database, and a
-real Redis. The `deploy/railway/` directory does not yet have a `cart-service.json`.
+real Redis; pricing-service was added in M8 and needs its own service and Neon
+database (but no Redis and no queue — it publishes and consumes nothing). The
+`deploy/railway/` directory has **neither** `cart-service.json` nor
+`pricing-service.json`.
 
 ---
 
@@ -449,10 +586,34 @@ and has live credentials in five committed `.env.example` files, in git history.
 They work today. Deleting the files does not help — rotation is the only fix.
 This is unrelated to this repo but is the most urgent thing on the list.
 
+**The Stripe CLI defaults to LIVE mode on this machine.** `stripe listen` refuses
+to run and prints "You're in live mode…". **Never pass `--live`** — that forwards
+real webhooks into a development stack. Fix it with:
+
+```bash
+stripe reauth                                   # authorize the sandbox once
+stripe switch context acct_1UAnEmAjEJwKFegj     # no --live: that IS the sandbox
+```
+
+The sandbox (`acct_1UAnEm…`, "none sandbox") is a **different account** from the
+live one (`acct_1UAnEb…`), and the ids look alike — check the suffix. The
+interactive picker's `▶` is a cursor, not a selection: pressing Enter immediately
+re-confirms whatever row it started on, which is easy to do by accident.
+
 **Roll the Stripe test secret key.** It was pasted into a chat transcript twice.
 Dashboard → Developers → API keys → Roll, then update
 `apps/payments-service/.env` and force-recreate the container. **Still not done
-as of 2026-09-03.**
+as of 2026-09-04** — and worth doing at the same time as the context switch
+above, before any more charges are made.
+
+**`order_saga` lost its historical rows on 2026-09-04.** Testing the M8
+migration's `down` against the real orders database reverted further than
+intended and dropped the table; it was recreated empty. Orders (47), order_items
+(48) and outbox (91) are intact, 45 of the 47 orders are terminal, and orders
+placed since have their own saga rows — but the M5 crash-recovery evidence that
+lived in that table is gone. **Test a `down` against a throwaway Postgres**, the
+way M8 step 2 did for pricing-service, rather than against a database holding
+history.
 
 **Rotate the cart-service Neon password.** The full connection string for the
 M7 database was pasted into a chat transcript on 2026-09-03. Reset it in the
@@ -491,32 +652,35 @@ painful fast.
 
 ---
 
-## 10. The next milestone: M8 — tax and discounts
+## 10. The next milestone: M9 — coupons
 
 From `docs/IMPLEMENTATION_PLAN.md` §3:
 
-> `pricing-service`; `tax_rates` by country/region/category; percentage and fixed
-> discounts; a single `POST /pricing/quote` that orders calls to price a basket.
-> *Watch for:* rounding. Round once, at the end. Test totals across three regions.
+> Coupon codes with usage limits and validity windows; **optimistic locking on
+> `coupons.version`**; `coupon_redemptions.order_id` unique; redemption released
+> when a saga compensates.
+> *Acceptance:* 50 parallel redemptions of a 10-use coupon yield exactly 10.
+> *This is the concurrency milestone — do not skip the load test.*
 
-Acceptance: order totals correct across three tax regions.
+What M8 leaves you that M9 will want:
 
-What M7 leaves you that M8 will want:
+- **`pricing-service` exists** on 3007 and already applies discounts. M8's are
+  *automatic promotions*: they match a basket, and applying one writes nothing.
+  A coupon is the opposite — a code, a limit, and a redemption row — which is
+  exactly the boundary. The always-NULL `discounts.code` column marks it.
+- **The service has no outbox, no consumers and no `processed_events`**, on
+  purpose. M9 is when that arrives, because a redemption must be released when a
+  saga compensates. `cart-service` is still the closest worked example of the
+  wiring.
+- **`quote.ts` is a pure function** and its stacking order (percentage, then
+  fixed, each against what is left) is already deterministic. A coupon slots into
+  that ordering rather than needing a new pipeline.
+- The load test is the deliverable. Optimistic locking that is never contended
+  proves nothing.
 
-- The gateway **already routes** `/api/v1/pricing` to `http://pricing-service:3007`
-  (`services.config.ts`), the same way it already routed `/cart` before
-  cart-service existed. But check the auth posture before assuming it is free —
-  that assumption was wrong for `/cart` and cost a debugging session. See §5.
-- `cart-service` is the newest worked example of the standard service shape,
-  including the outbox and idempotent-consumer wiring.
-- The cart deliberately holds **no prices**, which is what leaves room for
-  pricing-service to own them.
-- A seventh Neon database will be needed, plus the usual `.env` with a matching
-  `JWT_SECRET`.
-
-Money is integer minor units everywhere; format only at the edge. That rule is
-already in `IMPLEMENTATION_PLAN.md` §1.5 and matters more in M8 than anywhere
-else so far.
+Two things to finish M8 first, both in §9: switch the Stripe CLI out of live
+mode, and roll the test key. The last M8 verification — a real card charged for
+a tax-inclusive total — is one `stripe listen` away once that is done.
 
 ---
 

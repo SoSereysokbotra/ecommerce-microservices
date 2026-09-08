@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { API } from './helpers';
+import { API, registerThroughUi, uniqueEmail } from './helpers';
 
 /**
  * M8's acceptance criterion — "order totals correct across three tax regions" —
@@ -33,12 +33,40 @@ async function quoteFor(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ items, ...(destination ? { destination } : {}) }),
   });
-  if (!response.ok) throw new Error(`quote failed: ${response.status}`);
+  if (!response.ok) {
+    throw new Error(`quote failed: ${response.status} ${await response.text()}`);
+  }
   return response.json();
 }
 
+/**
+ * Product ids, looked up once each.
+ *
+ * Cached because the gateway throttles at 100 requests per minute and the full
+ * suite is comfortably capable of exceeding it. When it does, this returned a
+ * 429 body whose `.id` is `undefined`, the quote below was then sent with
+ * `productId: undefined`, and the failure surfaced as a **400 from pricing** —
+ * pointing at the pricing service when the real cause was the rate limiter two
+ * services away. Hence also the explicit status check: a helper that does not
+ * check its own response turns one clear failure into a misleading one.
+ */
+const productIds = new Map<string, string>();
+
 async function productId(slug: string): Promise<string> {
-  return (await (await fetch(`${API}/catalog/products/${slug}`)).json()).id;
+  const cached = productIds.get(slug);
+  if (cached) return cached;
+
+  const response = await fetch(`${API}/catalog/products/${slug}`);
+  if (!response.ok) {
+    throw new Error(
+      `catalog lookup for '${slug}' failed: ${response.status}` +
+        (response.status === 429 ? ' (gateway rate limit — the suite is too chatty)' : ''),
+    );
+  }
+
+  const { id } = (await response.json()) as { id: string };
+  productIds.set(slug, id);
+  return id;
 }
 
 test.describe('pricing', () => {
@@ -144,6 +172,39 @@ test.describe('pricing', () => {
     // Inclusive tax does not raise the total, which reads as a bug unless the
     // page says why.
     await expect(page.getByTestId('cart-tax-note')).toBeVisible();
+  });
+
+  test('the order stores the breakdown it was quoted, taxed where it was chosen', async ({
+    page,
+  }) => {
+    await registerThroughUi(page, uniqueEmail());
+
+    await page.goto(`/products/${TEE}`);
+    await page.getByTestId('add-to-cart').click();
+    await expect(page.getByTestId('added-notice')).toBeVisible();
+
+    const expected = await quoteFor([{ productId: await productId(TEE), qty: 1 }], {
+      country: 'US',
+      region: 'PA',
+    });
+
+    await page.goto('/cart');
+    await page.getByTestId('region-selector').selectOption('US-PA');
+    await expect(page.getByTestId('cart-total')).toHaveText(money(expected.totalMinor));
+
+    await page.getByTestId('checkout').click();
+    await expect(page).toHaveURL(/\/orders\//);
+
+    // The order page renders what was stored, not a recomputation — so these
+    // must equal the quote the shopper actually agreed to.
+    await expect(page.getByTestId('order-subtotal')).toHaveText(money(expected.subtotalMinor));
+    await expect(page.getByTestId('order-tax')).toHaveText(money(expected.taxMinor));
+    await expect(page.getByTestId('order-total')).toHaveText(money(expected.totalMinor));
+
+    // Pennsylvania exempts clothing, so a tee is taxed at zero there. The order
+    // records the jurisdiction, which is what makes that checkable later.
+    await expect(page.getByTestId('order-tax')).toHaveText(money(0));
+    await expect(page.getByText('US-PA')).toBeVisible();
   });
 
   test('the chosen region survives a reload', async ({ page }) => {

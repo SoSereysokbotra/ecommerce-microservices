@@ -1,7 +1,8 @@
 # M8 — Tax and discounts: implementation plan
 
 **Written:** 2026-09-04
-**Status:** Proposed. Nothing built yet — this is for review before any code.
+**Status:** Complete. All seven steps of §14 built and verified, including real
+test-mode payments in all three regions. See ADR-0007.
 **Milestone:** M8, second of R2
 
 Read §3, §4 and §5 before agreeing to this. §3 says the plan's one-line warning
@@ -588,22 +589,106 @@ Per IMPLEMENTATION_PLAN §1.6, plus what is specific here:
 
 One commit per step. Each leaves the repo working.
 
-1. **`money.ts` + `quote.ts` and their unit tests.** No service, no database — the
-   whole milestone's thinking, testable in isolation. Every row of §9.
-2. **Service scaffold, entities, migrations, seed.** Boots on 3007, in
-   `docker-compose.yml`, `/health` and `/ready` answering. Seed the three regions
-   of §7 and two promotions. Verify `down` by reverting and re-running.
-3. **`POST /pricing/quote` + `catalog.client.ts`.** The endpoint end to end
-   against the real catalog.
-4. **Gateway `@OptionalAuth()`** on `/pricing`, declared before the guarded
-   `@All`. Verify a guest gets a quote and an *invalid* token still gets 401.
-5. **orders-service migration and the `create()` switch.** Delete `priceItems()`.
-   Verify a pre-M8 order still reads correctly.
-6. **Storefront: quote-driven totals and the region selector.** One basket, three
-   regions, three totals, in a browser.
-7. **End-to-end verification and the ADR.** A real test-mode payment for the
-   tax-inclusive amount in each of the three regions; Playwright extended;
-   ADR-0007 written.
+1. ~~`money.ts` + `quote.ts` and their unit tests~~ — **done**, 37 tests, and
+   mutation-tested: rounding per line fails 2 of them, dropping largest-remainder
+   fails 4.
+2. ~~Service scaffold, entities, migrations, seed~~ — **done**. `down` verified
+   against a throwaway Postgres, and every check constraint proved by inserting a
+   row that should be rejected.
+3. ~~`POST /pricing/quote` + `catalog.client.ts`~~ — **done**, end to end against
+   the real catalog.
+4. ~~Gateway `@OptionalAuth()`~~ — **done**. A guest gets a quote; a tampered
+   token still gets 401.
+5. ~~orders-service migration and the `create()` switch~~ — **done**.
+   `priceItems()` deleted; a pre-M8 order still reads correctly.
+6. ~~Storefront: quote-driven totals and the region selector~~ — **done**,
+   4 Playwright tests.
+7. **End-to-end verification and the ADR.** ADR-0007 written. The real test-mode
+   payment per region is **not done**: the Stripe CLI on this machine is in
+   **live mode**, so `stripe listen` refuses to run and forwarding live webhooks
+   into a dev stack is not an acceptable workaround. Unblocked by
+   `stripe switch context` to the sandbox.
+
+### What exists after step 1
+
+`money.ts` holds the only two operations in the milestone that can lose
+information: `divRound` (half-up, integers only, and it *refuses* a negative
+numerator because the half-up formula silently becomes a different rule for
+negatives) and `allocate` (largest-remainder, computed as quotient/remainder
+pairs so no float is ever constructed).
+
+`quote.ts` is the pipeline: exact line subtotals, discounts allocated onto the
+lines, group by resolved rate, round once per group, then allocate that single
+figure back across the group's lines. Rounding happens in exactly two places.
+
+The property test uses a seeded PRNG over 500 baskets rather than a
+property-testing library — the same coverage of inputs nobody thought to write
+down, one fewer dependency, and a fixed seed so a failure reproduces.
+
+### What exists after step 2
+
+`pricing-service` boots on 3007 with two tables. The migration's unique index is
+the one piece of real design: `unique (country, region, category)` does **not**
+work, because in SQL two NULLs are not equal, so `('US', NULL, NULL)` could be
+inserted twice and the resolver would silently pick whichever row came first.
+Here NULL means "matches everything" — a real value — so the index coalesces it
+to a sentinel before comparing. Proven by inserting the duplicate and watching it
+be rejected.
+
+`app.module.ts` has **no RabbitMQ and no outbox**, with a comment saying why at
+the place someone would otherwise paste them in.
+
+### What exists after step 3
+
+The quote endpoint, and the one cross-service call. Products carry a
+`categoryId` but tax rules key on the category *slug*, so the client also reads
+`GET /catalog/categories` — slugs because a table of uuids is unreadable to
+whoever maintains the rates and would stop matching if catalog were reseeded.
+
+Two rules moved here from orders: an inactive product is rejected, and a basket
+cannot mix currencies. Moving them preserved behaviour when step 5 switched
+orders over.
+
+### What exists after step 4
+
+Guests can be quoted. The gateway route is `@OptionalAuth()` and precedes the
+guarded `@All`, and a *tampered* token still returns 401 — the `isOptional`
+escape hatch sits inside the `if (!token)` branch, so an expired session is
+never silently downgraded to anonymous.
+
+### What exists after step 5
+
+Orders no longer prices anything. The migration adds five columns to `orders` and
+three to `order_items`, all defaulting to 0/null so the 47 existing orders read
+as "no tax, no discount" — which is what they were, verified before and after.
+
+The quote and the order cannot disagree: same basket, three destinations,
+subtotal/discount/tax/total matching exactly, through to Stripe PaymentIntents
+for 10038, 9579 and 9359.
+
+**One thing went wrong.** Testing the migration's `down` against the real orders
+database reverted more than intended and dropped `order_saga`; its historical
+rows are gone. Nothing live broke — 45 of 47 orders are terminal — but M5's
+crash-recovery evidence in that table is lost. Test `down` against a throwaway
+Postgres, as step 2 did.
+
+### What exists after step 6
+
+The cart page calls `POST /pricing/quote` instead of summing prices in the
+browser, with a region selector whose options come from `GET /pricing/tax-rates`
+so adding a region is a seed change. The tax line is labelled by kind — "VAT
+(19%, included)" versus "Sales tax (7.25%)" — because a total that does not rise
+when tax is added reads as a bug otherwise.
+
+Fixing a **pre-existing** blocker was necessary first: Next 16 refuses
+cross-origin requests for its own dev resources and treats `127.0.0.1` as a
+different origin from `localhost`, so client components never hydrated and every
+browser test failed. The existing M7 cart suite failed identically. Fixed with
+`allowedDevOrigins` in `next.config.ts`.
+
+React 19 also rejects `setState` inside an effect; the localStorage read uses the
+lazy `useState` initializer that Next 16's own
+`preventing-flash-before-hydration` guide documents.
 
 Steps 1 and 2 are independent of everything else and can be done first even if §4
 or §5 are still under discussion — the calculator does not care where the
