@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { CORRELATION_ID_HEADER } from '@libs/common';
 
 interface CatalogProductResponse {
@@ -146,19 +152,38 @@ export class CatalogClient {
       if (response.status === 404) {
         throw new NotFoundException(notFound);
       }
+      if (response.status >= 500) {
+        // Their fault, not the caller's.
+        throw new ServiceUnavailableException(
+          `catalog-service returned ${response.status}; the basket could not be priced`,
+        );
+      }
       if (!response.ok) {
         throw new BadRequestException(`catalog-service returned ${response.status}`);
       }
 
       return (await response.json()) as T;
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException ||
+        error instanceof ServiceUnavailableException
+      ) {
         throw error;
       }
 
+      // A timeout or a refused connection. **503, not 400**: the caller sent a
+      // perfectly good basket and nothing about it was wrong, so telling them
+      // they made a bad request is a lie that sends whoever debugs it looking
+      // in the wrong place. It also matters to the client: 400 says "do not
+      // retry, fix your request", while 503 says "try again".
+      //
+      // This was found by a Playwright run in which one pricing test failed
+      // with `quote failed: 400` while every other request succeeded — the
+      // catalog lookup had simply timed out under load.
       const reason = error instanceof Error ? error.message : String(error);
       this.logger.warn(`catalog lookup failed: ${reason} [${correlationId ?? '-'}]`);
-      throw new BadRequestException(`catalog-service unreachable: ${reason}`);
+      throw new ServiceUnavailableException(`catalog-service unreachable: ${reason}`);
     } finally {
       clearTimeout(timer);
     }

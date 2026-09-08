@@ -1,5 +1,11 @@
 import { HttpService } from '@nestjs/axios';
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CORRELATION_ID_HEADER } from '@libs/common';
 import { AxiosError } from 'axios';
@@ -90,8 +96,14 @@ export class PricingClient {
         throw new BadRequestException(describe(error));
       }
 
+      // Anything else — pricing is down, timed out, or reported an upstream of
+      // its own as unavailable — is not the customer's doing. Say 503 so the
+      // storefront can offer a retry instead of showing "bad request" for an
+      // order that was perfectly valid.
       this.logger.warn(`pricing lookup failed: ${describe(error)} [${correlationId ?? '-'}]`);
-      throw new BadRequestException(describe(error));
+      throw new ServiceUnavailableException(
+        `Could not price this order right now: ${describe(error)}`,
+      );
     }
   }
 }
