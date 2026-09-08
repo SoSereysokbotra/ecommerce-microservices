@@ -77,13 +77,19 @@ export class OrderSagaService {
    * without compensating. This is the cheapest failure in the system, which is
    * exactly why the reservation is attempted before the payment.
    */
-  async onReservationFailed(orderId: string, reason: string): Promise<void> {
-    await this.transition(orderId, SagaStep.AWAITING_RESERVATION, async (_m, order, saga) => {
+  async onReservationFailed(
+    orderId: string,
+    reason: string,
+    correlationId?: string,
+  ): Promise<void> {
+    await this.transition(orderId, SagaStep.AWAITING_RESERVATION, async (manager, order, saga) => {
       order.status = OrderStatus.CANCELLED;
       order.failureReason = reason;
       saga.currentStep = SagaStep.DONE;
       saga.outcome = SagaOutcome.COMPENSATED;
       saga.lastError = reason;
+
+      await this.announceCancelled(manager, order, reason, correlationId);
 
       this.logger.log(`[saga ${orderId}] reservation failed -> cancelled (${reason})`);
     });
@@ -128,23 +134,39 @@ export class OrderSagaService {
   }
 
   /** Stock committed. The order is done. */
-  async onInventoryCommitted(orderId: string): Promise<void> {
-    await this.transition(orderId, SagaStep.AWAITING_COMMIT, async (_m, order, saga) => {
+  async onInventoryCommitted(orderId: string, correlationId?: string): Promise<void> {
+    await this.transition(orderId, SagaStep.AWAITING_COMMIT, async (manager, order, saga) => {
       order.status = OrderStatus.CONFIRMED;
       saga.currentStep = SagaStep.DONE;
       saga.outcome = SagaOutcome.COMPLETED;
+
+      await this.outbox.append(manager, {
+        eventType: 'order.confirmed',
+        aggregateId: order.id,
+        correlationId: correlationId ?? saga.correlationId ?? undefined,
+        payload: {
+          orderId: order.id,
+          customerId: order.customerId,
+          currency: order.currency,
+          totalMinor: order.totalMinor,
+        },
+      });
 
       this.logger.log(`[saga ${orderId}] committed -> CONFIRMED`);
     });
   }
 
   /** Stock returned. The compensation is complete. */
-  async onInventoryReleased(orderId: string): Promise<void> {
-    await this.transition(orderId, SagaStep.AWAITING_RELEASE, async (_m, order, saga) => {
+  async onInventoryReleased(orderId: string, correlationId?: string): Promise<void> {
+    await this.transition(orderId, SagaStep.AWAITING_RELEASE, async (manager, order, saga) => {
+      const reason = saga.lastError ?? order.failureReason ?? 'Order cancelled';
+
       order.status = OrderStatus.CANCELLED;
-      order.failureReason = saga.lastError ?? order.failureReason ?? 'Order cancelled';
+      order.failureReason = reason;
       saga.currentStep = SagaStep.DONE;
       saga.outcome = SagaOutcome.COMPENSATED;
+
+      await this.announceCancelled(manager, order, reason, correlationId);
 
       this.logger.log(`[saga ${orderId}] released -> CANCELLED`);
     });
@@ -239,8 +261,52 @@ export class OrderSagaService {
 
       await manager.save(OrderEntity, order);
       await manager.save(OrderSagaEntity, saga);
+      await this.announceCancelled(manager, order, reason, correlationId);
 
       this.logger.warn(`[saga ${orderId}] reservation expired -> CANCELLED`);
+    });
+  }
+
+  /**
+   * Say out loud that an order is cancelled.
+   *
+   * Until M9 the saga reached its terminal states silently: it set a status and
+   * stopped. Nothing needed to know, so nothing was published — the five events
+   * orders emitted were all either the creation fact or commands aimed at
+   * another service.
+   *
+   * A coupon changes that. A held redemption has to go back when the order it
+   * was held for dies, and pricing cannot learn that by listening to
+   * `inventory.release_requested`: that is a command addressed to inventory, and
+   * the naming convention in HANDOFF §3 exists precisely so a routing key tells
+   * you the direction of control. Eavesdropping on someone else's instruction
+   * would work right up until the day inventory stops needing one.
+   *
+   * So `order.cancelled` is a fact, published from the four places an order can
+   * reach that state, in the same transaction as the status change like every
+   * other event here. `order.confirmed` is its twin, emitted on the happy path.
+   * Both are leaf events — nothing consumes them to drive the saga forward — so
+   * no transition depends on them and no compensation path moves.
+   *
+   * M15's notification service and M14's recommendations both want exactly
+   * these two. Emitting them now with one consumer is cheaper than retrofitting
+   * them later with four.
+   */
+  private async announceCancelled(
+    manager: EntityManager,
+    order: OrderEntity,
+    reason: string,
+    correlationId?: string,
+  ): Promise<void> {
+    await this.outbox.append(manager, {
+      eventType: 'order.cancelled',
+      aggregateId: order.id,
+      correlationId,
+      payload: {
+        orderId: order.id,
+        customerId: order.customerId,
+        reason,
+      },
     });
   }
 

@@ -130,8 +130,56 @@ describe('OrderSagaService', () => {
 
       expect(order.status).toBe(OrderStatus.CANCELLED);
       expect(saga.outcome).toBe(SagaOutcome.COMPENSATED);
-      // No release: the stock was never held in the first place.
-      expect(outbox.append).not.toHaveBeenCalled();
+
+      // No release: the stock was never held in the first place. Asserted on
+      // the event *type* rather than on "the outbox was never touched", because
+      // the order still has to announce that it was cancelled.
+      expect(outbox.append).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ eventType: 'inventory.release_requested' }),
+      );
+      expect(outbox.append).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ eventType: 'order.cancelled' }),
+      );
+    });
+  });
+
+  describe('terminal facts', () => {
+    // Until M9 the saga reached its terminal states silently. A coupon has to
+    // be given back when an order dies, and pricing cannot learn that from
+    // inventory.release_requested — that is a command aimed at inventory, not a
+    // fact about the order.
+    it('announces order.confirmed when the order completes', async () => {
+      const { service, order, outbox } = setup(SagaStep.AWAITING_COMMIT);
+
+      await service.onInventoryCommitted('order-1', 'corr-1');
+
+      expect(order.status).toBe(OrderStatus.CONFIRMED);
+      expect(outbox.append).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          eventType: 'order.confirmed',
+          aggregateId: 'order-1',
+          payload: expect.objectContaining({ orderId: 'order-1', totalMinor: 5000 }),
+        }),
+      );
+    });
+
+    it('announces order.cancelled when compensation completes, carrying the reason', async () => {
+      const { service, saga, order, outbox } = setup(SagaStep.AWAITING_RELEASE);
+      saga.lastError = 'Card declined';
+
+      await service.onInventoryReleased('order-1', 'corr-1');
+
+      expect(order.status).toBe(OrderStatus.CANCELLED);
+      expect(outbox.append).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          eventType: 'order.cancelled',
+          payload: expect.objectContaining({ orderId: 'order-1', reason: 'Card declined' }),
+        }),
+      );
     });
   });
 
@@ -144,8 +192,17 @@ describe('OrderSagaService', () => {
       expect(order.status).toBe(OrderStatus.CANCELLED);
       expect(saga.currentStep).toBe(SagaStep.DONE);
       expect(saga.outcome).toBe(SagaOutcome.COMPENSATED);
-      // Nothing was taken, so there is nothing to give back.
-      expect(outbox.append).not.toHaveBeenCalled();
+
+      // Nothing was taken, so no refund is asked for — but the cancellation is
+      // still announced, which is what releases a held coupon.
+      expect(outbox.append).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ eventType: 'payment.refund_requested' }),
+      );
+      expect(outbox.append).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ eventType: 'order.cancelled' }),
+      );
     });
 
     it('refunds instead of cancelling when the hold lapses AFTER payment', async () => {

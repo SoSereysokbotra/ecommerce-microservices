@@ -81,7 +81,11 @@ export class OrderEventsListener implements OnModuleInit {
           await this.saga.onStockReserved(orderId, event.correlationId);
           break;
         case 'inventory.reservation_failed':
-          await this.saga.onReservationFailed(orderId, reason ?? 'Reservation failed');
+          await this.saga.onReservationFailed(
+            orderId,
+            reason ?? 'Reservation failed',
+            event.correlationId,
+          );
           break;
         case 'payment.authorized':
           await this.saga.onPaymentAuthorized(orderId, event.correlationId);
@@ -94,10 +98,10 @@ export class OrderEventsListener implements OnModuleInit {
           );
           break;
         case 'inventory.committed':
-          await this.saga.onInventoryCommitted(orderId);
+          await this.saga.onInventoryCommitted(orderId, event.correlationId);
           break;
         case 'inventory.released':
-          await this.saga.onInventoryReleased(orderId);
+          await this.saga.onInventoryReleased(orderId, event.correlationId);
           break;
         case 'payment.refunded':
           await this.saga.onPaymentRefunded(orderId, event.correlationId);
