@@ -30,7 +30,13 @@ services:
     container_name: commerce-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      # 6380 on the host, not 6379. Every service reaches Redis at
+      # `redis://redis:6379` on the Docker network, so nothing in this project
+      # needs the standard port published — and publishing it collided with
+      # another project's `jobfit-redis`, which made `docker compose up` fail
+      # with "Bind for 0.0.0.0:6379 failed" until that container was stopped by
+      # hand. A port nobody uses is not worth a manual step before every start.
+      - "6380:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -67,7 +73,11 @@ services:
       interval: 10s
       timeout: 10s
       retries: 12
-      start_period: 40s
+      # 90s, not 40s: ts-node takes ~29s to register before Nest logs a line,
+      # and a cold Neon endpoint has taken ~50s to accept its first connection.
+      # A short window marks the container unhealthy while it is still starting,
+      # which then fails every service that depends on it.
+      start_period: 90s
     networks: [commerce]
 
   catalog-service:
@@ -94,7 +104,11 @@ services:
       interval: 10s
       timeout: 10s
       retries: 12
-      start_period: 40s
+      # 90s, not 40s: ts-node takes ~29s to register before Nest logs a line,
+      # and a cold Neon endpoint has taken ~50s to accept its first connection.
+      # A short window marks the container unhealthy while it is still starting,
+      # which then fails every service that depends on it.
+      start_period: 90s
     networks: [commerce]
 
   inventory-service:
@@ -121,7 +135,11 @@ services:
       interval: 10s
       timeout: 10s
       retries: 12
-      start_period: 40s
+      # 90s, not 40s: ts-node takes ~29s to register before Nest logs a line,
+      # and a cold Neon endpoint has taken ~50s to accept its first connection.
+      # A short window marks the container unhealthy while it is still starting,
+      # which then fails every service that depends on it.
+      start_period: 90s
     networks: [commerce]
 
   payments-service:
@@ -148,7 +166,11 @@ services:
       interval: 10s
       timeout: 10s
       retries: 12
-      start_period: 40s
+      # 90s, not 40s: ts-node takes ~29s to register before Nest logs a line,
+      # and a cold Neon endpoint has taken ~50s to accept its first connection.
+      # A short window marks the container unhealthy while it is still starting,
+      # which then fails every service that depends on it.
+      start_period: 90s
     networks: [commerce]
 
   orders-service:

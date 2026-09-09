@@ -4,6 +4,9 @@
   "description": "Order-Inventory-Payment microservices with a saga-orchestrated checkout",
   "private": true,
   "scripts": {
+    "dev": "docker compose up -d && npm --prefix storefront run dev",
+    "dev:stack": "docker compose up -d",
+    "dev:storefront": "npm --prefix storefront run dev",
     "setup": "bash scripts/setup.sh",
     "build:all": "npm run build --prefix apps/api-gateway && npm run build --prefix apps/users-service && npm run build --prefix apps/catalog-service && npm run build --prefix apps/inventory-service && npm run build --prefix apps/orders-service && npm run build --prefix apps/payments-service && npm run build --prefix apps/cart-service && npm run build --prefix apps/pricing-service",
     "start:gateway": "npm run start:dev --prefix apps/api-gateway",

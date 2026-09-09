@@ -81,7 +81,7 @@ curl -X POST http://localhost:3000/api/v1/auth/register \
 Databases are hosted on Neon; there is no Postgres container. See
 `docs/adr/0001-new-repo-and-reuse.md` for why.
 
-> **Port conflict?** This stack uses 3000–3001, 5672, 6379, 15672. If another
+> **Port conflict?** This stack uses 3000–3007, 5672, 6380, 15672. If another
 > local project holds one of them, stop that project first.
 
 ---

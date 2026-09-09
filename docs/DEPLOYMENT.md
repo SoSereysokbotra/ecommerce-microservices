@@ -65,7 +65,7 @@ Real Stripe test-mode webhooks over the public URL, `livemode: false` throughout
 - **`docker compose` still runs the `development` targets.** The storefront runs
   from its production image; the six services do not. The production images are
   built and verified (Part B §5) but are not what these tunnels serve.
-- Port 6379 collides with `jobfit-redis`; stop it first (`docker stop jobfit-redis`).
+- Redis is published on 6380 since M9, so it no longer collides with `jobfit-redis`.
 
 ---
 

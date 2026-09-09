@@ -138,7 +138,8 @@ PostgreSQL database. Nothing is reachable from a browser except the gateway.
 | pricing-service | 3007 | Tax rules, automatic promotions, `POST /pricing/quote` |
 | storefront | 3100 | Next.js UI |
 
-Supporting: RabbitMQ (5672 / 15672), Redis (6379 — **actually used since M7**,
+Supporting: RabbitMQ (5672 / 15672), Redis (**6380** on the host, 6379 inside
+the network — **actually used since M7**,
 for guest carts; before that it was declared and idle).
 
 ### The saga
@@ -221,10 +222,16 @@ On the original dev machine everything is already provisioned, so this is all it
 takes:
 
 ```bash
-docker stop jobfit-redis          # it holds port 6379; see §5
-docker compose up -d              # 8 services + RabbitMQ + Redis
-cd storefront && npm run dev      # http://localhost:3100
+npm run dev                       # the whole stack, then the storefront
 ```
+
+That is `docker compose up -d` followed by the storefront on
+**http://localhost:3100**. Run them separately with `npm run dev:stack` and
+`npm run dev:storefront` if you want the storefront in its own terminal.
+
+**No `docker stop jobfit-redis` any more.** Redis is published on **6380**, not
+6379 — nothing in this project connects to it from the host, so the standard
+port was pure collision with another project for no benefit.
 
 Allow about a minute. **cart-service takes ~50s to become healthy** because a
 cold Neon endpoint is slow to accept its first connection; its healthcheck has a
@@ -329,9 +336,12 @@ Parsing and re-serialising JSON changes the bytes and Stripe's signature stops
 verifying. Both the gateway and payments-service register `express.raw` for that
 path before the JSON parser.
 
-**Port conflicts.** 3000/6379 collide with other local projects on this machine
-(`jobfit-redis`, a Jobfit Next.js dev server). Stop those first. Since M7 this
-matters more: Redis is a real dependency now, not a spare container.
+**Port conflicts.** Port 3000 still collides with a Jobfit Next.js dev server;
+stop that first if it is running. **Redis no longer collides** — it moved to
+6380 on the host in M9, because every service reaches it at `redis://redis:6379`
+on the Docker network and nothing needs the standard port published. Before that
+change, `docker compose up` failed with "Bind for 0.0.0.0:6379 failed" until
+`jobfit-redis` was stopped by hand, every single time.
 
 ### Learned during M6 and M7 — same category, newer
 

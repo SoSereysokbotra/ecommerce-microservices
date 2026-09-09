@@ -15,6 +15,14 @@ const nextConfig: NextConfig = {
   //
   // Development only — it has no effect on the production build.
   allowedDevOrigins: ["127.0.0.1"],
+
+  // There is a lockfile here and another at the repo root, so Next has to guess
+  // which directory is the workspace and warns that it might guess wrong. This
+  // one is right: the storefront has its own dependencies and is deployed on its
+  // own. Saying so removes the guess and the warning.
+  turbopack: {
+    root: __dirname,
+  },
 };
 
 export default nextConfig;
