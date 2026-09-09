@@ -5,6 +5,7 @@ import { CorrelationIdMiddleware } from '@libs/common';
 import { AppController } from './app.controller';
 import { databaseConfig } from './config/database.config';
 import { typeOrmConfig } from './database/typeorm.config';
+import { ShippingModule } from './modules/shipping/shipping.module';
 
 /**
  * shipping-service — the eighth service, and the first thing in this project
@@ -32,6 +33,7 @@ import { typeOrmConfig } from './database/typeorm.config';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => typeOrmConfig(config),
     }),
+    ShippingModule,
   ],
   controllers: [AppController],
 })
