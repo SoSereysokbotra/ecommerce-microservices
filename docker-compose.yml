@@ -281,6 +281,40 @@ services:
       start_period: 90s
     networks: [commerce]
 
+  shipping-service:
+    build:
+      context: .
+      dockerfile: ./apps/shipping-service/Dockerfile
+      target: development
+    container_name: commerce-shipping-service
+    restart: unless-stopped
+    ports:
+      - "3008:3008"
+    env_file:
+      - ./apps/shipping-service/.env
+    volumes:
+      - .:/app
+      - shipping_service_node_modules:/app/apps/shipping-service/node_modules
+    depends_on:
+      # No redis and no catalog: a rate is computed entirely from this service's
+      # own zone and rate tables, which is what lets pricing-service treat it as
+      # one more read. RabbitMQ is declared from the scaffold because step 7 of
+      # docs/M10_SHIPPING_PLAN.md consumes `order.confirmed` to create shipments,
+      # and a dependency added later is a recreate of every dependent service.
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3008/api/v1/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      # Same 90s as cart-service and pricing-service, for the same reason: a
+      # cold Neon endpoint has taken ~50s to accept its first connection, long
+      # enough to mark the container unhealthy while it is still starting — and
+      # the gateway waits on it being healthy.
+      start_period: 90s
+    networks: [commerce]
+
   api-gateway:
     build:
       context: .
@@ -310,6 +344,8 @@ services:
         condition: service_healthy
       pricing-service:
         condition: service_healthy
+      shipping-service:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/v1/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 10s
@@ -329,6 +365,7 @@ volumes:
   api_gateway_node_modules:
   cart_service_node_modules:
   pricing_service_node_modules:
+  shipping_service_node_modules:
 
 networks:
   commerce:

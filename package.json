@@ -8,7 +8,7 @@
     "dev:stack": "docker compose up -d",
     "dev:storefront": "npm --prefix storefront run dev",
     "setup": "bash scripts/setup.sh",
-    "build:all": "npm run build --prefix apps/api-gateway && npm run build --prefix apps/users-service && npm run build --prefix apps/catalog-service && npm run build --prefix apps/inventory-service && npm run build --prefix apps/orders-service && npm run build --prefix apps/payments-service && npm run build --prefix apps/cart-service && npm run build --prefix apps/pricing-service",
+    "build:all": "npm run build --prefix apps/api-gateway && npm run build --prefix apps/users-service && npm run build --prefix apps/catalog-service && npm run build --prefix apps/inventory-service && npm run build --prefix apps/orders-service && npm run build --prefix apps/payments-service && npm run build --prefix apps/cart-service && npm run build --prefix apps/pricing-service && npm run build --prefix apps/shipping-service",
     "start:gateway": "npm run start:dev --prefix apps/api-gateway",
     "start:users": "npm run start:dev --prefix apps/users-service",
     "start:catalog": "npm run start:dev --prefix apps/catalog-service",
@@ -20,7 +20,7 @@
     "seed:inventory": "npm run seed --prefix apps/inventory-service",
     "gen:spec": "bash scripts/gen-api-spec.sh",
     "gen:types": "bash scripts/gen-api-types.sh",
-    "test:all": "npm test --prefix apps/users-service -- --passWithNoTests && npm test --prefix apps/catalog-service -- --passWithNoTests && npm test --prefix apps/inventory-service -- --passWithNoTests && npm test --prefix apps/orders-service -- --passWithNoTests && npm test --prefix apps/payments-service -- --passWithNoTests && npm test --prefix apps/cart-service -- --passWithNoTests && npm test --prefix apps/pricing-service -- --passWithNoTests",
+    "test:all": "npm test --prefix apps/users-service -- --passWithNoTests && npm test --prefix apps/catalog-service -- --passWithNoTests && npm test --prefix apps/inventory-service -- --passWithNoTests && npm test --prefix apps/orders-service -- --passWithNoTests && npm test --prefix apps/payments-service -- --passWithNoTests && npm test --prefix apps/cart-service -- --passWithNoTests && npm test --prefix apps/pricing-service -- --passWithNoTests && npm test --prefix apps/shipping-service -- --passWithNoTests",
     "lint": "eslint \"{apps,libs}/**/*.ts\"",
     "format": "prettier --write \"{apps,libs}/**/*.ts\"",
     "scan:secrets": "bash scripts/scan-secrets.sh",
@@ -33,7 +33,10 @@
     "migrate:cart": "npm run migration:run --prefix apps/cart-service",
     "migrate:pricing": "npm run migration:run --prefix apps/pricing-service",
     "seed:pricing": "npm run seed --prefix apps/pricing-service",
-    "start:pricing": "npm run start:dev --prefix apps/pricing-service"
+    "start:pricing": "npm run start:dev --prefix apps/pricing-service",
+    "start:shipping": "npm run start:dev --prefix apps/shipping-service",
+    "migrate:shipping": "npm run migration:run --prefix apps/shipping-service",
+    "seed:shipping": "npm run seed --prefix apps/shipping-service"
   },
   "devDependencies": {
     "@nestjs/common": "^10.4.22",
