@@ -56,7 +56,7 @@ finished and must not be modified. See §9 — it has a live security problem.
 
 ---
 
-## 2. Status: 8 of 23 milestones done — R1 complete, R2 started
+## 2. Status: 10 of 23 milestones done — R1 complete, R2 half done
 
 | | Milestone | State |
 |---|---|---|
@@ -87,18 +87,18 @@ The full design, every decision and what was verified is in
 two deliberate departures from `IMPLEMENTATION_PLAN.md` (§3 and §4 of that file)
 and would otherwise look like mistakes.
 
-**M8** was built on 2026-09-04 in six committed steps. The full design and every
-decision is in **`docs/M8_PRICING_PLAN.md`**; the two decisions that depart from
-`IMPLEMENTATION_PLAN.md` are recorded in **ADR-0007**. Read both before touching
-pricing-service or `OrdersService.create()`.
+**M8** was built on 2026-09-04 in seven committed steps. Design in
+**`docs/M8_PRICING_PLAN.md`**, decisions in **ADR-0007**.
 
-**Next task: M9 — coupons.** That is the concurrency milestone: codes with usage
-limits, optimistic locking on `coupons.version`, a redemption row unique per
-order, and release when a saga compensates. Its acceptance is a load test — 50
-parallel redemptions of a 10-use coupon yielding exactly 10 — and the plan says
-not to skip it. pricing-service currently has **no outbox and no consumers**
-because a quote changes no state; M9 is when that wiring arrives, and the
-always-NULL `discounts.code` column is there to mark the boundary.
+**M9** was built on 2026-09-08/09 in seven more. Design in
+**`docs/M9_COUPONS_PLAN.md`**, decisions in **ADR-0008**. It departs from
+`IMPLEMENTATION_PLAN.md` on the locking mechanism, and the ADR has the
+measurement that justifies it.
+
+Read ADR-0007 and ADR-0008 before touching pricing-service,
+`OrdersService.create()`, or the saga's terminal transitions.
+
+**Next task: M10 — shipping.** See §10.
 
 ### What M7 added, in one paragraph
 
