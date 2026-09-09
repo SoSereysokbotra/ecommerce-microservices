@@ -458,12 +458,27 @@ discounts; a single `POST /pricing/quote` that orders calls to price a basket.
 > pricing-service needs **no outbox and no consumers**, because a quote changes
 > no state. Full design in `docs/M8_PRICING_PLAN.md`.
 
-### M9 — Coupons
+### M9 — Coupons — **done (2026-09-09)**
 Coupon codes with usage limits and validity windows; **optimistic locking on
 `coupons.version`**; `coupon_redemptions.order_id` unique; redemption released when
 a saga compensates.
 *Acceptance:* 50 parallel redemptions of a 10-use coupon yield exactly 10.
 *This is the concurrency milestone — do not skip the load test.*
+
+> **Correction, from building it.** Redemption uses an **atomic conditional
+> UPDATE**, not optimistic locking. Optimistic locking works, with a retry loop
+> — and the retry loop is the part that is easy to write wrong and only misfires
+> under contention. One statement whose condition is evaluated against the
+> committed value cannot be raced at all. `coupons.version` is kept for edits to
+> the coupon itself, which is what optimistic locking is genuinely good at.
+>
+> The naive read-check-write was built first and measured: it gave **50** people
+> a 10-use coupon and lost 44 increments. See ADR-0008.
+>
+> Two things the entry did not anticipate: nothing announced that an order had
+> ended, so the saga now emits `order.confirmed` / `order.cancelled`; and a use
+> has to be **held** rather than spent at creation, mirroring inventory's
+> reserve/commit/release. Full design in `docs/M9_COUPONS_PLAN.md`.
 
 ### M10 — Shipping
 shipping-service; customer addresses; rate calculation by weight/zone; shipment
@@ -577,3 +592,4 @@ Write one whenever a choice has a defensible alternative. Keep them short.
 | 0005 | OpenSearch over Postgres full-text | M12 |
 | 0006 | Service boundaries — what was deliberately *not* split | M0 |
 | 0007 | Round once per tax group; pricing owns money, orders stops pricing | M8 |
+| 0008 | Atomic coupon claim over optimistic locking; hold/commit/release | M9 |

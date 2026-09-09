@@ -1,7 +1,8 @@
 # M9 — Coupons: implementation plan
 
 **Written:** 2026-09-08
-**Status:** Proposed. Nothing built yet — this is for review before any code.
+**Status:** Complete. All seven steps of §11 built, verified and committed.
+Decisions recorded in ADR-0008.
 **Milestone:** M9, third of R2
 
 Read §3, §4 and §5 before agreeing to this. §3 recommends **not** using the
@@ -378,19 +379,38 @@ Per IMPLEMENTATION_PLAN §1.6, plus what is specific here:
 
 One commit per step.
 
-1. **Schema + entities + seed**, with the `used_count <= max_uses` constraint.
-   Verify `down` against a throwaway Postgres.
-2. **The naive redemption and the load test.** Watch it over-redeem. Record the
-   number — this is ADR-0008's evidence.
-3. **The atomic conditional UPDATE.** Same test, exactly 10, repeated 10 times.
-4. **Hold / commit / release lifecycle**, and `order.cancelled` /
-   `order.confirmed` from the saga.
-5. **pricing joins the event system** — outbox, relay, `processed_events`, and
-   the handler that releases on cancellation. Replay an event to prove
-   idempotency.
-6. **Quote and order integration**: `couponCode` through `POST /pricing/quote`
-   (read-only) and `POST /orders` (holds).
-7. **Storefront**, then **ADR-0008** with both load-test results side by side.
+1. ~~Schema + entities + seed~~ — **done**. Every constraint proved against a
+   throwaway Postgres by inserting a row that should be rejected, including the
+   11th use of a 10-use coupon.
+2. ~~The naive redemption and the load test~~ — **done**, and it over-redeemed
+   exactly as predicted: **50 granted** on a 10-use coupon, counter reading **6**
+   against 50 rows. That is ADR-0008's evidence.
+3. ~~The atomic conditional UPDATE~~ — **done**. Same test: **10 granted, 40
+   refused**, counter and rows agreeing, across 5 repeated stampedes.
+4. ~~Hold / commit / release, and the terminal saga events~~ — **done**.
+   `order.confirmed` and `order.cancelled` are emitted from all four places an
+   order reaches a terminal state. 16 saga tests green.
+5. ~~pricing joins the event system~~ — **done**. Verified live by publishing
+   genuine events onto `commerce.events`: the use came back, a replayed event id
+   was ignored by the marker, and a *new* event id for the same order was ignored
+   by the status guard.
+6. ~~Quote and order integration~~ — **done**. Quoting resolves a code and never
+   redeems; `POST /orders` holds once, atomically.
+7. ~~Storefront and ADR-0008~~ — **done**. A coupon box that explains *why* a
+   code was refused, and 6 pricing browser tests green.
+
+### What went wrong, and is worth knowing
+
+- **`this.subQuery is not a function`** from the consumer. It reads exactly like
+  the two-copies typeorm trap; it was `OutboxEventEntity` and
+  `ProcessedEventEntity` missing from pricing's `typeorm.config`. Only running it
+  found this.
+- **TypeORM returns different shapes for INSERT and UPDATE `RETURNING`**, and
+  both wrong assumptions fail silently. See the `returning()` helper.
+- **A unique violation aborts the whole transaction**, so a compensating
+  statement written to run afterwards never executes. `ON CONFLICT DO NOTHING`
+  instead of catching.
+- Docker Desktop died three times mid-milestone. `docker compose ps -a` first.
 
 Steps 1–3 are the milestone. If time runs short, 4–7 can slip; a coupon that
 cannot be over-redeemed is worth more than a coupon with a pretty input box.

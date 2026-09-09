@@ -20,6 +20,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pricing/coupons/hold": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Claim one use of a coupon for an order */
+        post: operations["CouponsController_hold"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pricing/coupons/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Release a held coupon use for an order that was never created */
+        post: operations["CouponsController_release"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pricing/coupons/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Validate a coupon code without redeeming it */
+        get: operations["CouponsController_validate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pricing/discounts": {
         parameters: {
             query?: never;
@@ -98,6 +149,9 @@ export interface components {
             name: string;
         };
         CreateQuoteDto: {
+            /** @example SAVE10USES */
+            couponCode?: string;
+            customerId?: string;
             destination?: components["schemas"]["DestinationDto"];
             items: components["schemas"]["QuoteLineDto"][];
         };
@@ -112,6 +166,23 @@ export interface components {
              * @example CA
              */
             region?: string;
+        };
+        HoldCouponDto: {
+            /** @description What the coupon took off, in integer minor units. */
+            amountMinor: number;
+            /** @example SAVE10USES */
+            code: string;
+            customerId: string;
+            orderId: string;
+        };
+        QuoteCouponResponseDto: {
+            /** @description Integer minor units. */
+            amountMinor: number;
+            /** @description Whether it actually came off this basket. */
+            applied: boolean;
+            code: string;
+            /** @description Why it did not apply: expired, exhausted, per_customer_limit, and so on. */
+            rejectedBecause?: Record<string, never> | null;
         };
         QuoteLineDto: {
             productId: string;
@@ -138,6 +209,7 @@ export interface components {
         };
         QuoteResponseDto: {
             appliedDiscounts: components["schemas"]["AppliedDiscountResponseDto"][];
+            coupon?: components["schemas"]["QuoteCouponResponseDto"] | null;
             currency: string;
             destination: components["schemas"]["DestinationDto"];
             discountMinor: number;
@@ -176,6 +248,64 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CouponsController_hold: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HoldCouponDto"];
+            };
+        };
+        responses: {
+            /** @description Whether the use was granted, and why not if it was refused. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CouponsController_release: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CouponsController_validate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
             cookie?: never;
         };
         requestBody?: never;

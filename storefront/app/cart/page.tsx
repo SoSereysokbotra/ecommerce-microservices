@@ -6,7 +6,14 @@ import Link from 'next/link';
 import { api, ApiError, getToken } from '@/lib/api';
 import { useCart } from '@/components/CartProvider';
 import { RegionSelector, useDestination } from '@/components/RegionSelector';
-import { formatMoney, taxLabel, type Order, type Product, type Quote } from '@/lib/types';
+import {
+  COUPON_REJECTIONS,
+  formatMoney,
+  taxLabel,
+  type Order,
+  type Product,
+  type Quote,
+} from '@/lib/types';
 
 export default function CartPage() {
   const router = useRouter();
@@ -25,6 +32,13 @@ export default function CartPage() {
   const [destination, chooseDestination] = useDestination();
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoting, setQuoting] = useState(false);
+
+  // `couponCode` is what has been applied to the quote; `couponDraft` is what is
+  // in the box. Keeping them apart means typing does not re-quote on every
+  // keystroke — the shopper presses Apply, and only then does the basket
+  // re-price. Quoting never spends a use, but it does cost a round trip.
+  const [couponDraft, setCouponDraft] = useState('');
+  const [couponCode, setCouponCode] = useState<string | null>(null);
 
   useEffect(() => {
     if (items.length === 0) return;
@@ -64,6 +78,7 @@ export default function CartPage() {
           ...(destination
             ? { destination: { country: destination.country, ...(destination.region ? { region: destination.region } : {}) } }
             : {}),
+          ...(couponCode ? { couponCode } : {}),
         });
         // The basket may have changed while this was in flight; a stale quote
         // showing the wrong total is worse than showing none.
@@ -78,7 +93,7 @@ export default function CartPage() {
     return () => {
       cancelled = true;
     };
-  }, [items, destination]);
+  }, [items, destination, couponCode]);
 
   const priced = items.map((line) => ({ ...line, product: products[line.productId] }));
   const currency = quote?.currency ?? priced.find((line) => line.product)?.product?.currency ?? 'USD';
@@ -102,6 +117,8 @@ export default function CartPage() {
         ...(destination
           ? { destination: { country: destination.country, ...(destination.region ? { region: destination.region } : {}) } }
           : {}),
+        // Unlike the quote above, this one claims a use.
+        ...(couponCode && quote?.coupon?.applied ? { couponCode } : {}),
       });
       // The cart is emptied by cart-service consuming order.created, not here.
       router.push(`/orders/${order.id}`);
@@ -183,6 +200,59 @@ export default function CartPage() {
           <div className="row" style={{ justifyContent: 'space-between' }}>
             <RegionSelector value={destination} onChange={chooseDestination} />
             {quoting && <span className="small muted">pricing…</span>}
+          </div>
+
+          <div className="stack" style={{ gap: '0.25rem' }}>
+            <form
+              className="row"
+              style={{ gap: '0.5rem' }}
+              onSubmit={(e) => {
+                e.preventDefault();
+                // Applying only re-quotes. The use is claimed at checkout, once.
+                setCouponCode(couponDraft.trim() ? couponDraft.trim().toUpperCase() : null);
+              }}
+            >
+              <input
+                type="text"
+                value={couponDraft}
+                placeholder="Discount code"
+                aria-label="Discount code"
+                data-testid="coupon-input"
+                onChange={(e) => setCouponDraft(e.target.value)}
+                style={{ width: 160 }}
+              />
+              <button className="ghost small" type="submit" data-testid="coupon-apply">
+                Apply
+              </button>
+              {couponCode && (
+                <button
+                  className="ghost small"
+                  type="button"
+                  data-testid="coupon-clear"
+                  onClick={() => {
+                    setCouponDraft('');
+                    setCouponCode(null);
+                  }}
+                >
+                  Remove
+                </button>
+              )}
+            </form>
+
+            {/* A refused code still prices the basket — it just says why it did
+                not apply. "Invalid code" for every case is the version people
+                complain about. */}
+            {quote?.coupon && !quote.coupon.applied && (
+              <p className="small crit" data-testid="coupon-error">
+                {COUPON_REJECTIONS[quote.coupon.rejectedBecause ?? ''] ??
+                  'That code could not be applied.'}
+              </p>
+            )}
+            {quote?.coupon?.applied && (
+              <p className="small muted" data-testid="coupon-applied">
+                {quote.coupon.code} applied.
+              </p>
+            )}
           </div>
 
           <div className="stack" style={{ gap: '0.25rem' }}>

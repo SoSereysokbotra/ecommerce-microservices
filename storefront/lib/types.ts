@@ -132,6 +132,25 @@ export interface AppliedDiscount {
   amountMinor: number;
 }
 
+/** What a coupon code did to the basket, and if nothing, why. */
+export interface QuoteCoupon {
+  code: string;
+  applied: boolean;
+  amountMinor: number;
+  rejectedBecause: string | null;
+}
+
+/** Why a code was refused, in words a shopper can act on. */
+export const COUPON_REJECTIONS: Record<string, string> = {
+  not_found: 'We do not recognise that code.',
+  inactive: 'That code is no longer available.',
+  not_started: 'That code is not active yet.',
+  expired: 'That code has expired.',
+  exhausted: 'That code has been fully claimed.',
+  per_customer_limit: 'You have already used that code.',
+  already_redeemed: 'That code is already applied to this order.',
+};
+
 export interface Quote {
   currency: string;
   destination: { country: string; region: string | null };
@@ -143,6 +162,7 @@ export interface Quote {
   taxMinor: number;
   netMinor: number;
   totalMinor: number;
+  coupon?: QuoteCoupon | null;
 }
 
 export interface TaxRate {

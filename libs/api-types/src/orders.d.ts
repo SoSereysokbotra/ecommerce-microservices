@@ -76,6 +76,8 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         CreateOrderDto: {
+            /** @example SAVE10USES */
+            couponCode?: string;
             destination?: components["schemas"]["OrderDestinationDto"];
             items: components["schemas"]["OrderLineDto"][];
         };

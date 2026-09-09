@@ -207,6 +207,41 @@ test.describe('pricing', () => {
     await expect(page.getByText('US-PA')).toBeVisible();
   });
 
+  test('a coupon code discounts the basket, and a bad one says why', async ({ page }) => {
+    await page.goto(`/products/${MUG}`);
+    await page.getByTestId('add-to-cart').click();
+    await expect(page.getByTestId('added-notice')).toBeVisible();
+    await page.goto('/cart');
+
+    // The total renders as an em dash until the first quote comes back, and
+    // reading it too early parses as 0 — which then compares equal to nothing
+    // useful. Wait for a real price before taking the baseline.
+    await expect(page.getByTestId('cart-total')).toHaveText(/\d/);
+    const before = minorFromText(await page.getByTestId('cart-total').textContent());
+    expect(before).toBeGreaterThan(0);
+
+    // A code nobody issued: the basket still prices, and the message is specific
+    // rather than a blanket "invalid code".
+    await page.getByTestId('coupon-input').fill('NOTAREALCODE');
+    await page.getByTestId('coupon-apply').click();
+    await expect(page.getByTestId('coupon-error')).toHaveText(/do not recognise/i);
+    expect(minorFromText(await page.getByTestId('cart-total').textContent())).toBe(before);
+
+    // A real one takes money off and says so.
+    await page.getByTestId('coupon-input').fill('save10uses');
+    await page.getByTestId('coupon-apply').click();
+    await expect(page.getByTestId('coupon-applied')).toHaveText(/SAVE10USES applied/);
+
+    const after = minorFromText(await page.getByTestId('cart-total').textContent());
+    expect(after).toBeLessThan(before);
+
+    // Removing it puts the price back. Applying a code re-quotes and never
+    // spends a use — the claim happens once, at checkout.
+    await page.getByTestId('coupon-clear').click();
+    await expect(page.getByTestId('coupon-applied')).toHaveCount(0);
+    expect(minorFromText(await page.getByTestId('cart-total').textContent())).toBe(before);
+  });
+
   test('the chosen region survives a reload', async ({ page }) => {
     await page.goto(`/products/${MUG}`);
     await page.getByTestId('add-to-cart').click();

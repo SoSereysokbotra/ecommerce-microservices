@@ -129,17 +129,17 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
     type: 'postgres',
     url: DATABASE_URL,
     entities: [
-        TaxRateEntity,
-        DiscountEntity,
-        CouponEntity,
-        CouponRedemptionEntity,
-        // M9: the consumer writes a processed_events marker in the same
-        // transaction as the effect. Without these registered the DataSource has no
-        // metadata for that table and `manager.insert` fails with the deeply
-        // unhelpful "this.subQuery is not a function".
-        OutboxEventEntity,
-        ProcessedEventEntity,
-      ],
+      TaxRateEntity,
+      DiscountEntity,
+      CouponEntity,
+      CouponRedemptionEntity,
+      // M9: the consumer writes a processed_events marker in the same
+      // transaction as the effect. Without these registered the DataSource has no
+      // metadata for that table and `manager.insert` fails with the deeply
+      // unhelpful "this.subQuery is not a function".
+      OutboxEventEntity,
+      ProcessedEventEntity,
+    ],
     migrations: [__dirname + '/migrations/*{.ts,.js}'],
     synchronize: false,
     logging: !isProduction,

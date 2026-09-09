@@ -23,6 +23,13 @@
       },
       "CreateQuoteDto": {
         "properties": {
+          "couponCode": {
+            "example": "SAVE10USES",
+            "type": "string"
+          },
+          "customerId": {
+            "type": "string"
+          },
           "destination": {
             "$ref": "#/components/schemas/DestinationDto"
           },
@@ -53,6 +60,57 @@
         },
         "required": [
           "country"
+        ],
+        "type": "object"
+      },
+      "HoldCouponDto": {
+        "properties": {
+          "amountMinor": {
+            "description": "What the coupon took off, in integer minor units.",
+            "type": "number"
+          },
+          "code": {
+            "example": "SAVE10USES",
+            "type": "string"
+          },
+          "customerId": {
+            "type": "string"
+          },
+          "orderId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "orderId",
+          "customerId",
+          "amountMinor"
+        ],
+        "type": "object"
+      },
+      "QuoteCouponResponseDto": {
+        "properties": {
+          "amountMinor": {
+            "description": "Integer minor units.",
+            "type": "number"
+          },
+          "applied": {
+            "description": "Whether it actually came off this basket.",
+            "type": "boolean"
+          },
+          "code": {
+            "type": "string"
+          },
+          "rejectedBecause": {
+            "description": "Why it did not apply: expired, exhausted, per_customer_limit, and so on.",
+            "nullable": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "code",
+          "applied",
+          "amountMinor"
         ],
         "type": "object"
       },
@@ -132,6 +190,14 @@
               "$ref": "#/components/schemas/AppliedDiscountResponseDto"
             },
             "type": "array"
+          },
+          "coupon": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/QuoteCouponResponseDto"
+              }
+            ],
+            "nullable": true
           },
           "currency": {
             "type": "string"
@@ -240,6 +306,70 @@
         },
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/pricing/coupons/hold": {
+      "post": {
+        "operationId": "CouponsController_hold",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HoldCouponDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Whether the use was granted, and why not if it was refused."
+          }
+        },
+        "summary": "Claim one use of a coupon for an order",
+        "tags": [
+          "coupons"
+        ]
+      }
+    },
+    "/api/v1/pricing/coupons/release": {
+      "post": {
+        "operationId": "CouponsController_release",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Release a held coupon use for an order that was never created",
+        "tags": [
+          "coupons"
+        ]
+      }
+    },
+    "/api/v1/pricing/coupons/{code}": {
+      "get": {
+        "operationId": "CouponsController_validate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Validate a coupon code without redeeming it",
+        "tags": [
+          "coupons"
         ]
       }
     },

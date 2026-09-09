@@ -3,6 +3,10 @@
     "schemas": {
       "CreateOrderDto": {
         "properties": {
+          "couponCode": {
+            "example": "SAVE10USES",
+            "type": "string"
+          },
           "destination": {
             "$ref": "#/components/schemas/OrderDestinationDto"
           },

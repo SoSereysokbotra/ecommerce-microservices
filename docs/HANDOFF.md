@@ -1,6 +1,6 @@
 # Handoff — read this first
 
-**Written:** 2026-09-01. **Last updated:** 2026-09-08 (M8 complete; two saga/inventory bugs fixed).
+**Written:** 2026-09-01. **Last updated:** 2026-09-09 (M9 complete).
 **Repo:** https://github.com/SoSereysokbotra/ecommerce-microservices (public, `main`)
 **Local:** `d:\Year2\Microservices\Order‑Inventory‑Payment Microservices\ecommerce-microservices`
 
@@ -8,11 +8,15 @@ This document exists so a new session can continue without re-deriving anything.
 Read it fully before touching code — several things here were learned the hard
 way and will cost hours to rediscover.
 
-**Where things stand (2026-09-04):** R1 is finished and deployed (via Cloudflare
-Tunnel, from this machine). R2 is under way: **M7 (cart) is complete**, and
-**M8 (tax and discounts) is complete**, all seven steps, and `pricing-service`
-is live on port 3007. Real test-mode cards were charged the exact tax-inclusive
-total in all three regions.
+**Where things stand (2026-09-09):** R1 is finished and deployed (via Cloudflare
+Tunnel, from this machine). R2 is three milestones in — **M7 (cart)**, **M8 (tax
+and discounts)** and **M9 (coupons)** are all complete and pushed.
+`pricing-service` on port 3007 owns tax, promotions and coupons.
+
+**The next milestone is M10 — shipping.** See §10.
+
+**Running it is now one command: `npm run dev`.** See §4 — the old
+`docker stop jobfit-redis` step is gone.
 
 **That end-to-end test found three defects in older code**, two of them serious:
 inventory lost updates on the stock row, the expiry sweep failed atomically so
@@ -65,8 +69,9 @@ finished and must not be modified. See §9 — it has a live security problem.
 | M6 | Storefront + Playwright + public deployment | done |
 | **M7** | **Cart: guest carts, merge on login, abandonment** | **done** |
 | **M8** | **Pricing: tax + discounts** | **done** |
-| M9 | Coupons — the concurrency milestone | **next** |
-| M10–M22 | Rest of R2, then R3–R5 | not started |
+| **M9** | **Coupons — the concurrency milestone** | **done** |
+| M10 | Shipping: addresses, rates, shipment lifecycle | **next** |
+| M11–M22 | Rest of R2, then R3–R5 | not started |
 
 **M6** was met on 2026-09-02 via **Cloudflare Tunnel**, not a managed platform —
 Railway's trial had expired on the available account. Verified with real Stripe
@@ -118,6 +123,22 @@ Tax and discounts are **frozen onto the order** in new columns, the way sku and
 price already were. The two hard ideas are that tax is rounded **once per tax
 rate group, never per line**, and that inclusive tax (EU VAT) is backed *out* of
 the price while exclusive tax (US sales tax) is added *on top* — see ADR-0007.
+
+### What M9 added, in one paragraph
+
+**Coupons** — discount codes with a limit, a window and a record of who used
+them — living in `pricing-service` beside the promotions they extend. No new
+service. The milestone is really about **concurrency**: a coupon is the first
+genuinely contended finite resource here, and the acceptance criterion is that
+50 simultaneous redemptions of a 10-use coupon yield exactly 10. It does. A use
+is claimed by **one atomic conditional UPDATE**, not by read-check-write and not
+by optimistic locking — the naive version was built first on purpose and gave 50
+people a 10-use coupon, which is the evidence in ADR-0008. A redemption follows
+the **same lifecycle as an inventory reservation** (HELD → COMMITTED, or
+RELEASED), so the saga's existing compensation fires at the right moments — and
+to make that possible the saga now **announces `order.confirmed` and
+`order.cancelled`**, which it never did before. `pricing-service` therefore
+gained the outbox and consumer wiring that M8 deliberately left out.
 
 ---
 
@@ -278,12 +299,22 @@ cannot be exec'd into.
 
 ```bash
 npm run lint
-npm run test:all                    # 92 unit tests, no database needed
+npm run test:all                    # 95 unit tests, no database needed
 npm run gen:spec && npm run gen:types   # gen:spec needs the stack running
 bash scripts/scan-secrets.sh
 ```
 
-The 13 Playwright tests need the stack, the storefront on :3100, `stripe listen`
+M9's coupon concurrency test needs real Postgres and **skips itself** without
+one, which is why `test:all` stays database-free:
+
+```bash
+docker run -d --name coupon-test -e POSTGRES_PASSWORD=test   -e POSTGRES_DB=coupontest -p 15433:5432 postgres:16-alpine
+
+COUPON_TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:15433/coupontest   npm test --prefix apps/pricing-service
+```
+
+
+The 15 Playwright tests need the stack, the storefront on :3100, `stripe listen`
 running, **and the Stripe key exported**. Only the 2 payment tests need
 `stripe listen`; the other 11 (cart, pricing, browsing) run without it — without the last one the two payment
 tests fail with an error that looks like a code bug:
@@ -414,6 +445,50 @@ fires `@UpdateDateColumn`. In M7's abandonment sweep that would have made a
 week-old cart look freshly active the moment it was flagged; the flag is written
 with raw SQL to avoid it. Worth remembering for any future sweep.
 
+
+### Learned during M9 — newest, and two of them cost hours
+
+**`this.subQuery is not a function` almost certainly means a missing entity, not
+the two-copies typeorm bug.** If a service uses `@libs/outbox`, its
+`typeorm.config.ts` **must** list `OutboxEventEntity` and `ProcessedEventEntity`
+in every `entities:` array. Without them the DataSource has no metadata for
+`processed_events`, and `IdempotencyService.handleOnce` fails with that message
+— which reads exactly like the duplicate-typeorm trap above and is not. Time
+went into comparing typeorm versions across three services before the answer
+turned out to be two missing lines that cart-service has had since M7.
+
+**TypeORM's `query()` returns different shapes for INSERT and UPDATE.** Measured
+against Postgres 16:
+
+```
+SELECT                    -> [{ id }]        plain rows
+INSERT ... RETURNING      -> [{ id }]        plain rows
+UPDATE ... RETURNING      -> [[{ id }], 1]   rows AND affected count
+```
+
+Both mistakes are silent. Assuming the UPDATE shape for an INSERT made 50
+successful inserts look like conflicts; assuming the plain shape for an UPDATE
+made `rows[0].coupon_id` `undefined`, so `WHERE id = undefined` matched nothing
+and a release *appeared* to succeed while returning no use. There is a
+`returning()` helper in `coupons.service.ts` that handles both.
+
+**A unique-violation aborts the whole Postgres transaction.** Any compensating
+statement written to run afterwards in the same transaction will fail with
+"current transaction is aborted". Prefer `INSERT ... ON CONFLICT DO NOTHING
+RETURNING id` and branch on zero rows, rather than catching the error and trying
+to unwind.
+
+**The E2E suite exceeds the gateway's rate limit unless it is raised.** M8 added
+`RATE_LIMIT_MAX` / `RATE_LIMIT_TTL_MS`; `apps/api-gateway/.env` sets 2000
+locally. At the 100/min default a *different* test fails on each run, and once it
+surfaced as a `400` from pricing because a helper fed a 429 body's `undefined`
+id into a quote — the error appeared two services away from its cause.
+
+**Docker Desktop on this machine dies when the laptop sleeps.** It happened three
+times during M9: every container exits (RabbitMQ with 137), Neon connections
+drop, and the stack needs a cold restart. If something looks broken for no
+reason, run `docker compose ps -a` before debugging code.
+
 ---
 
 ## 6. Verification already done — do not redo
@@ -469,6 +544,25 @@ Stripe payment tests are unrun — see §9.
 tests; 5 → 9 with the cart suite). CI on GitHub is green.
 
 ---
+
+### Added by M9 — also do not redo
+
+| Scenario | Result |
+|---|---|
+| **50 parallel redemptions of a 10-use coupon** | **exactly 10 granted, 40 refused**, repeated 5 times |
+| The same test against naive read-check-write | **50 granted**, counter read 6 against 50 rows — the evidence in ADR-0008 |
+| Unlimited coupon, 50 parallel | all 50 granted, counter matches rows |
+| Replayed `order.created` (same order, twice) | one use claimed, not two |
+| Cancelled order | use returned; `used_count` back down, redemption `released` |
+| Same `order.cancelled` event twice | ignored — `processed_events` marker |
+| **New event id, same order** | **ignored — the status guard**, which a marker cannot catch |
+| Quote with a coupon code | discount applied and **no use consumed** |
+| Quote without it | coupon discounts stay out of the automatic set |
+| Bad code in the browser | basket still prices; message says *why*, not "invalid code" |
+
+**95 unit tests** (+5 concurrency tests that skip without a database) and
+**15 Playwright tests**, all green.
+
 
 ## 7. Deliberate decisions someone might otherwise "fix"
 
@@ -554,6 +648,34 @@ tests; 5 → 9 with the cart suite). CI on GitHub is green.
 
 ---
 
+### Added by M9 — full reasoning in ADR-0008
+
+- **A coupon use is claimed by one atomic conditional UPDATE**, not optimistic
+  locking, and not read-check-write. `IMPLEMENTATION_PLAN.md` asked for
+  optimistic locking; ADR-0008 explains why and shows the measurement. Do not
+  "simplify" the claim back into a read followed by a write.
+- **`coupons.version` is kept, but only for edits to the coupon itself** — two
+  admins changing `max_uses` at once. It is not what protects redemption.
+- **Quoting never redeems.** The cart page re-quotes constantly; a quote that
+  spent a use would empty a coupon by browsing. `POST /orders` is the only place
+  a use is claimed.
+- **Redemptions follow inventory's lifecycle** (HELD → COMMITTED / RELEASED)
+  because the problem is identical: a finite resource claimed against an order
+  that may never happen.
+- **`order.confirmed` and `order.cancelled` are leaf events.** Nothing drives the
+  saga from them. They exist so other services can react to how an order ended.
+- **No expiry sweep for held coupons.** An order whose reservation lapses *is*
+  cancelled, so inventory's existing 15-minute sweep already releases coupons
+  indirectly. A second sweep would be a second set of failure modes for nothing.
+- **The per-customer limit is best-effort**, enforced by a read. One customer
+  racing themselves could pass it twice; it cannot over-redeem the coupon,
+  because the atomic claim still holds the global line. The exact fix for the
+  `limit = 1` case is noted in ADR-0008.
+- **`pricing-service` has an `outbox` table it does not use.** It publishes
+  nothing yet; `processed_events` is what M9 needed. They arrive together
+  because they are one pattern, exactly as cart-service did in M7.
+
+
 ## 8. Deployment — done, with a caveat
 
 M6 was finished with Cloudflare Tunnel (`bash scripts/tunnel-up.sh`), not a
@@ -610,6 +732,11 @@ live one (`acct_1UAnEb…`), and the ids look alike — check the suffix. The
 interactive picker's `▶` is a cursor, not a selection: pressing Enter immediately
 re-confirms whatever row it started on, which is easy to do by accident.
 
+**M9 left two things deliberately undone**, both recorded in ADR-0008: the
+per-customer coupon limit is enforced by a read and is therefore best-effort
+(one customer racing themselves could pass it twice — it cannot over-redeem the
+coupon), and `pricing-service` has an `outbox` table nothing publishes to yet.
+
 **Roll the Stripe test secret key.** It was pasted into a chat transcript twice.
 Dashboard → Developers → API keys → Roll, then update
 `apps/payments-service/.env` and force-recreate the container. **Still not done
@@ -662,35 +789,44 @@ painful fast.
 
 ---
 
-## 10. The next milestone: M9 — coupons
+## 10. The next milestone: M10 — shipping
 
 From `docs/IMPLEMENTATION_PLAN.md` §3:
 
-> Coupon codes with usage limits and validity windows; **optimistic locking on
-> `coupons.version`**; `coupon_redemptions.order_id` unique; redemption released
-> when a saga compensates.
-> *Acceptance:* 50 parallel redemptions of a 10-use coupon yield exactly 10.
-> *This is the concurrency milestone — do not skip the load test.*
+> shipping-service; customer addresses; rate calculation by weight/zone;
+> shipment lifecycle `PENDING → DISPATCHED → DELIVERED`; consumes `order.paid`.
 
-What M8 leaves you that M9 will want:
+**Start by writing `docs/M10_SHIPPING_PLAN.md`** and having it reviewed, the way
+M7, M8 and M9 each began. Those plan documents are where the decisions get
+argued *before* code, and all three found something the implementation plan had
+not anticipated.
 
-- **`pricing-service` exists** on 3007 and already applies discounts. M8's are
-  *automatic promotions*: they match a basket, and applying one writes nothing.
-  A coupon is the opposite — a code, a limit, and a redemption row — which is
-  exactly the boundary. The always-NULL `discounts.code` column marks it.
-- **The service has no outbox, no consumers and no `processed_events`**, on
-  purpose. M9 is when that arrives, because a redemption must be released when a
-  saga compensates. `cart-service` is still the closest worked example of the
-  wiring.
-- **`quote.ts` is a pure function** and its stacking order (percentage, then
-  fixed, each against what is left) is already deterministic. A coupon slots into
-  that ordering rather than needing a new pipeline.
-- The load test is the deliverable. Optimistic locking that is never contended
-  proves nothing.
+What the last three milestones leave you:
 
-Two things to finish M8 first, both in §9: switch the Stripe CLI out of live
-mode, and roll the test key. The last M8 verification — a real card charged for
-a tax-inclusive total — is one `stripe listen` away once that is done.
+- **Addresses finally have a reason to exist.** M8 punted on them: the tax
+  destination travels on the request (`POST /pricing/quote` and `POST /orders`
+  both take an optional `destination`, falling back to a configured store
+  default). M10 is where a real shipping address becomes the thing that
+  populates that field. **Nothing inside pricing-service needs to change** — it
+  was built for this.
+- **`order.confirmed` already exists** as of M9. The plan says shipping consumes
+  `order.paid`; there is no such event, but `order.confirmed` is the fact it
+  means, published from the saga in the same transaction as the status change.
+- **A ninth Neon database** will be needed, plus the usual `.env` with a matching
+  `JWT_SECRET`, a `docker-compose.yml` block (copy pricing's, and note that
+  healthchecks here need `start_period: 90s`), and an entry in
+  `scripts/gen-api-spec.sh`.
+- **`pricing-service` is the newest worked example** of the standard shape,
+  including an outbox, a consumer and `processed_events`. Remember to register
+  `OutboxEventEntity` and `ProcessedEventEntity` in the DataSource — forgetting
+  that in M9 produced a baffling `this.subQuery is not a function`.
+- **Shipping cost will change the order total**, which means touching
+  `OrdersService.create()` and the frozen quote again. M8's precedent applies:
+  add columns with safe defaults, freeze the figure onto the order, and do not
+  recompute it on read.
+
+Money is integer minor units everywhere; rounding rules are in ADR-0007 and
+apply to shipping too.
 
 ---
 
