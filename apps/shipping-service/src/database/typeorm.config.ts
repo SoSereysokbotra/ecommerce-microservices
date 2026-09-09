@@ -3,6 +3,8 @@ import { resolve } from 'path';
 import { DataSource, DataSourceOptions } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { OutboxEventEntity, ProcessedEventEntity } from '@libs/outbox';
+import { ShippingZoneEntity } from '../modules/shipping/shipping-zone.entity';
+import { ShippingRateEntity } from '../modules/shipping/shipping-rate.entity';
 
 /**
  * Every entity this service owns, in one place.
@@ -17,7 +19,7 @@ import { OutboxEventEntity, ProcessedEventEntity } from '@libs/outbox';
  * first commit even though nothing publishes or consumes yet, precisely because
  * forgetting them is the mistake this project has already made once.
  */
-const ENTITIES = [OutboxEventEntity, ProcessedEventEntity];
+const ENTITIES = [ShippingZoneEntity, ShippingRateEntity, OutboxEventEntity, ProcessedEventEntity];
 
 loadEnv({ path: resolve(process.cwd(), '../../.env') });
 loadEnv({ path: resolve(__dirname, '../../.env'), override: true });
