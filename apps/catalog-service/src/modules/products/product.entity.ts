@@ -34,6 +34,18 @@ export class ProductEntity {
   @Column({ length: 3 })
   currency: string;
 
+  /**
+   * Shipping weight in grams. Integer, for the same reason prices are integers:
+   * this number is compared against band boundaries and decides what a customer
+   * pays to have the thing delivered.
+   *
+   * Defaults to 0, which rates into the lightest band. A product nobody has
+   * weighed yet must still ship — see the M10 migration for why that is
+   * preferable to a nullable column.
+   */
+  @Column({ name: 'weight_grams', type: 'integer', default: 0 })
+  weightGrams: number;
+
   @Column({ name: 'category_id', type: 'uuid', nullable: true })
   categoryId?: string | null;
 

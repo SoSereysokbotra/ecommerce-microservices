@@ -33,6 +33,11 @@
           "slug": {
             "example": "black-t-shirt-medium",
             "type": "string"
+          },
+          "weightGrams": {
+            "default": 0,
+            "description": "Shipping weight in grams. Integer.",
+            "type": "number"
           }
         },
         "required": [
@@ -102,6 +107,10 @@
           "updatedAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "weightGrams": {
+            "description": "Shipping weight in grams. Zero until someone weighs it.",
+            "type": "number"
           }
         },
         "required": [
@@ -111,6 +120,7 @@
           "name",
           "priceMinor",
           "currency",
+          "weightGrams",
           "active",
           "createdAt",
           "updatedAt"
@@ -136,6 +146,10 @@
           },
           "priceMinor": {
             "description": "Integer minor units.",
+            "type": "number"
+          },
+          "weightGrams": {
+            "description": "Shipping weight in grams. Integer.",
             "type": "number"
           }
         },

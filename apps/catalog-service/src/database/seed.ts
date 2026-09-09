@@ -15,12 +15,20 @@ const CATEGORIES = [
   { slug: 'accessories', name: 'Accessories', description: 'Bags, stickers and cables' },
 ];
 
+/**
+ * `weightGrams` arrived in M10 — shipping rates by weight, and nothing in this
+ * project knew what anything weighed. The figures are realistic rather than
+ * round, and the sizes genuinely differ where the garment does, so a basket's
+ * weight is not a multiple of one number and the band boundary at 1000g gets
+ * crossed by plausible baskets rather than only by contrived ones.
+ */
 const PRODUCTS = [
   {
     sku: 'TSH-BLK-S',
     slug: 'black-tee-small',
     name: 'Black Tee (S)',
     priceMinor: 1999,
+    weightGrams: 165,
     category: 'apparel',
     description: 'Combed cotton, regular fit.',
   },
@@ -29,6 +37,7 @@ const PRODUCTS = [
     slug: 'black-tee-medium',
     name: 'Black Tee (M)',
     priceMinor: 1999,
+    weightGrams: 180,
     category: 'apparel',
     description: 'Combed cotton, regular fit.',
   },
@@ -37,6 +46,7 @@ const PRODUCTS = [
     slug: 'black-tee-large',
     name: 'Black Tee (L)',
     priceMinor: 1999,
+    weightGrams: 195,
     category: 'apparel',
     description: 'Combed cotton, regular fit.',
   },
@@ -45,6 +55,7 @@ const PRODUCTS = [
     slug: 'grey-hoodie-medium',
     name: 'Grey Hoodie (M)',
     priceMinor: 4950,
+    weightGrams: 620,
     category: 'apparel',
     description: 'Brushed fleece lining.',
   },
@@ -53,6 +64,7 @@ const PRODUCTS = [
     slug: 'grey-hoodie-large',
     name: 'Grey Hoodie (L)',
     priceMinor: 4950,
+    weightGrams: 660,
     category: 'apparel',
     description: 'Brushed fleece lining.',
   },
@@ -61,6 +73,7 @@ const PRODUCTS = [
     slug: 'navy-cap',
     name: 'Navy Cap',
     priceMinor: 2250,
+    weightGrams: 95,
     category: 'apparel',
     description: 'Six-panel, adjustable strap.',
   },
@@ -69,6 +82,7 @@ const PRODUCTS = [
     slug: 'white-mug',
     name: 'White Mug',
     priceMinor: 1250,
+    weightGrams: 400,
     category: 'drinkware',
     description: '325ml ceramic, dishwasher safe.',
   },
@@ -77,6 +91,7 @@ const PRODUCTS = [
     slug: 'black-mug',
     name: 'Black Mug',
     priceMinor: 1250,
+    weightGrams: 400,
     category: 'drinkware',
     description: '325ml ceramic, dishwasher safe.',
   },
@@ -85,6 +100,7 @@ const PRODUCTS = [
     slug: 'steel-bottle',
     name: 'Steel Bottle',
     priceMinor: 3400,
+    weightGrams: 340,
     category: 'drinkware',
     description: '750ml vacuum insulated.',
   },
@@ -93,6 +109,7 @@ const PRODUCTS = [
     slug: 'canvas-tote',
     name: 'Canvas Tote',
     priceMinor: 1800,
+    weightGrams: 220,
     category: 'accessories',
     description: 'Heavy cotton canvas.',
   },
@@ -101,6 +118,7 @@ const PRODUCTS = [
     slug: 'sticker-pack',
     name: 'Sticker Pack',
     priceMinor: 600,
+    weightGrams: 30,
     category: 'accessories',
     description: 'Ten vinyl stickers.',
   },
@@ -109,6 +127,7 @@ const PRODUCTS = [
     slug: 'usb-c-cable',
     name: 'USB-C Cable',
     priceMinor: 1400,
+    weightGrams: 90,
     category: 'accessories',
     description: 'Braided, 2 metres, 100W.',
   },

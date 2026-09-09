@@ -13,6 +13,7 @@ interface CatalogProductResponse {
   name: string;
   priceMinor: number;
   currency: string;
+  weightGrams: number;
   categoryId: string | null;
   active: boolean;
 }
@@ -29,6 +30,17 @@ export interface PricedProduct {
   name: string;
   priceMinor: number;
   currency: string;
+  /**
+   * Shipping weight in grams, added in M10.
+   *
+   * It arrives on a call this service already makes, which is the reason
+   * pricing is the right place to sum a basket's weight and ask shipping for a
+   * rate: it is already holding every product in the basket. Orders knows
+   * neither the weight nor the discounted subtotal without asking someone.
+   *
+   * Defaults to 0 for a product nobody has weighed — see the catalog migration.
+   */
+  weightGrams: number;
   /** Category **slug**, not id — see the note on `categorySlugs` below. */
   category: string | null;
 }
@@ -93,6 +105,11 @@ export class CatalogClient {
         name: product.name,
         priceMinor: product.priceMinor,
         currency: product.currency,
+        // `?? 0` rather than a bare read: a catalog that has not run the M10
+        // migration yet returns no such field, and `undefined` grams would
+        // propagate into the band comparison as NaN and silently select
+        // nothing. Zero is the same answer the column's default gives.
+        weightGrams: product.weightGrams ?? 0,
         category: product.categoryId ? (categorySlugs.get(product.categoryId) ?? null) : null,
       });
     }

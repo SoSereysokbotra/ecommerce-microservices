@@ -127,6 +127,11 @@ export interface components {
             sku: string;
             /** @example black-t-shirt-medium */
             slug: string;
+            /**
+             * @description Shipping weight in grams. Integer.
+             * @default 0
+             */
+            weightGrams: number;
         };
         PaginatedProductsDto: {
             data: components["schemas"]["ProductResponseDto"][];
@@ -148,6 +153,8 @@ export interface components {
             slug: string;
             /** Format: date-time */
             updatedAt: string;
+            /** @description Shipping weight in grams. Zero until someone weighs it. */
+            weightGrams: number;
         };
         UpdateProductDto: {
             active?: boolean;
@@ -157,6 +164,8 @@ export interface components {
             name?: string;
             /** @description Integer minor units. */
             priceMinor?: number;
+            /** @description Shipping weight in grams. Integer. */
+            weightGrams?: number;
         };
     };
     responses: never;

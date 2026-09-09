@@ -44,6 +44,13 @@ export class CreateProductDto {
   @Length(3, 3)
   currency: string;
 
+  @ApiPropertyOptional({ default: 0, description: 'Shipping weight in grams. Integer.' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  weightGrams?: number;
+
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(({ value }) => (value === '' ? null : value))
@@ -81,6 +88,13 @@ export class UpdateProductDto {
   @IsString()
   @Length(3, 3)
   currency?: string;
+
+  @ApiPropertyOptional({ description: 'Shipping weight in grams. Integer.' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  weightGrams?: number;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -127,6 +141,8 @@ export class ProductResponseDto {
   @ApiPropertyOptional({ nullable: true }) description?: string | null;
   @ApiProperty({ description: 'Integer minor units.' }) priceMinor: number;
   @ApiProperty() currency: string;
+  @ApiProperty({ description: 'Shipping weight in grams. Zero until someone weighs it.' })
+  weightGrams: number;
   @ApiPropertyOptional({ nullable: true }) categoryId?: string | null;
   @ApiProperty() active: boolean;
   @ApiProperty() createdAt: Date;
