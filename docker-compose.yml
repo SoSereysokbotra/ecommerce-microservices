@@ -240,9 +240,11 @@ services:
       - .:/app
       - pricing_service_node_modules:/app/apps/pricing-service/node_modules
     depends_on:
-      # No rabbitmq and no redis, unlike every other service here: pricing
-      # publishes nothing, consumes nothing and caches nothing. It reads prices
-      # and categories from catalog, and that is its only dependency.
+      # No redis — pricing caches nothing. RabbitMQ arrived in M9: a coupon
+      # redemption is state and must be released when its order is cancelled,
+      # which reaches this service as an event.
+      rabbitmq:
+        condition: service_healthy
       catalog-service:
         condition: service_healthy
     healthcheck:
