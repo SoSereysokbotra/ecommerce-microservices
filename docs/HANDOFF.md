@@ -156,7 +156,7 @@ PostgreSQL database. Nothing is reachable from a browser except the gateway.
 | orders-service | 3004 | Orders + **saga orchestrator** |
 | payments-service | 3005 | Stripe intents, webhooks, refunds |
 | cart-service | 3006 | Guest + signed-in carts, merge on login, abandonment sweep |
-| pricing-service | 3007 | Tax rules, automatic promotions, `POST /pricing/quote` |
+| pricing-service | 3007 | Tax rules, promotions, **coupons**, `POST /pricing/quote` |
 | storefront | 3100 | Next.js UI |
 
 Supporting: RabbitMQ (5672 / 15672), Redis (**6380** on the host, 6379 inside
@@ -536,9 +536,8 @@ promotions, placed as real orders through the gateway:
 | Six units at 600 in US-CA | **261**, not the 264 that per-line rounding gives |
 | Cart page across three regions | three different totals, each matching the API |
 
-All figures were computed by hand before being run. **92 unit tests** (55 → 92
-with M8's 37) and **13 Playwright tests** (9 → 13), of which 11 pass; the two
-Stripe payment tests are unrun — see §9.
+All figures were computed by hand before being run. The two Stripe payment tests
+were later run and pass; current totals are under "Added by M9" below.
 
 **55 unit tests and 9 Playwright E2E tests, all green** (39 → 55 with M7's merge
 tests; 5 → 9 with the cart suite). CI on GitHub is green.
