@@ -19,6 +19,8 @@ const US_CA: TaxRule[] = [
     category: null,
     rateBp: 725,
     pricesIncludeTax: false,
+    // California does not tax separately-stated carrier delivery.
+    shippingTaxable: false,
     name: 'California sales tax',
   },
 ];
@@ -30,6 +32,8 @@ const US_PA: TaxRule[] = [
     category: null,
     rateBp: 600,
     pricesIncludeTax: false,
+    // Pennsylvania does. The opposite of California, deliberately.
+    shippingTaxable: true,
     name: 'Pennsylvania sales tax',
   },
   {
@@ -38,6 +42,7 @@ const US_PA: TaxRule[] = [
     category: 'apparel',
     rateBp: 0,
     pricesIncludeTax: false,
+    shippingTaxable: true,
     name: 'Pennsylvania clothing exemption',
   },
 ];
@@ -49,6 +54,8 @@ const DE: TaxRule[] = [
     category: null,
     rateBp: 1900,
     pricesIncludeTax: true,
+    // Delivery is ancillary to the supply: goods' rate, inside the price.
+    shippingTaxable: true,
     name: 'German VAT',
   },
 ];
@@ -420,5 +427,208 @@ describe('computeQuote — invariants over many random baskets', () => {
         expect(line.taxableMinor).toBeGreaterThanOrEqual(0);
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M10 — delivery in the total
+//
+// Every figure below was computed by hand from the fixtures before it was run,
+// which is the method M8 used and the reason its rounding bug was caught rather
+// than blessed. The basket is the same one M8 argued about: 3 tees, 1 mug,
+// 2 cables, subtotal 10047.
+//
+// The rule being defended: **round once per tax rate**. Delivery joins the
+// group for its own rate rather than forming a private one, so a basket taxed
+// at 7.25% rounds 7.25% exactly once even though goods and postage are two
+// different kinds of thing.
+// ---------------------------------------------------------------------------
+
+describe('shipping in the quote', () => {
+  describe('US-CA — 7.25% on goods, delivery NOT taxable', () => {
+    // Goods:    10047 @ 725bp -> 10047 * 725 / 10000 = 728.4075 -> 728
+    // Delivery:   699 @   0bp -> 0, in its own explicit 0% group
+    // net = 10047 + 699 = 10746;  total = 10746 + 728 = 11474
+    const result = quote({ shipping: { costMinor: 699 } });
+
+    it('adds delivery to the total without taxing it', () => {
+      expect(result.shippingMinor).toBe(699);
+      expect(result.shippingTaxMinor).toBe(0);
+      expect(result.taxMinor).toBe(728);
+      expect(result.netMinor).toBe(10746);
+      expect(result.totalMinor).toBe(11474);
+    });
+
+    it('shows the untaxed delivery as an explicit 0% group, not as an absence', () => {
+      // Same choice M8 made for goods with no matching rule: an explicit 0% is
+      // inspectable, a silent absence is a bug that looks like a feature.
+      const zeroGroup = result.taxBreakdown.find((g) => g.rateBp === 0);
+      expect(zeroGroup).toMatchObject({ baseMinor: 699, taxMinor: 0 });
+    });
+
+    it('leaves the goods group untouched by delivery', () => {
+      expect(result.taxBreakdown.find((g) => g.rateBp === 725)).toMatchObject({
+        baseMinor: 10047,
+        taxMinor: 728,
+      });
+    });
+  });
+
+  describe('US-PA — 6%, apparel exempt, delivery IS taxable', () => {
+    // Lines:  tee 5997 @ 0bp (apparel exemption)
+    //         mug 1250 + cable 2800 = 4050 @ 600bp
+    // Delivery 599 is taxed at the GENERAL rule (600bp) — the apparel exemption
+    // says nothing about postage — so it joins the 600bp group:
+    //         base 4050 + 599 = 4649 -> 4649 * 600 / 10000 = 278.94 -> 279
+    // Allocating 279 across [1250, 2800, 599] by largest remainder:
+    //         75 + 168 + 35 = 278, one penny left, largest remainder is
+    //         delivery (4406/4649) -> delivery takes it -> 36
+    // net = 5997 + 4649 = 10646;  total = 10646 + 279 = 10925
+    const result = quote({
+      destination: { country: 'US', region: 'PA' },
+      shipping: { costMinor: 599 },
+    });
+
+    it('taxes delivery at the general rate, not the category rate', () => {
+      expect(result.shippingMinor).toBe(599);
+      expect(result.shippingTaxMinor).toBe(36);
+      expect(result.taxMinor).toBe(279);
+      expect(result.totalMinor).toBe(10925);
+    });
+
+    it('rounds the rate ONCE across goods and delivery together', () => {
+      // The point of joining an existing group rather than making a new one:
+      // there is only one 6% in Pennsylvania, so there is one 6% row and one
+      // rounding, whatever mixture of goods and postage produced the base.
+      const sixPercent = result.taxBreakdown.filter((g) => g.rateBp === 600);
+      expect(sixPercent).toHaveLength(1);
+      expect(sixPercent[0]).toMatchObject({ baseMinor: 4649, taxMinor: 279 });
+    });
+
+    it('keeps the apparel exemption at 0% with delivery kept out of it', () => {
+      expect(result.taxBreakdown.find((g) => g.rateBp === 0)).toMatchObject({
+        baseMinor: 5997,
+        taxMinor: 0,
+      });
+    });
+  });
+
+  describe('DE — 19% already inside the price, delivery included the same way', () => {
+    // One group, 1900bp inclusive: base 10047 + 899 = 10946
+    //   tax = 10946 * 1900 / 11900 = 1747.4... -> 1748   (backed OUT, not added)
+    //   net = 10946 - 1748 = 9198;  total = 9198 + 1748 = 10946
+    // Delivery's share of 1748, allocated across [5997, 1250, 2800, 899]: 143.
+    const result = quote({
+      destination: { country: 'DE', region: null },
+      shipping: { costMinor: 899 },
+    });
+
+    it('backs the tax OUT of the delivery price rather than adding it on top', () => {
+      // The whole inclusive/exclusive distinction, applied to postage for free:
+      // the total equals the gross of goods plus delivery, unchanged.
+      expect(result.shippingMinor).toBe(899);
+      expect(result.totalMinor).toBe(10946);
+      expect(result.taxMinor).toBe(1748);
+      expect(result.netMinor).toBe(9198);
+    });
+
+    it('gives delivery its share of the one rounded figure', () => {
+      expect(result.shippingTaxMinor).toBe(143);
+    });
+
+    it('puts goods and delivery in a single inclusive group', () => {
+      expect(result.taxBreakdown).toHaveLength(1);
+      expect(result.taxBreakdown[0]).toMatchObject({
+        rateBp: 1900,
+        pricesIncludeTax: true,
+        baseMinor: 10946,
+        taxMinor: 1748,
+      });
+    });
+  });
+
+  describe('invariants that hold whatever the region', () => {
+    const cases = [
+      { name: 'US-CA', over: { shipping: { costMinor: 699 } } },
+      {
+        name: 'US-PA',
+        over: { destination: { country: 'US', region: 'PA' }, shipping: { costMinor: 599 } },
+      },
+      {
+        name: 'DE',
+        over: { destination: { country: 'DE', region: null }, shipping: { costMinor: 899 } },
+      },
+    ];
+
+    it.each(cases)('$name: total equals net plus tax', ({ over }) => {
+      const result = quote(over);
+      expect(result.totalMinor).toBe(result.netMinor + result.taxMinor);
+    });
+
+    it.each(cases)('$name: the tax groups sum to taxMinor', ({ over }) => {
+      const result = quote(over);
+      const summed = result.taxBreakdown.reduce((a, g) => a + g.taxMinor, 0);
+      expect(summed).toBe(result.taxMinor);
+    });
+
+    it.each(cases)('$name: delivery tax is within the total tax', ({ over }) => {
+      const result = quote(over);
+      expect(result.shippingTaxMinor).toBeLessThanOrEqual(result.taxMinor);
+      expect(result.shippingTaxMinor).toBeGreaterThanOrEqual(0);
+    });
+
+    it.each(cases)('$name: per-line taxes plus delivery tax equal taxMinor', ({ over }) => {
+      // The property that makes a receipt add up. If delivery were rounded
+      // separately from its group, this is the assertion that would break.
+      const result = quote(over);
+      const lineTax = result.lines.reduce((a, l) => a + l.taxMinor, 0);
+      expect(lineTax + result.shippingTaxMinor).toBe(result.taxMinor);
+    });
+  });
+
+  describe('when delivery costs nothing', () => {
+    it('is identical to a quote with no shipping at all', () => {
+      // Free shipping must not invent a zero-base tax group or shift a penny.
+      const free = quote({ shipping: { costMinor: 0 } });
+      const none = quote();
+      expect(free).toEqual(none);
+      expect(free.shippingMinor).toBe(0);
+      expect(free.shippingTaxMinor).toBe(0);
+    });
+  });
+
+  describe('discounts and delivery', () => {
+    // Goods 10047, 10% off -> 1004.7 -> 1005. Taxable goods 9042.
+    //   goods tax  = 9042 * 725 / 10000 = 655.545 -> 656
+    //   delivery 699 untaxed in US-CA
+    //   net = 9042 + 699 = 9741;  total = 9741 + 656 = 10397
+    const result = quote({ discounts: [TEN_PERCENT], shipping: { costMinor: 699 } });
+
+    it('never discounts delivery', () => {
+      // "Free shipping over $50" is a rate rule, not a discount — it belongs in
+      // shipping-service's table. Keeping it out of discountMinor leaves that
+      // field meaning exactly one thing: money off the goods.
+      expect(result.discountMinor).toBe(1005);
+      expect(result.shippingMinor).toBe(699);
+      expect(result.taxMinor).toBe(656);
+      expect(result.totalMinor).toBe(10397);
+    });
+  });
+
+  describe('a destination with no tax rule at all', () => {
+    it('still prices delivery, at 0%', () => {
+      // KH has no rules. M8 decided no match is 0% rather than a rejection;
+      // delivery follows the goods into the same explicit 0% group.
+      const result = quote({
+        destination: { country: 'KH', region: null },
+        shipping: { costMinor: 1999 },
+      });
+      expect(result.taxMinor).toBe(0);
+      expect(result.shippingMinor).toBe(1999);
+      expect(result.shippingTaxMinor).toBe(0);
+      expect(result.totalMinor).toBe(10047 + 1999);
+      expect(result.taxBreakdown).toHaveLength(1);
+      expect(result.taxBreakdown[0]).toMatchObject({ rateBp: 0, baseMinor: 12046 });
+    });
   });
 });

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CatalogClient } from './catalog.client';
+import { ShippingClient } from './shipping.client';
 import { DiscountEntity } from './discount.entity';
 import { PricingController } from './pricing.controller';
 import { PricingService } from './pricing.service';
@@ -15,6 +16,6 @@ import { CouponsModule } from '../coupons/coupons.module';
 @Module({
   imports: [TypeOrmModule.forFeature([TaxRateEntity, DiscountEntity]), CouponsModule],
   controllers: [PricingController],
-  providers: [PricingService, CatalogClient],
+  providers: [PricingService, CatalogClient, ShippingClient],
 })
 export class PricingModule {}

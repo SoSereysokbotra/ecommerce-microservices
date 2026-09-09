@@ -50,6 +50,12 @@ export interface QuoteLineInput {
 }
 
 export interface TaxRule {
+  /**
+   * Whether this jurisdiction taxes delivery. Read only off the **general**
+   * rule for a destination (`category === null`) — delivery has no product
+   * category, so a category exemption says nothing about it.
+   */
+  shippingTaxable?: boolean;
   country: string;
   /** Null matches the whole country. */
   region: string | null;
@@ -92,6 +98,19 @@ export interface QuoteInput {
   lines: readonly QuoteLineInput[];
   taxRules: readonly TaxRule[];
   discounts: readonly DiscountRule[];
+  /**
+   * What delivery costs, when a rate has been chosen.
+   *
+   * Deliberately just a number. Whether it is *taxed* is not the caller's
+   * decision — it comes off the destination's general tax rule, in here, beside
+   * every other tax decision. A caller that could pass `taxable: false` could
+   * accidentally under-collect, and the rule already knows the answer.
+   *
+   * Absent or zero means no shipping line: a basket priced before an address is
+   * known, or a rate that came out free.
+   */
+  shipping?: { costMinor: number } | null;
+
   /** Passed in rather than read, so promotion windows are testable. */
   now: Date;
 }
@@ -140,6 +159,23 @@ export interface Quote {
   appliedDiscounts: AppliedDiscount[];
   taxBreakdown: TaxGroup[];
   taxMinor: number;
+  /**
+   * What delivery costs, as charged — the same convention as `subtotalMinor`.
+   * In an inclusive-tax region this already contains its VAT, exactly as the
+   * line prices do. Zero when no rate applied or the basket earned free
+   * shipping.
+   */
+  shippingMinor: number;
+
+  /**
+   * Shipping's share of `taxMinor`.
+   *
+   * An *allocation* of its tax group's single rounded figure, never rounded
+   * independently — the same rule the per-line tax figures follow, for the same
+   * reason (ADR-0007). Zero where the destination does not tax delivery.
+   */
+  shippingTaxMinor: number;
+
   /** The amount excluding tax. Differs from subtotal−discount only where prices include tax. */
   netMinor: number;
   /** What the customer pays. */
@@ -285,6 +321,17 @@ export function computeQuote(input: QuoteInput): Quote {
     pricesIncludeTax: boolean;
     baseMinor: number;
     lineIndexes: number[];
+    /**
+     * Delivery's contribution to this group, if delivery is taxed at this rate.
+     *
+     * Shipping joins an **existing** group rather than forming one of its own,
+     * which is the whole reason this is cheap. "Round once per tax rate group"
+     * (ADR-0007) means once per *rate*: giving shipping a private group at the
+     * same rate as the goods would round 7.25% twice in one basket and put two
+     * identical rows in the breakdown. It is one more weight in the allocation,
+     * not a second calculation.
+     */
+    shippingBaseMinor: number;
   }
   const groups = new Map<string, Group>();
   const lineRates: number[] = [];
@@ -296,11 +343,50 @@ export function computeQuote(input: QuoteInput): Quote {
     lineRates[i] = rateBp;
 
     const key = `${rateBp}:${pricesIncludeTax}`;
-    const group = groups.get(key) ?? { rateBp, pricesIncludeTax, baseMinor: 0, lineIndexes: [] };
+    const group = groups.get(key) ?? {
+      rateBp,
+      pricesIncludeTax,
+      baseMinor: 0,
+      lineIndexes: [],
+      shippingBaseMinor: 0,
+    };
     group.baseMinor += taxables[i];
     group.lineIndexes.push(i);
     groups.set(key, group);
   });
+
+  /**
+   * 3b. Delivery joins the group for its own rate.
+   *
+   * The rate comes from the destination's **general** rule — `category: null` —
+   * because delivery is not a product and has no category. Pennsylvania exempts
+   * clothing and still taxes the postage on it.
+   *
+   * A destination that does not tax delivery puts it in the 0% group, which is
+   * a real group and shows up in `taxBreakdown`. M8 made the same choice for
+   * goods with no matching rule: an explicit 0% is inspectable, a silent
+   * absence is a bug that looks like a feature.
+   */
+  const shippingMinor = input.shipping?.costMinor ?? 0;
+
+  if (shippingMinor > 0) {
+    const generalRule = resolveTaxRule(taxRules, destination, null);
+    const taxed = generalRule !== null && generalRule.shippingTaxable !== false;
+    const rateBp = taxed ? generalRule.rateBp : 0;
+    const pricesIncludeTax = taxed ? generalRule.pricesIncludeTax : false;
+
+    const key = `${rateBp}:${pricesIncludeTax}`;
+    const group = groups.get(key) ?? {
+      rateBp,
+      pricesIncludeTax,
+      baseMinor: 0,
+      lineIndexes: [],
+      shippingBaseMinor: 0,
+    };
+    group.baseMinor += shippingMinor;
+    group.shippingBaseMinor += shippingMinor;
+    groups.set(key, group);
+  }
 
   // 4. Round once per group, then divide that one figure across the group's
   //    lines. Never the other way round.
@@ -308,6 +394,7 @@ export function computeQuote(input: QuoteInput): Quote {
   const taxBreakdown: TaxGroup[] = [];
   let taxMinor = 0;
   let netMinor = 0;
+  let shippingTaxMinor = 0;
 
   for (const group of groups.values()) {
     const groupTax = group.pricesIncludeTax
@@ -315,12 +402,27 @@ export function computeQuote(input: QuoteInput): Quote {
         applyRate(group.baseMinor, group.rateBp, 10000 + group.rateBp)
       : applyRate(group.baseMinor, group.rateBp);
 
-    allocate(
-      groupTax,
-      group.lineIndexes.map((i) => taxables[i]),
-    ).forEach((part, n) => {
-      lineTaxes[group.lineIndexes[n]] = part;
+    /**
+     * Delivery is the last weight in the split, when it belongs to this group.
+     *
+     * So its tax is an **allocation** of the group's one rounded figure, on
+     * exactly the same footing as a line's — not a second rounding. The parts
+     * still sum to `groupTax` by construction, which is the property that makes
+     * per-line figures add back up to the total.
+     */
+    const weights = group.lineIndexes.map((i) => taxables[i]);
+    if (group.shippingBaseMinor > 0) {
+      weights.push(group.shippingBaseMinor);
+    }
+
+    const parts = allocate(groupTax, weights);
+
+    group.lineIndexes.forEach((lineIndex, n) => {
+      lineTaxes[lineIndex] = parts[n];
     });
+    if (group.shippingBaseMinor > 0) {
+      shippingTaxMinor += parts[group.lineIndexes.length];
+    }
 
     taxMinor += groupTax;
     netMinor += group.pricesIncludeTax ? group.baseMinor - groupTax : group.baseMinor;
@@ -358,6 +460,8 @@ export function computeQuote(input: QuoteInput): Quote {
     appliedDiscounts,
     taxBreakdown,
     taxMinor,
+    shippingMinor,
+    shippingTaxMinor,
     netMinor,
     totalMinor,
   };

@@ -29,6 +29,8 @@ const TAX_RATES = [
     category: null,
     rateBp: 725,
     pricesIncludeTax: false,
+    // California does not tax separately-stated delivery by common carrier.
+    shippingTaxable: false,
     name: 'California sales tax',
   },
   {
@@ -37,6 +39,9 @@ const TAX_RATES = [
     category: null,
     rateBp: 600,
     pricesIncludeTax: false,
+    // Pennsylvania does tax delivery when the goods are taxable. The opposite
+    // of California, which is the point of seeding both.
+    shippingTaxable: true,
     name: 'Pennsylvania sales tax',
   },
   {
@@ -47,6 +52,10 @@ const TAX_RATES = [
     category: 'apparel',
     rateBp: 0,
     pricesIncludeTax: false,
+    // Never consulted for shipping: only the general rule for a destination is,
+    // because delivery has no product category. Set to match the general PA
+    // rule so a future reader is not invited to infer meaning from a mismatch.
+    shippingTaxable: true,
     name: 'Pennsylvania clothing exemption',
   },
   {
@@ -55,6 +64,9 @@ const TAX_RATES = [
     category: null,
     rateBp: 1900,
     pricesIncludeTax: true,
+    // Delivery is ancillary to the supply: same rate as the goods, and the
+    // price already includes it.
+    shippingTaxable: true,
     name: 'German VAT',
   },
 ];

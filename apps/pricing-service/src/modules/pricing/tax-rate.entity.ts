@@ -54,6 +54,20 @@ export class TaxRateEntity {
   @Column({ name: 'prices_include_tax', type: 'boolean', default: false })
   pricesIncludeTax: boolean;
 
+  /**
+   * Whether this jurisdiction taxes delivery, added in M10.
+   *
+   * Only read off the **general** rule for a destination (`category IS NULL`),
+   * because delivery has no product category — Pennsylvania's clothing
+   * exemption says nothing about postage.
+   *
+   * California does not tax separately-stated carrier delivery; Pennsylvania
+   * does; Germany treats it as ancillary to the supply and taxes it at the
+   * goods' rate, inside the price. Not derivable from `rateBp`, hence a column.
+   */
+  @Column({ name: 'shipping_taxable', type: 'boolean', default: true })
+  shippingTaxable: boolean;
+
   /** Human label, shown on the storefront's tax line. */
   @Column()
   name: string;

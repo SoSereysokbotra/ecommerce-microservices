@@ -154,6 +154,8 @@ export interface components {
             customerId?: string;
             destination?: components["schemas"]["DestinationDto"];
             items: components["schemas"]["QuoteLineDto"][];
+            /** @example standard */
+            shippingRateCode?: string;
         };
         DestinationDto: {
             /**
@@ -216,13 +218,46 @@ export interface components {
             lines: components["schemas"]["QuoteLineResponseDto"][];
             /** @description The amount excluding tax. */
             netMinor: number;
+            shipping?: components["schemas"]["QuoteShippingResponseDto"] | null;
+            /** @description Delivery as charged, same convention as subtotalMinor — in an inclusive-tax region it already contains its VAT. Zero when free or unpriced. */
+            shippingMinor: number;
+            /** @description Delivery’s share of taxMinor: an allocation of its tax group’s single rounded figure, never rounded on its own. */
+            shippingTaxMinor: number;
             /** @description Before any discount or tax. */
             subtotalMinor: number;
             /** @description One entry per tax rate in the basket. Tax is rounded once per group, and this is that rounding made visible. */
             taxBreakdown: components["schemas"]["TaxGroupResponseDto"][];
             taxMinor: number;
-            /** @description What the customer pays. */
+            /** @description What the customer pays. Includes shipping from M10. */
             totalMinor: number;
+        };
+        QuoteShippingResponseDto: {
+            /** @description Cheapest first. */
+            options: components["schemas"]["ShippingOptionResponseDto"][];
+            /** @description True when a requested shippingRateCode is not on offer for this basket. */
+            requestedCodeUnavailable: boolean;
+            /** @description The option folded into totalMinor. Cheapest, unless one was requested. */
+            selectedCode?: Record<string, never> | null;
+            /** @description Summed from the basket’s product weights. */
+            weightGrams: number;
+            /**
+             * @description Null when no zone covers this destination — the shop does not ship there.
+             * @example US-CA
+             */
+            zone?: Record<string, never> | null;
+        };
+        ShippingOptionResponseDto: {
+            /** @example standard */
+            code: string;
+            /** @description What this option costs this basket. Zero when free applied. */
+            costMinor: number;
+            currency: string;
+            /** @description True when a free-shipping threshold zeroed a real price. */
+            freeApplied: boolean;
+            /** @description The band price before any threshold. */
+            listPriceMinor: number;
+            /** @example Standard (3–5 days) */
+            name: string;
         };
         TaxGroupResponseDto: {
             /** @description Sum of the group’s taxable amounts, exact. */

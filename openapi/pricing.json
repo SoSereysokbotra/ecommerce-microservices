@@ -38,6 +38,10 @@
               "$ref": "#/components/schemas/QuoteLineDto"
             },
             "type": "array"
+          },
+          "shippingRateCode": {
+            "example": "standard",
+            "type": "string"
           }
         },
         "required": [
@@ -218,6 +222,22 @@
             "description": "The amount excluding tax.",
             "type": "number"
           },
+          "shipping": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/QuoteShippingResponseDto"
+              }
+            ],
+            "nullable": true
+          },
+          "shippingMinor": {
+            "description": "Delivery as charged, same convention as subtotalMinor — in an inclusive-tax region it already contains its VAT. Zero when free or unpriced.",
+            "type": "number"
+          },
+          "shippingTaxMinor": {
+            "description": "Delivery’s share of taxMinor: an allocation of its tax group’s single rounded figure, never rounded on its own.",
+            "type": "number"
+          },
           "subtotalMinor": {
             "description": "Before any discount or tax.",
             "type": "number"
@@ -233,7 +253,7 @@
             "type": "number"
           },
           "totalMinor": {
-            "description": "What the customer pays.",
+            "description": "What the customer pays. Includes shipping from M10.",
             "type": "number"
           }
         },
@@ -246,8 +266,82 @@
           "appliedDiscounts",
           "taxBreakdown",
           "taxMinor",
+          "shippingMinor",
+          "shippingTaxMinor",
           "netMinor",
           "totalMinor"
+        ],
+        "type": "object"
+      },
+      "QuoteShippingResponseDto": {
+        "properties": {
+          "options": {
+            "description": "Cheapest first.",
+            "items": {
+              "$ref": "#/components/schemas/ShippingOptionResponseDto"
+            },
+            "type": "array"
+          },
+          "requestedCodeUnavailable": {
+            "description": "True when a requested shippingRateCode is not on offer for this basket.",
+            "type": "boolean"
+          },
+          "selectedCode": {
+            "description": "The option folded into totalMinor. Cheapest, unless one was requested.",
+            "nullable": true,
+            "type": "object"
+          },
+          "weightGrams": {
+            "description": "Summed from the basket’s product weights.",
+            "type": "number"
+          },
+          "zone": {
+            "description": "Null when no zone covers this destination — the shop does not ship there.",
+            "example": "US-CA",
+            "nullable": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "weightGrams",
+          "options",
+          "requestedCodeUnavailable"
+        ],
+        "type": "object"
+      },
+      "ShippingOptionResponseDto": {
+        "properties": {
+          "code": {
+            "example": "standard",
+            "type": "string"
+          },
+          "costMinor": {
+            "description": "What this option costs this basket. Zero when free applied.",
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "freeApplied": {
+            "description": "True when a free-shipping threshold zeroed a real price.",
+            "type": "boolean"
+          },
+          "listPriceMinor": {
+            "description": "The band price before any threshold.",
+            "type": "number"
+          },
+          "name": {
+            "example": "Standard (3–5 days)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "costMinor",
+          "freeApplied",
+          "listPriceMinor",
+          "currency"
         ],
         "type": "object"
       },

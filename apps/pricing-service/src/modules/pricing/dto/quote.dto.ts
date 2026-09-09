@@ -70,6 +70,21 @@ export class CreateQuoteDto {
   couponCode?: string;
 
   /**
+   * Which delivery service level to price in — 'standard', 'express'.
+   *
+   * Omitted, the **cheapest** available is used. A code that is not on offer
+   * for this basket (express dropped out because the basket got heavier, and
+   * the storefront still held the code) also falls back to the cheapest, and
+   * the response says so via `shipping.requestedCodeUnavailable` rather than
+   * failing the quote.
+   */
+  @ApiPropertyOptional({ example: 'standard' })
+  @IsOptional()
+  @IsString()
+  @Length(1, 32)
+  shippingRateCode?: string;
+
+  /**
    * Set by orders-service so per-customer coupon limits can be checked. Guests
    * quoting from the cart page have no id, and simply do not get that check.
    */
@@ -122,6 +137,42 @@ export class QuoteCouponResponseDto {
   rejectedBecause?: string | null;
 }
 
+export class ShippingOptionResponseDto {
+  @ApiProperty({ example: 'standard' }) code: string;
+  @ApiProperty({ example: 'Standard (3–5 days)' }) name: string;
+  @ApiProperty({ description: 'What this option costs this basket. Zero when free applied.' })
+  costMinor: number;
+  @ApiProperty({ description: 'True when a free-shipping threshold zeroed a real price.' })
+  freeApplied: boolean;
+  @ApiProperty({ description: 'The band price before any threshold.' }) listPriceMinor: number;
+  @ApiProperty() currency: string;
+}
+
+export class QuoteShippingResponseDto {
+  @ApiPropertyOptional({
+    nullable: true,
+    example: 'US-CA',
+    description: 'Null when no zone covers this destination — the shop does not ship there.',
+  })
+  zone: string | null;
+
+  @ApiProperty({ description: 'Summed from the basket’s product weights.' }) weightGrams: number;
+
+  @ApiProperty({ type: [ShippingOptionResponseDto], description: 'Cheapest first.' })
+  options: ShippingOptionResponseDto[];
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'The option folded into totalMinor. Cheapest, unless one was requested.',
+  })
+  selectedCode: string | null;
+
+  @ApiProperty({
+    description: 'True when a requested shippingRateCode is not on offer for this basket.',
+  })
+  requestedCodeUnavailable: boolean;
+}
+
 export class QuoteResponseDto {
   @ApiProperty() currency: string;
   @ApiProperty({ type: DestinationDto }) destination: DestinationDto;
@@ -137,8 +188,21 @@ export class QuoteResponseDto {
   })
   taxBreakdown: TaxGroupResponseDto[];
   @ApiProperty() taxMinor: number;
+  @ApiProperty({
+    description:
+      'Delivery as charged, same convention as subtotalMinor — in an inclusive-tax region it already contains its VAT. Zero when free or unpriced.',
+  })
+  shippingMinor: number;
+  @ApiProperty({
+    description:
+      'Delivery’s share of taxMinor: an allocation of its tax group’s single rounded figure, never rounded on its own.',
+  })
+  shippingTaxMinor: number;
   @ApiProperty({ description: 'The amount excluding tax.' }) netMinor: number;
-  @ApiProperty({ description: 'What the customer pays.' }) totalMinor: number;
+  @ApiProperty({ description: 'What the customer pays. Includes shipping from M10.' })
+  totalMinor: number;
   @ApiPropertyOptional({ type: QuoteCouponResponseDto, nullable: true })
   coupon?: QuoteCouponResponseDto | null;
+  @ApiPropertyOptional({ type: QuoteShippingResponseDto, nullable: true })
+  shipping?: QuoteShippingResponseDto | null;
 }

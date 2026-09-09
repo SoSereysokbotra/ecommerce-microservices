@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { CatalogClient } from './catalog.client';
+import { ShippingClient, type ShippingOption } from './shipping.client';
 import { CouponsService, type CouponRejection } from '../coupons/coupons.service';
 import { DiscountEntity } from './discount.entity';
 import { TaxRateEntity } from './tax-rate.entity';
@@ -23,10 +24,24 @@ export interface QuoteCoupon {
   rejectedBecause: CouponRejection | null;
 }
 
+/** What delivery options this basket has, and which one is priced into the total. */
+export interface QuoteShipping {
+  /** Null when no zone covers the destination — the shop does not ship there. */
+  zone: string | null;
+  weightGrams: number;
+  /** Every service level, cheapest first. The storefront's rate picker. */
+  options: ShippingOption[];
+  /** The one folded into `totalMinor`. Null when nothing ships there. */
+  selectedCode: string | null;
+  /** True when the caller named a code that is not on offer for this basket. */
+  requestedCodeUnavailable: boolean;
+}
+
 /** A quote, with the presentation fields the calculator deliberately ignores. */
 export interface QuoteView extends ReturnType<typeof computeQuote> {
   lines: (ReturnType<typeof computeQuote>['lines'][number] & { sku: string; name: string })[];
   coupon: QuoteCoupon | null;
+  shipping: QuoteShipping | null;
 }
 
 /**
@@ -45,6 +60,7 @@ export class PricingService {
     @InjectRepository(TaxRateEntity) private readonly taxRates: Repository<TaxRateEntity>,
     @InjectRepository(DiscountEntity) private readonly discounts: Repository<DiscountEntity>,
     private readonly catalog: CatalogClient,
+    private readonly shipping: ShippingClient,
     private readonly config: ConfigService,
     private readonly coupons: CouponsService,
   ) {}
@@ -106,7 +122,7 @@ export class PricingService {
       }
     }
 
-    const quote = computeQuote({
+    const priceable = {
       currency,
       destination,
       lines,
@@ -115,12 +131,51 @@ export class PricingService {
       // Read once, here, and passed in — so the calculator stays a pure
       // function of its arguments and promotion windows are testable.
       now: new Date(),
-    });
+    };
+
+    /**
+     * Priced twice, deliberately.
+     *
+     * A free-shipping threshold is measured against the **discounted**
+     * subtotal — what the shopper is actually spending — and that number does
+     * not exist until the promotions have been applied. So: price the goods,
+     * ask shipping what delivery costs for that basket, then price again with
+     * the answer folded in.
+     *
+     * There is no fixpoint to worry about. Shipping cost never feeds back into
+     * the discounts: order-level promotions allocate across line subtotals and
+     * `minSubtotalMinor` is checked against the goods subtotal, neither of which
+     * the second pass changes. The first pass's `discountMinor` is final.
+     *
+     * `computeQuote` is a pure function over a dozen lines of integer
+     * arithmetic, so the second pass costs nothing worth optimising — and it is
+     * skipped entirely when delivery is free or unpriced.
+     */
+    const goodsOnly = computeQuote(priceable);
+
+    const shipping = await this.shippingFor(
+      input,
+      destination,
+      lines,
+      products,
+      goodsOnly.subtotalMinor - goodsOnly.discountMinor,
+      correlationId,
+    );
+
+    const selectedOption = shipping?.options.find((o) => o.code === shipping.selectedCode) ?? null;
+    const shippingCostMinor = selectedOption?.costMinor ?? 0;
+
+    const quote =
+      shippingCostMinor > 0
+        ? computeQuote({ ...priceable, shipping: { costMinor: shippingCostMinor } })
+        : goodsOnly;
 
     this.logger.log(
       `Quoted ${lines.length} line(s) for ${destination.country}` +
         `${destination.region ? `-${destination.region}` : ''}: ` +
         `subtotal ${quote.subtotalMinor}, discount ${quote.discountMinor}, ` +
+        `shipping ${quote.shippingMinor}` +
+        `${shipping?.selectedCode ? ` (${shipping.selectedCode}, ${shipping.weightGrams}g)` : ''}, ` +
         `tax ${quote.taxMinor}, total ${quote.totalMinor} [${correlationId ?? '-'}]`,
     );
 
@@ -143,6 +198,56 @@ export class PricingService {
             rejectedBecause: couponRejection,
           }
         : null,
+      shipping,
+    };
+  }
+
+  /**
+   * What delivery costs for this basket, or null if nothing was asked.
+   *
+   * Weight is summed here rather than in shipping-service because this is where
+   * the products already are: `pricedProducts` fetched every one of them a
+   * moment ago. Sending shipping a weight rather than a basket also keeps it
+   * ignorant of catalog, which is why it needs no HTTP client of its own.
+   *
+   * A requested service level that is not on offer — express dropped out
+   * because the basket got heavier, and the storefront still held the code —
+   * falls back to the cheapest and says so, rather than failing the quote. A
+   * cart page that goes blank because a stale radio button is worse than one
+   * that quietly quotes standard and tells you why.
+   */
+  private async shippingFor(
+    input: CreateQuoteDto,
+    destination: Destination,
+    lines: QuoteLineInput[],
+    products: Awaited<ReturnType<CatalogClient['pricedProducts']>>,
+    discountedSubtotalMinor: number,
+    correlationId?: string,
+  ): Promise<QuoteShipping | null> {
+    const weightGrams = lines.reduce(
+      (total, line) => total + (products.get(line.productId)?.weightGrams ?? 0) * line.qty,
+      0,
+    );
+
+    const rates = await this.shipping.rates(
+      {
+        country: destination.country,
+        region: destination.region,
+        weightGrams,
+        subtotalMinor: discountedSubtotalMinor,
+      },
+      correlationId,
+    );
+
+    const requested = input.shippingRateCode?.trim().toLowerCase();
+    const match = requested ? rates.options.find((o) => o.code === requested) : undefined;
+
+    return {
+      zone: rates.zone,
+      weightGrams: rates.weightGrams,
+      options: rates.options,
+      selectedCode: match?.code ?? rates.cheapestCode,
+      requestedCodeUnavailable: requested !== undefined && match === undefined,
     };
   }
 
@@ -176,6 +281,7 @@ function toTaxRule(row: TaxRateEntity): TaxRule {
     category: row.category,
     rateBp: row.rateBp,
     pricesIncludeTax: row.pricesIncludeTax,
+    shippingTaxable: row.shippingTaxable,
     name: row.name,
   };
 }
