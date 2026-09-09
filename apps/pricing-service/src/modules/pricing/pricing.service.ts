@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { CatalogClient } from './catalog.client';
+import { CouponsService, type CouponRejection } from '../coupons/coupons.service';
 import { DiscountEntity } from './discount.entity';
 import { TaxRateEntity } from './tax-rate.entity';
 import { CreateQuoteDto } from './dto/quote.dto';
@@ -14,9 +15,18 @@ import {
   type TaxRule,
 } from './quote';
 
+/** What a coupon code did to this basket, and if nothing, why. */
+export interface QuoteCoupon {
+  code: string;
+  applied: boolean;
+  amountMinor: number;
+  rejectedBecause: CouponRejection | null;
+}
+
 /** A quote, with the presentation fields the calculator deliberately ignores. */
 export interface QuoteView extends ReturnType<typeof computeQuote> {
   lines: (ReturnType<typeof computeQuote>['lines'][number] & { sku: string; name: string })[];
+  coupon: QuoteCoupon | null;
 }
 
 /**
@@ -36,6 +46,7 @@ export class PricingService {
     @InjectRepository(DiscountEntity) private readonly discounts: Repository<DiscountEntity>,
     private readonly catalog: CatalogClient,
     private readonly config: ConfigService,
+    private readonly coupons: CouponsService,
   ) {}
 
   async quote(input: CreateQuoteDto, correlationId?: string): Promise<QuoteView> {
@@ -59,19 +70,48 @@ export class PricingService {
 
     // Only this country's rules. The resolver picks the most specific match
     // among them, so narrowing further here would be doing its job badly.
+    //
+    // `code: IsNull()` is load-bearing: a coupon's discount row lives in the
+    // same table, and without this filter every coupon would apply to everyone
+    // automatically — a discount nobody had to ask for, which is the one thing
+    // a coupon is not.
     const [taxRules, discounts] = await Promise.all([
       this.taxRates.find({ where: { country: destination.country } }),
-      this.discounts.find({ where: { active: true } }),
+      this.discounts.find({ where: { active: true, code: IsNull() } }),
     ]);
 
     const currency = [...products.values()][0]?.currency ?? 'USD';
+
+    /**
+     * A coupon, if one was typed.
+     *
+     * **Quoting never redeems.** The cart page re-quotes on every quantity
+     * change, so a quote that consumed a use would empty a ten-use coupon by
+     * browsing. The use is claimed later, once by `POST /orders`, through
+     * `CouponsService.hold`.
+     *
+     * A code that is refused does not fail the quote: the basket still has a
+     * price, and the shopper needs to see it alongside the reason their code
+     * did not apply.
+     */
+    let coupon: { code: string; discount: DiscountRule } | null = null;
+    let couponRejection: CouponRejection | null = null;
+
+    if (input.couponCode) {
+      const resolved = await this.coupons.resolve(input.couponCode, input.customerId);
+      if (resolved.ok) {
+        coupon = { code: resolved.coupon.code, discount: toDiscountRule(resolved.discount) };
+      } else {
+        couponRejection = resolved.reason;
+      }
+    }
 
     const quote = computeQuote({
       currency,
       destination,
       lines,
       taxRules: taxRules.map(toTaxRule),
-      discounts: discounts.map(toDiscountRule),
+      discounts: [...discounts.map(toDiscountRule), ...(coupon ? [coupon.discount] : [])],
       // Read once, here, and passed in — so the calculator stays a pure
       // function of its arguments and promotion windows are testable.
       now: new Date(),
@@ -90,6 +130,19 @@ export class PricingService {
         const product = products.get(line.productId)!;
         return { ...line, sku: product.sku, name: product.name };
       }),
+      // What the shopper needs to know about the code they typed: whether it
+      // applied, what it took off, and if not, *why* not. "Invalid code" for
+      // every case is the version people complain about.
+      coupon: input.couponCode
+        ? {
+            code: input.couponCode.trim().toUpperCase(),
+            applied: coupon !== null,
+            amountMinor: coupon
+              ? (quote.appliedDiscounts.find((d) => d.id === coupon.discount.id)?.amountMinor ?? 0)
+              : 0,
+            rejectedBecause: couponRejection,
+          }
+        : null,
     };
   }
 

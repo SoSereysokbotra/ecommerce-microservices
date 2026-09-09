@@ -2,6 +2,7 @@ import { config as loadEnv } from 'dotenv';
 import { resolve } from 'path';
 import { DataSource, DataSourceOptions } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
+import { OutboxEventEntity, ProcessedEventEntity } from '@libs/outbox';
 import { TaxRateEntity } from '../modules/pricing/tax-rate.entity';
 import { DiscountEntity } from '../modules/pricing/discount.entity';
 import { CouponEntity } from '../modules/coupons/coupon.entity';
@@ -70,7 +71,18 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
       username: DB_USER,
       password: DB_PASSWORD,
       database: DB_NAME,
-      entities: [TaxRateEntity, DiscountEntity, CouponEntity, CouponRedemptionEntity],
+      entities: [
+        TaxRateEntity,
+        DiscountEntity,
+        CouponEntity,
+        CouponRedemptionEntity,
+        // M9: the consumer writes a processed_events marker in the same
+        // transaction as the effect. Without these registered the DataSource has no
+        // metadata for that table and `manager.insert` fails with the deeply
+        // unhelpful "this.subQuery is not a function".
+        OutboxEventEntity,
+        ProcessedEventEntity,
+      ],
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
       synchronize: false,
       logging: !isProduction,
@@ -91,7 +103,18 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
       username: parsed.username || 'postgres',
       password: parsed.password || localPassword,
       database: parsed.pathname.replace(/^\//, ''),
-      entities: [TaxRateEntity, DiscountEntity, CouponEntity, CouponRedemptionEntity],
+      entities: [
+        TaxRateEntity,
+        DiscountEntity,
+        CouponEntity,
+        CouponRedemptionEntity,
+        // M9: the consumer writes a processed_events marker in the same
+        // transaction as the effect. Without these registered the DataSource has no
+        // metadata for that table and `manager.insert` fails with the deeply
+        // unhelpful "this.subQuery is not a function".
+        OutboxEventEntity,
+        ProcessedEventEntity,
+      ],
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
       synchronize: false,
       logging: !isProduction,
@@ -105,7 +128,18 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
   return {
     type: 'postgres',
     url: DATABASE_URL,
-    entities: [TaxRateEntity, DiscountEntity, CouponEntity, CouponRedemptionEntity],
+    entities: [
+        TaxRateEntity,
+        DiscountEntity,
+        CouponEntity,
+        CouponRedemptionEntity,
+        // M9: the consumer writes a processed_events marker in the same
+        // transaction as the effect. Without these registered the DataSource has no
+        // metadata for that table and `manager.insert` fails with the deeply
+        // unhelpful "this.subQuery is not a function".
+        OutboxEventEntity,
+        ProcessedEventEntity,
+      ],
     migrations: [__dirname + '/migrations/*{.ts,.js}'],
     synchronize: false,
     logging: !isProduction,

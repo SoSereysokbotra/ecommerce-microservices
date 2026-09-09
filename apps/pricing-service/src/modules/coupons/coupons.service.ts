@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
+import { CouponEntity } from './coupon.entity';
+import { DiscountEntity } from '../pricing/discount.entity';
 
 export type CouponRejection =
   | 'not_found'
@@ -60,6 +62,54 @@ export class CouponsService {
   private readonly logger = new Logger(CouponsService.name);
 
   constructor(private readonly dataSource: DataSource) {}
+
+  /**
+   * Look a code up and decide whether it *would* apply. Writes nothing.
+   *
+   * This is what quoting uses, and the distinction from `hold()` is the whole
+   * design: a cart page re-quotes on every keystroke, so resolving must be free.
+   * The counter is only touched once, by the order.
+   *
+   * Because it writes nothing, its answer can be stale by the time an order is
+   * placed — the last use may go to someone else in between. That is fine and
+   * expected: `hold()` is the authority, and it re-checks atomically. This
+   * exists to give the shopper a price and a reason, not a guarantee.
+   */
+  async resolve(
+    code: string,
+    customerId?: string,
+  ): Promise<
+    | { ok: true; coupon: { id: string; code: string }; discount: DiscountEntity }
+    | { ok: false; reason: CouponRejection }
+  > {
+    const normalised = code.trim().toUpperCase();
+
+    const coupon = await this.dataSource.getRepository(CouponEntity).findOne({
+      where: { code: normalised },
+      relations: { discount: true },
+    });
+
+    if (!coupon) return { ok: false, reason: 'not_found' };
+    if (!coupon.active || !coupon.discount?.active) return { ok: false, reason: 'inactive' };
+
+    const now = new Date();
+    if (coupon.startsAt && now < coupon.startsAt) return { ok: false, reason: 'not_started' };
+    if (coupon.endsAt && now > coupon.endsAt) return { ok: false, reason: 'expired' };
+    if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) {
+      return { ok: false, reason: 'exhausted' };
+    }
+
+    if (customerId && coupon.perCustomerLimit !== null) {
+      const [{ n }] = await this.dataSource.query(
+        `SELECT count(*)::int AS n FROM coupon_redemptions
+          WHERE coupon_id = $1 AND customer_id = $2 AND status <> 'released'`,
+        [coupon.id, customerId],
+      );
+      if (n >= coupon.perCustomerLimit) return { ok: false, reason: 'per_customer_limit' };
+    }
+
+    return { ok: true, coupon: { id: coupon.id, code: coupon.code }, discount: coupon.discount };
+  }
 
   /**
    * Claim one use of a coupon for an order.

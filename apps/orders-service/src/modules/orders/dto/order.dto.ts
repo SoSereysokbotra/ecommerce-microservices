@@ -53,6 +53,17 @@ export class CreateOrderDto {
   @ValidateNested()
   @Type(() => OrderDestinationDto)
   destination?: OrderDestinationDto;
+
+  /**
+   * A coupon code. Optional, and unlike a quote, placing an order **claims a
+   * use** — pricing holds it against this order's id, and the saga gives it
+   * back if the order is later cancelled.
+   */
+  @ApiPropertyOptional({ example: 'SAVE10USES' })
+  @IsOptional()
+  @IsString()
+  @Length(1, 64)
+  couponCode?: string;
 }
 
 export class OrderItemResponseDto {

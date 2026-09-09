@@ -58,6 +58,25 @@ export class CreateQuoteDto {
   @ValidateNested()
   @Type(() => DestinationDto)
   destination?: DestinationDto;
+
+  /**
+   * A coupon code the shopper typed. Optional, and **never redeemed here** —
+   * quoting is free and repeatable; the use is claimed once by `POST /orders`.
+   */
+  @ApiPropertyOptional({ example: 'SAVE10USES' })
+  @IsOptional()
+  @IsString()
+  @Length(1, 64)
+  couponCode?: string;
+
+  /**
+   * Set by orders-service so per-customer coupon limits can be checked. Guests
+   * quoting from the cart page have no id, and simply do not get that check.
+   */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  customerId?: string;
 }
 
 // --- Response ------------------------------------------------------------
@@ -92,6 +111,17 @@ export class AppliedDiscountResponseDto {
   @ApiProperty({ description: 'Integer minor units.' }) amountMinor: number;
 }
 
+export class QuoteCouponResponseDto {
+  @ApiProperty() code: string;
+  @ApiProperty({ description: 'Whether it actually came off this basket.' }) applied: boolean;
+  @ApiProperty({ description: 'Integer minor units.' }) amountMinor: number;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Why it did not apply: expired, exhausted, per_customer_limit, and so on.',
+  })
+  rejectedBecause?: string | null;
+}
+
 export class QuoteResponseDto {
   @ApiProperty() currency: string;
   @ApiProperty({ type: DestinationDto }) destination: DestinationDto;
@@ -109,4 +139,6 @@ export class QuoteResponseDto {
   @ApiProperty() taxMinor: number;
   @ApiProperty({ description: 'The amount excluding tax.' }) netMinor: number;
   @ApiProperty({ description: 'What the customer pays.' }) totalMinor: number;
+  @ApiPropertyOptional({ type: QuoteCouponResponseDto, nullable: true })
+  coupon?: QuoteCouponResponseDto | null;
 }

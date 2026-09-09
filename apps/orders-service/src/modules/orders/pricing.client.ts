@@ -34,12 +34,26 @@ export interface Quote {
   taxMinor: number;
   netMinor: number;
   totalMinor: number;
+  coupon?: QuoteCoupon | null;
 }
 
 export interface QuoteRequest {
   items: { productId: string; qty: number }[];
   destination?: { country: string; region?: string };
+  couponCode?: string;
+  customerId?: string;
 }
+
+/** What a coupon code did to the basket, as pricing reports it. */
+export interface QuoteCoupon {
+  code: string;
+  applied: boolean;
+  amountMinor: number;
+  rejectedBecause: string | null;
+}
+
+export type HoldResult =
+  { ok: true; couponId: string; amountMinor: number } | { ok: false; reason: string };
 
 /**
  * Asks pricing-service what a basket costs.
@@ -105,6 +119,57 @@ export class PricingClient {
         `Could not price this order right now: ${describe(error)}`,
       );
     }
+  }
+
+  /**
+   * Claim one use of a coupon for this order.
+   *
+   * Called with an order id generated *before* the order row exists, so the
+   * hold and the order agree on it. Pricing refuses a second hold for the same
+   * order id, which makes a retry safe.
+   */
+  async holdCoupon(
+    input: { code: string; orderId: string; customerId: string; amountMinor: number },
+    correlationId?: string,
+  ): Promise<HoldResult> {
+    const base = this.config.get<string>('pricingServiceUrl');
+
+    try {
+      const response = await firstValueFrom(
+        this.http.post<HoldResult>(`${base}/api/v1/pricing/coupons/hold`, input, {
+          headers: correlationId ? { [CORRELATION_ID_HEADER]: correlationId } : {},
+          timeout: 5000,
+        }),
+      );
+      return response.data;
+    } catch (error) {
+      this.logger.warn(`coupon hold failed: ${describe(error)} [${correlationId ?? '-'}]`);
+      throw new ServiceUnavailableException(
+        `Could not apply that coupon right now: ${describe(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Give a claimed use back when the order it was claimed for never existed.
+   *
+   * The normal path is `order.cancelled`, consumed by pricing — but that needs
+   * an order, and this covers the window where the hold succeeded and the
+   * insert did not.
+   */
+  async releaseCoupon(orderId: string, correlationId?: string): Promise<void> {
+    const base = this.config.get<string>('pricingServiceUrl');
+
+    await firstValueFrom(
+      this.http.post(
+        `${base}/api/v1/pricing/coupons/release`,
+        { orderId },
+        {
+          headers: correlationId ? { [CORRELATION_ID_HEADER]: correlationId } : {},
+          timeout: 5000,
+        },
+      ),
+    );
   }
 }
 
