@@ -1,4 +1,4 @@
-import { allocate, applyRate, divRound } from '../src/modules/pricing/money';
+import { allocate, applyRate, convert, divRound } from '../src/modules/pricing/money';
 
 describe('divRound', () => {
   it('rounds half up', () => {
@@ -88,5 +88,157 @@ describe('allocate', () => {
         expect(allocate(total, weights).reduce((a, b) => a + b, 0)).toBe(total);
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M11 — converting between currencies
+//
+// Every figure below was computed by hand before it was run, the method M8 and
+// M10 used. Exponents are the point: USD and EUR have two decimal places, JPY
+// has none, and the arithmetic has to know.
+// ---------------------------------------------------------------------------
+
+/** USD → JPY at 150.0, held at 1e8 scale. */
+const USD_JPY = 15_000_000_000;
+/** JPY → USD at 0.00666667 — near enough the inverse of 150. */
+const JPY_USD = 666_667;
+/** USD → EUR at 0.925. */
+const USD_EUR = 92_500_000;
+/** Parity. */
+const ONE = 100_000_000;
+
+describe('convert', () => {
+  describe('to a currency with FEWER decimal places (USD -> JPY)', () => {
+    it('applies the exponent difference, not just the rate', () => {
+      // 1999 × 150 × 10^(0−2) = 2998.5 → half-up → 2999
+      // NOT 299_850 (dropping the exponent term) and NOT 29 (treating yen as
+      // having cents). Both are wrong by a factor of a hundred and both look
+      // perfectly plausible on a page.
+      expect(convert(1999, { rateE8: USD_JPY, fromExponent: 2, toExponent: 0 })).toBe(2999);
+    });
+
+    it('is exact when the arithmetic divides evenly', () => {
+      // 1000 × 150 / 100 = 1500
+      expect(convert(1000, { rateE8: USD_JPY, fromExponent: 2, toExponent: 0 })).toBe(1500);
+    });
+
+    it('rounds half-up, like every other rounding in this file', () => {
+      // 1 cent × 150 / 100 = 1.5 → 2 yen
+      expect(convert(1, { rateE8: USD_JPY, fromExponent: 2, toExponent: 0 })).toBe(2);
+    });
+  });
+
+  describe('to a currency with MORE decimal places (JPY -> USD)', () => {
+    it('gains the decimals back', () => {
+      // 3000 × 0.00666667 × 10^(2−0) = 2000.001 → 2000  ($20.00)
+      expect(convert(3000, { rateE8: JPY_USD, fromExponent: 0, toExponent: 2 })).toBe(2000);
+    });
+  });
+
+  describe('between currencies with the same exponent (USD -> EUR)', () => {
+    it('is just the rate', () => {
+      // 1999 × 0.925 = 1849.075 → 1849
+      expect(convert(1999, { rateE8: USD_EUR, fromExponent: 2, toExponent: 2 })).toBe(1849);
+    });
+
+    it('rounds a quarter down', () => {
+      // 1250 × 0.925 = 1156.25 → 1156. Half-up rounds .5 up; .25 is not .5.
+      expect(convert(1250, { rateE8: USD_EUR, fromExponent: 2, toExponent: 2 })).toBe(1156);
+    });
+  });
+
+  describe('parity', () => {
+    it('returns the input exactly, with nothing applied', () => {
+      expect(convert(1999, { rateE8: ONE, fromExponent: 2, toExponent: 2 })).toBe(1999);
+      expect(convert(0, { rateE8: ONE, fromExponent: 2, toExponent: 2 })).toBe(0);
+    });
+
+    it('still does the work when only the exponent differs', () => {
+      // Same "rate", different currencies: 1999 × 1 × 10^(0−2) = 19.99 → 20.
+      expect(convert(1999, { rateE8: ONE, fromExponent: 2, toExponent: 0 })).toBe(20);
+    });
+  });
+
+  describe('a round trip is NOT the identity, and that is not a bug', () => {
+    it('loses the sub-unit when the target currency has none', () => {
+      // $19.99 → 20 units of a zero-decimal currency → $20.00.
+      // The cent had nowhere to go. Asserting this stops someone "fixing" it
+      // later by rounding differently, which would only move the loss.
+      const there = convert(1999, { rateE8: ONE, fromExponent: 2, toExponent: 0 });
+      const back = convert(there, { rateE8: ONE, fromExponent: 0, toExponent: 2 });
+
+      expect(there).toBe(20);
+      expect(back).toBe(2000);
+      expect(back).not.toBe(1999);
+    });
+
+    it('does not come back through a buy and a sell rate', () => {
+      // Real rates are not exact inverses — 0.925 out, 1.08 back.
+      // 1999 → 1849 → 1849 × 1.08 = 1996.92 → 1997.
+      const there = convert(1999, { rateE8: USD_EUR, fromExponent: 2, toExponent: 2 });
+      const back = convert(there, { rateE8: 108_000_000, fromExponent: 2, toExponent: 2 });
+
+      expect(there).toBe(1849);
+      expect(back).toBe(1997);
+    });
+  });
+
+  describe('the reason this uses BigInt', () => {
+    it('handles an amount that would overflow plain Number arithmetic', () => {
+      // $100,000 × 150 = ¥15,000,000.
+      // The numerator here is 10^7 × 1.5e10 = 1.5e17, comfortably past
+      // MAX_SAFE_INTEGER (9.007e15). `divRound` would refuse this; BigInt is
+      // exact, so the answer is right rather than absent.
+      expect(convert(10_000_000, { rateE8: USD_JPY, fromExponent: 2, toExponent: 0 })).toBe(
+        15_000_000,
+      );
+    });
+
+    it('refuses a result too large to hand back as a Number', () => {
+      // The BigInt maths stays exact; returning it as a double would not.
+      // Better to refuse than to return a plausible wrong figure.
+      expect(() =>
+        convert(Number.MAX_SAFE_INTEGER - 1, {
+          rateE8: USD_JPY,
+          fromExponent: 0,
+          toExponent: 0,
+        }),
+      ).toThrow(/MAX_SAFE_INTEGER/);
+    });
+  });
+
+  describe('refuses input it cannot be right about', () => {
+    it('rejects a negative amount', () => {
+      expect(() => convert(-1, { rateE8: ONE, fromExponent: 2, toExponent: 2 })).toThrow(
+        /non-negative integer/,
+      );
+    });
+
+    it('rejects a non-integer amount', () => {
+      expect(() => convert(19.99, { rateE8: ONE, fromExponent: 2, toExponent: 2 })).toThrow(
+        /non-negative integer/,
+      );
+    });
+
+    it('rejects a zero or negative rate', () => {
+      expect(() => convert(1999, { rateE8: 0, fromExponent: 2, toExponent: 2 })).toThrow(
+        /positive integer/,
+      );
+      expect(() => convert(1999, { rateE8: -1, fromExponent: 2, toExponent: 2 })).toThrow(
+        /positive integer/,
+      );
+    });
+
+    it('rejects a negative exponent', () => {
+      expect(() => convert(1999, { rateE8: ONE, fromExponent: -1, toExponent: 2 })).toThrow(
+        /non-negative integer/,
+      );
+    });
+  });
+
+  it('converts zero to zero in every direction', () => {
+    expect(convert(0, { rateE8: USD_JPY, fromExponent: 2, toExponent: 0 })).toBe(0);
+    expect(convert(0, { rateE8: JPY_USD, fromExponent: 0, toExponent: 2 })).toBe(0);
   });
 });

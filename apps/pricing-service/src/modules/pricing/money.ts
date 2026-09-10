@@ -128,3 +128,99 @@ export function allocate(total: number, weights: readonly number[]): number[] {
 
   return parts;
 }
+
+/**
+ * The scale `fx_rates.rate_e8` is stored at: the rate multiplied by 10^8.
+ *
+ * An integer, for the same reason every amount here is an integer. 1.0 is
+ * `100_000_000`; USD→JPY at 150.25 is `15_025_000_000`.
+ */
+export const RATE_SCALE = 8;
+
+/**
+ * Convert an amount between currencies with possibly different exponents.
+ *
+ * ## Why this is the one function in the file that uses BigInt
+ *
+ * Every other operation here fits comfortably in a double. This one does not:
+ * the numerator is `amount × rate × 10^exponent`, and a rate held at 1e8 scale
+ * against a seven-digit amount is already 10^15-ish — close enough to
+ * `MAX_SAFE_INTEGER` (9.007e15) that a large basket in a weak currency trips
+ * the guards in `divRound`.
+ *
+ * `money.ts` bans **floating point**, not large integers. `BigInt` is exact
+ * integer arithmetic, so it keeps the discipline and removes the ceiling
+ * instead of documenting a range nobody will remember. It is confined to this
+ * function; the result comes back as a `number` and everything downstream is
+ * unchanged.
+ *
+ * ## The arithmetic
+ *
+ *     amountTo = amountFrom × rate × 10^(expTo − expFrom)
+ *
+ * The exponent term is what makes zero-decimal currencies work. Converting
+ * $19.99 (1999, exp 2) to yen at 150.0 is **not** `1999 × 150`:
+ *
+ *     1999 × 150 × 10^(0−2) = 2998.5  →  ¥2999
+ *
+ * Not ¥299_850, which is what dropping the exponent term gives, and not ¥29,
+ * which is what treating yen as having cents gives. Both of those are wrong by
+ * a factor of a hundred, and both look plausible on a page.
+ *
+ * ## Rounding
+ *
+ * Half-up, matching `divRound` — the commercial convention, and the one a
+ * customer checking by hand will use. Applied exactly once, here, which is what
+ * makes this the only FX rounding in a quote: `docs/M11_CURRENCY_PLAN.md` §4
+ * converts unit prices and then leaves `computeQuote` alone.
+ *
+ * ## Parity
+ *
+ * Converting a currency to itself returns the input **exactly**, with no
+ * arithmetic applied. A USD→USD rate row would be a second path to parity that
+ * could disagree with this one, which is why the migration forbids it.
+ */
+export function convert(
+  amountMinor: number,
+  input: { rateE8: number; fromExponent: number; toExponent: number },
+): number {
+  assertNonNegativeInteger(amountMinor, 'amountMinor');
+  assertNonNegativeInteger(input.fromExponent, 'fromExponent');
+  assertNonNegativeInteger(input.toExponent, 'toExponent');
+
+  if (!Number.isInteger(input.rateE8) || input.rateE8 <= 0) {
+    throw new Error(`rateE8 must be a positive integer, got ${input.rateE8}`);
+  }
+
+  // Nothing to do, and nothing to round. See "Parity" above.
+  if (input.rateE8 === 10 ** RATE_SCALE && input.fromExponent === input.toExponent) {
+    return amountMinor;
+  }
+
+  let numerator = BigInt(amountMinor) * BigInt(input.rateE8);
+  let denominator = 10n ** BigInt(RATE_SCALE);
+
+  // 10^(toExponent − fromExponent), as a ratio so it stays integral either way.
+  const exponentDelta = input.toExponent - input.fromExponent;
+  if (exponentDelta > 0) {
+    numerator *= 10n ** BigInt(exponentDelta);
+  } else if (exponentDelta < 0) {
+    denominator *= 10n ** BigInt(-exponentDelta);
+  }
+
+  // Half-up: add half the denominator before the truncating division. Both
+  // operands are non-negative, which is the condition that makes this half-up
+  // rather than "towards positive infinity" — the same note `divRound` carries.
+  const rounded = (numerator + denominator / 2n) / denominator;
+
+  if (rounded > BigInt(Number.MAX_SAFE_INTEGER)) {
+    // The BigInt maths was exact; it is handing it back as a `number` that
+    // would lose precision. Refuse rather than return a plausible wrong figure.
+    throw new Error(
+      `convert produced ${rounded}, which exceeds MAX_SAFE_INTEGER — ` +
+        `check the rate scale and the amount`,
+    );
+  }
+
+  return Number(rounded);
+}
