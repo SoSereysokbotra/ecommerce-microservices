@@ -50,6 +50,12 @@ export interface Order {
   subtotalMinor: number;
   discountMinor: number;
   taxMinor: number;
+  /** What delivery cost. Zero before M10, and zero when it was free. */
+  shippingMinor: number;
+  /** Which service level was charged. Null for orders placed before M10. */
+  shippingRateCode?: string | null;
+  /** Where it is going, frozen at checkout. */
+  shippingAddress?: Omit<Address, 'id' | 'isDefault' | 'label'> | null;
   totalMinor: number;
   /** Null on orders placed before M8, which were taxed nowhere. */
   taxCountry?: string | null;
@@ -151,6 +157,29 @@ export const COUPON_REJECTIONS: Record<string, string> = {
   already_redeemed: 'That code is already applied to this order.',
 };
 
+/** One delivery service level, priced for this basket. */
+export interface ShippingOption {
+  code: string;
+  name: string;
+  costMinor: number;
+  /** True when a free-shipping threshold zeroed an otherwise real price. */
+  freeApplied: boolean;
+  /** The price before the threshold, so the saving can be shown. */
+  listPriceMinor: number;
+  currency: string;
+}
+
+/** What delivery options a basket has, and which one is in the total. */
+export interface QuoteShipping {
+  /** Null when nothing ships to this destination. */
+  zone: string | null;
+  weightGrams: number;
+  options: ShippingOption[];
+  selectedCode: string | null;
+  /** True when a requested code is not on offer — express dropped out, say. */
+  requestedCodeUnavailable: boolean;
+}
+
 export interface Quote {
   currency: string;
   destination: { country: string; region: string | null };
@@ -160,9 +189,66 @@ export interface Quote {
   appliedDiscounts: AppliedDiscount[];
   taxBreakdown: TaxGroup[];
   taxMinor: number;
+  /** Delivery as charged. In an inclusive-tax region it already contains VAT. */
+  shippingMinor: number;
+  /** Delivery's share of taxMinor — already inside it, not additional. */
+  shippingTaxMinor: number;
   netMinor: number;
   totalMinor: number;
   coupon?: QuoteCoupon | null;
+  shipping?: QuoteShipping | null;
+}
+
+/** A saved delivery address. */
+export interface Address {
+  id: string;
+  label?: string | null;
+  recipient: string;
+  line1: string;
+  line2?: string | null;
+  city: string;
+  region?: string | null;
+  postcode?: string | null;
+  country: string;
+  phone?: string | null;
+  isDefault: boolean;
+}
+
+export type ShipmentStatus = 'pending' | 'dispatched' | 'delivered';
+
+export interface Shipment {
+  id: string;
+  orderId: string;
+  status: ShipmentStatus;
+  rateCode: string | null;
+  costMinor: number;
+  address: Omit<Address, 'id' | 'isDefault' | 'label'> | null;
+  carrier: string | null;
+  trackingCode: string | null;
+  dispatchedAt: string | null;
+  deliveredAt: string | null;
+}
+
+/** What each shipment state means to somebody waiting for a parcel. */
+export const SHIPMENT_LABELS: Record<ShipmentStatus, string> = {
+  pending: 'Preparing your parcel',
+  dispatched: 'On its way',
+  delivered: 'Delivered',
+};
+
+/** One line of an address, in the order a label is written. */
+export function formatAddress(address: Address | Shipment['address']): string {
+  if (!address) return '';
+  return [
+    address.recipient,
+    address.line1,
+    address.line2,
+    address.city,
+    [address.region, address.postcode].filter(Boolean).join(' '),
+    address.country,
+  ]
+    .filter((part) => part && String(part).trim() !== '')
+    .join(', ');
 }
 
 export interface TaxRate {

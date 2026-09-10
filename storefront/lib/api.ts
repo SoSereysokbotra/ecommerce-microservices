@@ -80,6 +80,40 @@ export function setDestination(destination: StoredDestination): void {
   window.localStorage.setItem(DESTINATION_KEY, JSON.stringify(destination));
 }
 
+/**
+ * Which saved address and delivery speed the shopper picked.
+ *
+ * Beside the destination, and for the same reason: the choice belongs to this
+ * browser between page loads. Unlike the destination it is not the source of
+ * truth for anything — the order sends the **address id**, and the server reads
+ * the address itself, so a stale or tampered value here cannot change where the
+ * order is taxed. See docs/M10_SHIPPING_PLAN.md §3.
+ */
+const SHIPPING_KEY = 'commerce.shipping';
+
+export interface StoredShipping {
+  addressId?: string | null;
+  rateCode?: string | null;
+}
+
+export function getShippingChoice(): StoredShipping {
+  if (typeof window === 'undefined') return {};
+  const raw = window.localStorage.getItem(SHIPPING_KEY);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as StoredShipping;
+    return typeof parsed === 'object' && parsed !== null ? parsed : {};
+  } catch {
+    window.localStorage.removeItem(SHIPPING_KEY);
+    return {};
+  }
+}
+
+export function setShippingChoice(choice: StoredShipping): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(SHIPPING_KEY, JSON.stringify(choice));
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,

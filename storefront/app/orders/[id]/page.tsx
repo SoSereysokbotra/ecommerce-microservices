@@ -3,7 +3,15 @@
 import { use, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import { formatMoney, type Order, type OrderStatus, type Payment } from '@/lib/types';
+import {
+  SHIPMENT_LABELS,
+  formatAddress,
+  formatMoney,
+  type Order,
+  type OrderStatus,
+  type Payment,
+  type Shipment,
+} from '@/lib/types';
 import { PaymentForm } from '@/components/PaymentForm';
 
 const TERMINAL: OrderStatus[] = ['confirmed', 'cancelled', 'failed'];
@@ -29,6 +37,7 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
 
   const [order, setOrder] = useState<Order | null>(null);
   const [payment, setPayment] = useState<Payment | null>(null);
+  const [shipment, setShipment] = useState<Shipment | null>(null);
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -45,6 +54,31 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
         } catch {
           /* not created yet */
         }
+      }
+
+      /**
+       * The parcel, once there is one.
+       *
+       * A shipment is created by shipping-service consuming `order.confirmed`,
+       * which happens moments *after* the order reaches that status — so a 404
+       * here is the normal state for the first second or two, not an error.
+       *
+       * Note this keeps polling after the order is terminal. The order is done;
+       * the delivery is not. That is the whole point of the milestone: a
+       * shipment outlives the request, and the saga, that created it.
+       */
+      if (o.status === 'confirmed') {
+        try {
+          const s = await api.get<Shipment>(`/shipping/shipments/${id}`);
+          setShipment(s);
+          if (s.status !== 'delivered') {
+            timer.current = setTimeout(poll, 5000);
+          }
+        } catch {
+          // Not created yet. Come back sooner than the delivery poll would.
+          timer.current = setTimeout(poll, 1500);
+        }
+        return;
       }
 
       if (!TERMINAL.includes(o.status)) {
@@ -136,6 +170,21 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
               </td>
             </tr>
           )}
+          {(order.shippingMinor > 0 || order.shippingRateCode) && (
+            <tr>
+              <td colSpan={3} className="muted">
+                Shipping
+                {order.shippingRateCode && (
+                  <span className="small muted"> ({order.shippingRateCode})</span>
+                )}
+              </td>
+              <td className="num" data-testid="order-shipping">
+                {order.shippingMinor === 0
+                  ? 'Free'
+                  : formatMoney(order.shippingMinor, order.currency)}
+              </td>
+            </tr>
+          )}
           <tr>
             <td colSpan={3} className="muted">
               Tax
@@ -163,6 +212,43 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
           </tr>
         </tbody>
       </table>
+
+      {/**
+        * The delivery.
+        *
+        * Rendered from shipping-service, not from the order, because the parcel
+        * is a different aggregate with a different lifetime — the order is
+        * finished at `confirmed`, and this goes on changing for days. That is
+        * also why the order never gains a `FULFILLED` status: delivery is a
+        * shipping fact, and letting a finished saga's order move again would be
+        * worse than reading it from the service that owns it.
+        */}
+      {order.status === 'confirmed' && (
+        <section style={{ marginTop: '2rem' }} data-testid="shipment">
+          <h2>Delivery</h2>
+          {shipment ? (
+            <div className="stack" style={{ gap: '0.35rem' }}>
+              <p>
+                <span className={`pill ${shipment.status === 'delivered' ? 'ok' : 'info'}`}>
+                  <span data-testid="shipment-status">{SHIPMENT_LABELS[shipment.status]}</span>
+                </span>
+              </p>
+              {shipment.address && (
+                <p className="small muted" data-testid="shipment-address">
+                  {formatAddress(shipment.address)}
+                </p>
+              )}
+              {shipment.trackingCode && (
+                <p className="small" data-testid="shipment-tracking">
+                  {shipment.carrier ?? 'Carrier'}: {shipment.trackingCode}
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="muted small">Preparing your parcel…</p>
+          )}
+        </section>
+      )}
 
       {order.status === 'awaiting_payment' && payment?.clientSecret && (
         <section style={{ marginTop: '2rem', maxWidth: 480 }}>

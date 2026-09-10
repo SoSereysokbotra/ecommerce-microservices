@@ -1,8 +1,19 @@
 # M10 — Shipping: implementation plan
 
 **Written:** 2026-09-09
-**Status:** Draft, for review. Nothing built yet.
+**Status:** Complete. All eight steps of §13 built, verified and committed.
+Decisions recorded in ADR-0009.
 **Milestone:** M10, fourth of R2
+
+> **Two departures from this plan, decided while building.**
+>
+> §8 sketched a `cancelled` shipment state and a browser-facing
+> `POST /shipping/rates`. Neither survived: nothing reaches `cancelled`, because
+> shipments are created from `order.confirmed` and there is no returns flow
+> until R4; and the storefront never calls shipping directly, because the quote
+> already carries the available options — so the gateway needs no guest route
+> for it. Both are the same test this project keeps applying: does anything
+> actually use it?
 
 Read §3, §4, §5 and §7 before agreeing to this.
 

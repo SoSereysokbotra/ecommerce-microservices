@@ -112,7 +112,13 @@ test.describe('pricing', () => {
     ];
 
     await page.goto('/cart');
-    const seen: number[] = [];
+    const seen: {
+      totalMinor: number;
+      taxMinor: number;
+      shippingMinor: number;
+      subtotalMinor: number;
+      discountMinor: number;
+    }[] = [];
 
     for (const [option, destination] of [
       ['US-CA', { country: 'US', region: 'CA' }],
@@ -129,18 +135,34 @@ test.describe('pricing', () => {
       await expect(page.getByTestId('cart-total')).toHaveText(money(expected.totalMinor));
       await expect(page.getByTestId('cart-tax')).toHaveText(money(expected.taxMinor));
 
-      seen.push(expected.totalMinor);
+      seen.push(expected);
     }
 
     const [ca, pa, de] = seen;
 
+    /**
+     * These compare **tax**, not totals.
+     *
+     * They used to compare `totalMinor`, which worked until M10 put delivery in
+     * the total: the zones charge different postage (California is the
+     * warehouse zone) and Pennsylvania taxes postage where California does not,
+     * so `pa < ca` flipped to 3760 > 3682 for reasons that have nothing to do
+     * with the clothing exemption these lines exist to defend. Comparing the
+     * figure the assertion is actually about survives the next milestone that
+     * adds a line to the total, too.
+     */
+
     // Pennsylvania exempts clothing, California taxes it. If these ever match,
     // the category dimension has stopped working.
-    expect(pa).toBeLessThan(ca);
+    expect(pa.taxMinor).toBeLessThan(ca.taxMinor);
 
-    // Germany's VAT is already inside the price, so its total is exactly the
-    // discounted subtotal — lower than anywhere that adds tax on top.
-    expect(de).toBeLessThan(pa);
+    // The same claim on the goods, with delivery taken back out.
+    expect(pa.totalMinor - pa.shippingMinor).toBeLessThan(ca.totalMinor - ca.shippingMinor);
+
+    // Germany's VAT is already inside the price, so adding it moves nothing:
+    // the total is exactly the discounted subtotal plus delivery.
+    expect(de.taxMinor).toBeGreaterThan(0);
+    expect(de.totalMinor).toBe(de.subtotalMinor - de.discountMinor + de.shippingMinor);
 
     // Read the amounts, not the rows: a promotion called "Drinkware 15%"
     // contributes its own digits to anything parsing the whole row's text.
@@ -148,7 +170,8 @@ test.describe('pricing', () => {
     const amounts = await page.getByTestId('cart-discount-amount').all();
     let discount = 0;
     for (const amount of amounts) discount += minorFromText(await amount.textContent());
-    expect(de).toBe(subtotal - discount);
+    const shipping = minorFromText(await page.getByTestId('cart-shipping').textContent());
+    expect(de.totalMinor).toBe(subtotal - discount + shipping);
   });
 
   test('inclusive tax is labelled differently from tax added on top', async ({ page }) => {
@@ -201,9 +224,20 @@ test.describe('pricing', () => {
     await expect(page.getByTestId('order-tax')).toHaveText(money(expected.taxMinor));
     await expect(page.getByTestId('order-total')).toHaveText(money(expected.totalMinor));
 
-    // Pennsylvania exempts clothing, so a tee is taxed at zero there. The order
-    // records the jurisdiction, which is what makes that checkable later.
-    await expect(page.getByTestId('order-tax')).toHaveText(money(0));
+    /**
+     * Pennsylvania exempts clothing, so the **shirt** is taxed at zero there.
+     *
+     * This used to assert the order's whole tax was zero, which was true until
+     * M10: Pennsylvania does tax delivery, so a tee shipped there now carries
+     * 6% on the postage and nothing on the garment. Asserting that all of the
+     * tax is the delivery's share says what the exemption actually claims, and
+     * would still fail if the exemption stopped working.
+     */
+    expect(expected.shippingTaxMinor).toBeGreaterThan(0);
+    expect(expected.taxMinor).toBe(expected.shippingTaxMinor);
+
+    // The order records the jurisdiction, which is what makes that checkable
+    // later — nothing recomputes it on read.
     await expect(page.getByText('US-PA')).toBeVisible();
   });
 

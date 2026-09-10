@@ -480,9 +480,42 @@ a saga compensates.
 > has to be **held** rather than spent at creation, mirroring inventory's
 > reserve/commit/release. Full design in `docs/M9_COUPONS_PLAN.md`.
 
-### M10 — Shipping
+### M10 — Shipping — **done (2026-09-10)**
 shipping-service; customer addresses; rate calculation by weight/zone; shipment
 lifecycle `PENDING → DISPATCHED → DELIVERED`; consumes `order.paid`.
+
+> **Corrections, from building it.** Four things this entry gets wrong or does
+> not anticipate. Full reasoning in ADR-0009 and `docs/M10_SHIPPING_PLAN.md`.
+>
+> **There is no `order.paid` event, and never has been.** Shipping consumes
+> **`order.confirmed`** — the same fact, emitted by the saga in the same
+> transaction as the status change, and added in M9 as a leaf event for exactly
+> this kind of consumer.
+>
+> **Customer addresses live in users-service, not shipping-service.** This entry
+> and `PROJECT_PLAN.md` §5 disagreed; §5 is right. An address book is a profile
+> concern, and shipping never reads it — it needs a *destination* to pick a
+> zone, and the order carries a frozen snapshot. The payoff is that when an
+> order names an address id, the tax jurisdiction is read server-side from a row
+> the customer owns rather than asserted by the browser, which closes the
+> placeholder M8 left.
+>
+> **Shipping cost goes through `POST /pricing/quote`, not around it.** Having
+> orders add a rate to a quote would re-create the two-implementations-of-a-total
+> defect that M8 spent a milestone removing. pricing calls shipping and folds the
+> rate in, so exactly one thing computes a total. It also means a quote is
+> computed twice — a free-shipping threshold is measured against the discounted
+> subtotal, which does not exist until promotions are applied.
+>
+> **Creating a shipment is not a saga step**, despite `PROJECT_PLAN.md` §7
+> numbering it step 9. Nothing has to be undone if it fails, so the saga still
+> ends at `CONFIRMED` and shipping reacts to the fact. There is consequently no
+> `FULFILLED` order status.
+>
+> Two things the entry did not mention at all: nothing in this project knew what
+> anything **weighed** (catalog gained `weight_grams`), and whether delivery is
+> **taxed** differs by jurisdiction — California does not tax it, Pennsylvania
+> does, Germany puts VAT inside the price.
 
 ### M11 — Multi-currency
 Minor units audited everywhere; `fx_rates` table with scheduled refresh; **the rate
@@ -593,3 +626,4 @@ Write one whenever a choice has a defensible alternative. Keep them short.
 | 0006 | Service boundaries — what was deliberately *not* split | M0 |
 | 0007 | Round once per tax group; pricing owns money, orders stops pricing | M8 |
 | 0008 | Atomic coupon claim over optimistic locking; hold/commit/release | M9 |
+| 0009 | Shipping through the quote; addresses in users; a shipment is not a saga step | M10 |

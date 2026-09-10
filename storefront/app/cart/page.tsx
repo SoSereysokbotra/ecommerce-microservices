@@ -3,13 +3,21 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { api, ApiError, getToken } from '@/lib/api';
+import {
+  api,
+  ApiError,
+  getShippingChoice,
+  getToken,
+  setShippingChoice,
+} from '@/lib/api';
 import { useCart } from '@/components/CartProvider';
 import { RegionSelector, useDestination } from '@/components/RegionSelector';
+import { AddressPicker } from '@/components/AddressPicker';
 import {
   COUPON_REJECTIONS,
   formatMoney,
   taxLabel,
+  type Address,
   type Order,
   type Product,
   type Quote,
@@ -39,6 +47,33 @@ export default function CartPage() {
   // re-price. Quoting never spends a use, but it does cost a round trip.
   const [couponDraft, setCouponDraft] = useState('');
   const [couponCode, setCouponCode] = useState<string | null>(null);
+
+  /**
+   * Where it is going, and how fast.
+   *
+   * `signedIn` is read with a lazy initializer rather than in an effect —
+   * `getToken()` touches localStorage, which does not exist during the server
+   * render, and React 19 rejects a synchronous setState inside an effect. Same
+   * pattern `useDestination` uses.
+   *
+   * A signed-in shopper picks a saved **address**, and the order sends its id
+   * so the server reads the country and region itself. A guest still picks a
+   * region, because they have no addresses and a cart page that cannot show a
+   * total is not a cart page.
+   */
+  const [signedIn] = useState(() => getToken() !== null);
+  const [addressId, setAddressId] = useState<string | null>(() => getShippingChoice().addressId ?? null);
+  const [address, setAddress] = useState<Address | null>(null);
+  const [rateCode, setRateCode] = useState<string | null>(() => getShippingChoice().rateCode ?? null);
+
+  /**
+   * How many saved addresses this shopper has, or null while unknown.
+   *
+   * A signed-in shopper with an **empty** address book still needs the region
+   * selector, or they cannot choose a destination at all — strictly worse than
+   * what M8 gave them. Null while loading, so neither control flashes.
+   */
+  const [addressCount, setAddressCount] = useState<number | null>(null);
 
   useEffect(() => {
     if (items.length === 0) return;
@@ -73,12 +108,22 @@ export default function CartPage() {
 
       setQuoting(true);
       try {
+        // A chosen address decides the destination; the region selector is the
+        // fallback for a guest. `POST /pricing/quote` takes no address id —
+        // pricing does not read the address book — so the country and region
+        // are sent here for display. The **order** sends the id, and the server
+        // resolves it, which is what makes the figure binding.
+        const quoteDestination = address
+          ? { country: address.country, ...(address.region ? { region: address.region } : {}) }
+          : destination
+            ? { country: destination.country, ...(destination.region ? { region: destination.region } : {}) }
+            : null;
+
         const next = await api.post<Quote>('/pricing/quote', {
           items: items.map((line) => ({ productId: line.productId, qty: line.qty })),
-          ...(destination
-            ? { destination: { country: destination.country, ...(destination.region ? { region: destination.region } : {}) } }
-            : {}),
+          ...(quoteDestination ? { destination: quoteDestination } : {}),
           ...(couponCode ? { couponCode } : {}),
+          ...(rateCode ? { shippingRateCode: rateCode } : {}),
         });
         // The basket may have changed while this was in flight; a stale quote
         // showing the wrong total is worse than showing none.
@@ -93,7 +138,7 @@ export default function CartPage() {
     return () => {
       cancelled = true;
     };
-  }, [items, destination, couponCode]);
+  }, [items, destination, address, couponCode, rateCode]);
 
   const priced = items.map((line) => ({ ...line, product: products[line.productId] }));
   const currency = quote?.currency ?? priced.find((line) => line.product)?.product?.currency ?? 'USD';
@@ -112,8 +157,18 @@ export default function CartPage() {
     try {
       const order = await api.post<Order>('/orders', {
         items: items.map((line) => ({ productId: line.productId, qty: line.qty })),
-        // Sent so the order is taxed where the shopper was shown it would be.
-        // Omitted when unset, and pricing applies the store default to both.
+        /**
+         * The address **id**, not its contents.
+         *
+         * Orders reads the address itself, so the country and region come from
+         * a row this customer owns rather than from a field this browser filled
+         * in. Since M8 the client asserted the tax jurisdiction because nothing
+         * knew a customer's address; this is where that stops.
+         */
+        ...(addressId ? { shippingAddressId: addressId } : {}),
+        ...(rateCode ? { shippingRateCode: rateCode } : {}),
+        // Still sent, and still the only option for a guest checkout or an
+        // account with no saved address. Ignored when an address id is given.
         ...(destination
           ? { destination: { country: destination.country, ...(destination.region ? { region: destination.region } : {}) } }
           : {}),
@@ -197,9 +252,69 @@ export default function CartPage() {
             </div>
           ))}
 
-          <div className="row" style={{ justifyContent: 'space-between' }}>
-            <RegionSelector value={destination} onChange={chooseDestination} />
-            {quoting && <span className="small muted">pricing…</span>}
+          <div className="stack" style={{ gap: '0.5rem' }}>
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <div className="stack" style={{ gap: '0.35rem' }}>
+                {signedIn && (
+                  <AddressPicker
+                    value={addressId}
+                    onCount={setAddressCount}
+                    onChange={(id, chosen) => {
+                      setAddressId(id);
+                      setAddress(chosen);
+                      setShippingChoice({ addressId: id, rateCode });
+                    }}
+                  />
+                )}
+                {/* Shown to a guest, and to anyone whose address book is still
+                    empty. Not a duplicate control: once an address exists it is
+                    what decides the destination, server-side. */}
+                {(!signedIn || addressCount === 0) && (
+                  <RegionSelector value={destination} onChange={chooseDestination} />
+                )}
+              </div>
+              {quoting && <span className="small muted">pricing…</span>}
+            </div>
+
+            {/* Delivery speed. Rendered from the quote, so the prices shown are
+                the ones already folded into the total — there is no second
+                place computing what postage costs. */}
+            {quote?.shipping && quote.shipping.options.length > 0 && (
+              <label className="row small" style={{ gap: '0.5rem', alignItems: 'center' }}>
+                <span className="muted">Delivery</span>
+                <select
+                  data-testid="rate-selector"
+                  value={quote.shipping.selectedCode ?? ''}
+                  onChange={(e) => {
+                    setRateCode(e.target.value);
+                    setShippingChoice({ addressId, rateCode: e.target.value });
+                  }}
+                >
+                  {quote.shipping.options.map((option) => (
+                    <option key={option.code} value={option.code}>
+                      {option.name} —{' '}
+                      {option.costMinor === 0 ? 'Free' : formatMoney(option.costMinor, currency)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            {/* Express dropped out because the basket got heavier, and this
+                browser was still holding the code. Say so rather than silently
+                charging for standard. */}
+            {quote?.shipping?.requestedCodeUnavailable && (
+              <p className="small crit" data-testid="rate-unavailable">
+                That delivery option is not available for this basket. We have used the cheapest
+                one instead.
+              </p>
+            )}
+
+            {quote?.shipping && quote.shipping.zone === null && (
+              <p className="small crit" data-testid="no-shipping">
+                We cannot deliver to that destination yet.
+              </p>
+            )}
           </div>
 
           <div className="stack" style={{ gap: '0.25rem' }}>
@@ -276,6 +391,17 @@ export default function CartPage() {
                 </span>
               </div>
             ))}
+
+            {quote?.shipping && (
+              <div className="row" style={{ justifyContent: 'space-between' }}>
+                <span className="muted">Shipping</span>
+                {/* "Free" rather than "$0.00": a shopper who qualified for free
+                    delivery should be told they did, not shown a zero. */}
+                <span className="price" data-testid="cart-shipping">
+                  {quote.shippingMinor === 0 ? 'Free' : formatMoney(quote.shippingMinor, currency)}
+                </span>
+              </div>
+            )}
 
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <span className="muted" data-testid="cart-tax-label">
