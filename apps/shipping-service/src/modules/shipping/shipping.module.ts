@@ -1,18 +1,22 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RatesController } from './rates.controller';
+import { ShipmentsController } from './shipments.controller';
 import { ShippingService } from './shipping.service';
+import { ShipmentsService } from './shipments.service';
+import { ShipmentEntity } from './shipment.entity';
 import { ShippingRateEntity } from './shipping-rate.entity';
 import { ShippingZoneEntity } from './shipping-zone.entity';
 
 /**
- * Step 3 of M10: rating only. Nothing is exported yet — the shipment lifecycle
- * and the `order.confirmed` consumer arrive at step 7 and will need
- * `ShippingService`, at which point this gains an `exports`.
+ * `ShipmentsService` is exported because the `order.confirmed` consumer in
+ * `events/` creates shipments through it — the same shape pricing's
+ * `CouponsModule` took in M9.
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([ShippingZoneEntity, ShippingRateEntity])],
-  controllers: [RatesController],
-  providers: [ShippingService],
+  imports: [TypeOrmModule.forFeature([ShippingZoneEntity, ShippingRateEntity, ShipmentEntity])],
+  controllers: [RatesController, ShipmentsController],
+  providers: [ShippingService, ShipmentsService],
+  exports: [ShipmentsService],
 })
 export class ShippingModule {}

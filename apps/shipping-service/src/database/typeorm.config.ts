@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { OutboxEventEntity, ProcessedEventEntity } from '@libs/outbox';
 import { ShippingZoneEntity } from '../modules/shipping/shipping-zone.entity';
 import { ShippingRateEntity } from '../modules/shipping/shipping-rate.entity';
+import { ShipmentEntity } from '../modules/shipping/shipment.entity';
 
 /**
  * Every entity this service owns, in one place.
@@ -19,7 +20,13 @@ import { ShippingRateEntity } from '../modules/shipping/shipping-rate.entity';
  * first commit even though nothing publishes or consumes yet, precisely because
  * forgetting them is the mistake this project has already made once.
  */
-const ENTITIES = [ShippingZoneEntity, ShippingRateEntity, OutboxEventEntity, ProcessedEventEntity];
+const ENTITIES = [
+  ShippingZoneEntity,
+  ShippingRateEntity,
+  ShipmentEntity,
+  OutboxEventEntity,
+  ProcessedEventEntity,
+];
 
 loadEnv({ path: resolve(process.cwd(), '../../.env') });
 loadEnv({ path: resolve(__dirname, '../../.env'), override: true });

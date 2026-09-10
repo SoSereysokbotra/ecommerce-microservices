@@ -53,6 +53,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/shipping/shipments/{id}/deliver": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a parcel delivered (staff) */
+        post: operations["ShipmentsController_deliver"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shipping/shipments/{id}/dispatch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Hand a parcel to the carrier (staff) */
+        post: operations["ShipmentsController_dispatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shipping/shipments/{orderId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The delivery for one of my orders */
+        get: operations["ShipmentsController_findByOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/shipping/zones": {
         parameters: {
             query?: never;
@@ -74,6 +125,12 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        DispatchShipmentDto: {
+            /** @example DHL */
+            carrier?: string;
+            /** @example JD0002210123456789 */
+            trackingCode?: string;
+        };
         RateDestinationDto: {
             /**
              * @description ISO 3166-1 alpha-2.
@@ -124,6 +181,38 @@ export interface components {
              * @example US-CA
              */
             zone?: Record<string, never> | null;
+        };
+        ShipmentAddressDto: {
+            city: string;
+            country: string;
+            line1: string;
+            line2?: Record<string, never> | null;
+            phone?: Record<string, never> | null;
+            postcode?: Record<string, never> | null;
+            recipient: string;
+            region?: Record<string, never> | null;
+        };
+        ShipmentResponseDto: {
+            address?: components["schemas"]["ShipmentAddressDto"] | null;
+            carrier?: Record<string, never> | null;
+            /** @description What delivery cost. Zero when it was free. */
+            costMinor: number;
+            /** Format: date-time */
+            createdAt: string;
+            customerId: string;
+            deliveredAt?: Record<string, never> | null;
+            dispatchedAt?: Record<string, never> | null;
+            id: string;
+            orderId: string;
+            /** @description Service level charged for. */
+            rateCode?: Record<string, never> | null;
+            /** @enum {string} */
+            status: "pending" | "dispatched" | "delivered";
+            trackingCode?: Record<string, never> | null;
+            /** Format: date-time */
+            updatedAt: string;
+            /** @description What it was rated on, in grams. */
+            weightG: number;
         };
     };
     responses: never;
@@ -187,6 +276,81 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RateResponseDto"];
+                };
+            };
+        };
+    };
+    ShipmentsController_deliver: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Set by the gateway from the verified JWT. */
+                "x-user-id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentResponseDto"];
+                };
+            };
+        };
+    };
+    ShipmentsController_dispatch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Set by the gateway from the verified JWT. */
+                "x-user-id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DispatchShipmentDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentResponseDto"];
+                };
+            };
+        };
+    };
+    ShipmentsController_findByOrder: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-user-id": string;
+            };
+            path: {
+                orderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentResponseDto"];
                 };
             };
         };

@@ -144,11 +144,29 @@ export class OrderSagaService {
         eventType: 'order.confirmed',
         aggregateId: order.id,
         correlationId: correlationId ?? saga.correlationId ?? undefined,
+        /**
+         * M10 added the shipping fields, and only because something needs them.
+         *
+         * The rule this project has used twice already: `order.created` kept a
+         * payload of ids and quantities in M8 because its only consumer was
+         * inventory, and adding money would have been payload for an imagined
+         * future. Here shipping-service consumes this event to create a
+         * shipment, and a shipment cannot be created without knowing where it
+         * is going. So the address travels on the fact.
+         *
+         * Sending it rather than having shipping call back for it also fixes
+         * the value at the moment of confirmation. A frozen address on a frozen
+         * event is the same address forever; a callback would read whatever the
+         * order says whenever the consumer happens to run.
+         */
         payload: {
           orderId: order.id,
           customerId: order.customerId,
           currency: order.currency,
           totalMinor: order.totalMinor,
+          shippingMinor: order.shippingMinor,
+          shippingRateCode: order.shippingRateCode ?? null,
+          shippingAddress: order.shippingAddress ?? null,
         },
       });
 

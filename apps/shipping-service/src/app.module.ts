@@ -2,28 +2,23 @@ import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CorrelationIdMiddleware } from '@libs/common';
+import { RabbitMQModule } from '@libs/rabbitmq';
+import { OutboxModule } from '@libs/outbox';
 import { AppController } from './app.controller';
 import { databaseConfig } from './config/database.config';
 import { typeOrmConfig } from './database/typeorm.config';
 import { ShippingModule } from './modules/shipping/shipping.module';
+import { EventsModule } from './events/events.module';
 
 /**
  * shipping-service — the eighth service, and the first thing in this project
  * that models something outliving the request that created it.
  *
- * Note what is **not** here yet: no `RabbitMQModule`, no `OutboxModule`. This is
- * the scaffold commit, and neither has anything to do until the shipment table
- * exists — an `OutboxModule` registered now would start a relay polling a table
- * no migration has created, and a queue binding would deliver `order.confirmed`
- * to a consumer that cannot yet write a shipment.
- *
- * They arrive at step 7 of `docs/M10_SHIPPING_PLAN.md` §13, which is the
- * milestone that needs them, following the same rule M8 and M9 followed: wiring
- * arrives when there is a reason for it, not in case there is one later.
- *
- * The entities for both are nevertheless already registered in
- * `typeorm.config.ts` — see the note there. Forgetting them is the mistake this
- * project has already made once, and registering an entity costs nothing.
+ * The events wiring arrived at step 7, which is the commit that needed it —
+ * the same rule M8 and M9 followed. Unlike cart-service and pricing-service,
+ * which took the outbox before they had anything to publish and said so, both
+ * halves are used here from the start: `order.confirmed` creates a shipment,
+ * and the lifecycle publishes `shipment.dispatched` / `shipment.delivered`.
  */
 @Module({
   imports: [
@@ -33,7 +28,19 @@ import { ShippingModule } from './modules/shipping/shipping.module';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => typeOrmConfig(config),
     }),
+    RabbitMQModule.forRoot({
+      url: process.env.RABBITMQ_URL ?? 'amqp://rabbitmq:5672',
+      exchange: process.env.RABBITMQ_EXCHANGE ?? 'commerce.events',
+      queue: process.env.RABBITMQ_QUEUE ?? 'shipping-service',
+      // Only the success terminal state. `order.cancelled` is deliberately not
+      // bound: a cancelled order never reached CONFIRMED, so it has no shipment
+      // to withdraw, and subscribing in order to do nothing would imply there
+      // was a compensation here. See ShipmentsService.
+      bindingKeys: ['order.confirmed'],
+    }),
+    OutboxModule.forRoot({ pollIntervalMs: 1000 }),
     ShippingModule,
+    EventsModule,
   ],
   controllers: [AppController],
 })

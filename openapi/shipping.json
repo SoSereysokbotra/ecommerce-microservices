@@ -1,6 +1,19 @@
 {
   "components": {
     "schemas": {
+      "DispatchShipmentDto": {
+        "properties": {
+          "carrier": {
+            "example": "DHL",
+            "type": "string"
+          },
+          "trackingCode": {
+            "example": "JD0002210123456789",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "RateDestinationDto": {
         "properties": {
           "country": {
@@ -108,6 +121,122 @@
           "options"
         ],
         "type": "object"
+      },
+      "ShipmentAddressDto": {
+        "properties": {
+          "city": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "line1": {
+            "type": "string"
+          },
+          "line2": {
+            "nullable": true,
+            "type": "object"
+          },
+          "phone": {
+            "nullable": true,
+            "type": "object"
+          },
+          "postcode": {
+            "nullable": true,
+            "type": "object"
+          },
+          "recipient": {
+            "type": "string"
+          },
+          "region": {
+            "nullable": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "recipient",
+          "line1",
+          "city",
+          "country"
+        ],
+        "type": "object"
+      },
+      "ShipmentResponseDto": {
+        "properties": {
+          "address": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ShipmentAddressDto"
+              }
+            ],
+            "nullable": true
+          },
+          "carrier": {
+            "nullable": true,
+            "type": "object"
+          },
+          "costMinor": {
+            "description": "What delivery cost. Zero when it was free.",
+            "type": "number"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "customerId": {
+            "type": "string"
+          },
+          "deliveredAt": {
+            "nullable": true,
+            "type": "object"
+          },
+          "dispatchedAt": {
+            "nullable": true,
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "orderId": {
+            "type": "string"
+          },
+          "rateCode": {
+            "description": "Service level charged for.",
+            "nullable": true,
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "dispatched",
+              "delivered"
+            ],
+            "type": "string"
+          },
+          "trackingCode": {
+            "nullable": true,
+            "type": "object"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "weightG": {
+            "description": "What it was rated on, in grams.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "orderId",
+          "customerId",
+          "status",
+          "costMinor",
+          "weightG",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -183,6 +312,141 @@
         "summary": "Price delivery of a basket by weight and destination",
         "tags": [
           "shipping"
+        ]
+      }
+    },
+    "/api/v1/shipping/shipments/{id}/deliver": {
+      "post": {
+        "operationId": "ShipmentsController_deliver",
+        "parameters": [
+          {
+            "description": "Set by the gateway from the verified JWT.",
+            "in": "header",
+            "name": "x-user-id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Mark a parcel delivered (staff)",
+        "tags": [
+          "shipments"
+        ]
+      }
+    },
+    "/api/v1/shipping/shipments/{id}/dispatch": {
+      "post": {
+        "operationId": "ShipmentsController_dispatch",
+        "parameters": [
+          {
+            "description": "Set by the gateway from the verified JWT.",
+            "in": "header",
+            "name": "x-user-id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatchShipmentDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Hand a parcel to the carrier (staff)",
+        "tags": [
+          "shipments"
+        ]
+      }
+    },
+    "/api/v1/shipping/shipments/{orderId}": {
+      "get": {
+        "operationId": "ShipmentsController_findByOrder",
+        "parameters": [
+          {
+            "description": "Set by the gateway from the verified JWT.",
+            "in": "header",
+            "name": "x-user-id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "orderId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "The delivery for one of my orders",
+        "tags": [
+          "shipments"
         ]
       }
     },
