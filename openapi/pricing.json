@@ -49,6 +49,30 @@
         ],
         "type": "object"
       },
+      "CurrencyResponseDto": {
+        "properties": {
+          "code": {
+            "description": "ISO 4217, upper case.",
+            "example": "JPY",
+            "type": "string"
+          },
+          "exponent": {
+            "description": "Decimal places: 10^exponent minor units to one major unit. Two for USD and EUR, ZERO for JPY — which is why this is data and not a constant.",
+            "example": 0,
+            "type": "number"
+          },
+          "name": {
+            "example": "Japanese Yen",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "exponent",
+          "name"
+        ],
+        "type": "object"
+      },
       "DestinationDto": {
         "properties": {
           "country": {
@@ -464,6 +488,31 @@
         "summary": "Validate a coupon code without redeeming it",
         "tags": [
           "coupons"
+        ]
+      }
+    },
+    "/api/v1/pricing/currencies": {
+      "get": {
+        "operationId": "CurrencyController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CurrencyResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Every currency on offer, with its minor-unit exponent",
+        "tags": [
+          "pricing"
         ]
       }
     },

@@ -9,6 +9,7 @@ import { databaseConfig } from './config/database.config';
 import { typeOrmConfig } from './database/typeorm.config';
 import { PricingModule } from './modules/pricing/pricing.module';
 import { CouponsModule } from './modules/coupons/coupons.module';
+import { CurrencyModule } from './modules/currency/currency.module';
 import { EventsModule } from './events/events.module';
 
 /**
@@ -58,6 +59,7 @@ import { EventsModule } from './events/events.module';
     OutboxModule.forRoot({ pollIntervalMs: 1000 }),
     PricingModule,
     CouponsModule,
+    CurrencyModule,
     EventsModule,
   ],
   controllers: [AppController],

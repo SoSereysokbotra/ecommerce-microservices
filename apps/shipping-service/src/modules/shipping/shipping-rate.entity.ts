@@ -66,6 +66,10 @@ export class ShippingRateEntity {
    * ADR-0009 records this because "free over $50" is ambiguous to everyone,
    * including whoever writes the next seed.
    *
+   * Denominated in this rate's own `currency` column — unlike pricing's two
+   * thresholds, which carry no currency at all. M11's audit
+   * (docs/M11_CURRENCY_PLAN.md §3) lists all three together.
+   *
    * A free rate is a `price_minor` of 0 on the quote, not a discount. Keeping it
    * out of `discountMinor` leaves that field meaning exactly one thing:
    * promotions and coupons against the goods.

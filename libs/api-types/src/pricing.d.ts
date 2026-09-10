@@ -71,6 +71,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pricing/currencies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every currency on offer, with its minor-unit exponent */
+        get: operations["CurrencyController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pricing/discounts": {
         parameters: {
             query?: never;
@@ -156,6 +173,20 @@ export interface components {
             items: components["schemas"]["QuoteLineDto"][];
             /** @example standard */
             shippingRateCode?: string;
+        };
+        CurrencyResponseDto: {
+            /**
+             * @description ISO 4217, upper case.
+             * @example JPY
+             */
+            code: string;
+            /**
+             * @description Decimal places: 10^exponent minor units to one major unit. Two for USD and EUR, ZERO for JPY — which is why this is data and not a constant.
+             * @example 0
+             */
+            exponent: number;
+            /** @example Japanese Yen */
+            name: string;
         };
         DestinationDto: {
             /**
@@ -350,6 +381,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    CurrencyController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrencyResponseDto"][];
+                };
             };
         };
     };

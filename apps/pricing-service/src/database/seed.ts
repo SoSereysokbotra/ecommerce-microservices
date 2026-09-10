@@ -4,6 +4,7 @@ import { AppDataSource } from './typeorm.config';
 import { TaxRateEntity } from '../modules/pricing/tax-rate.entity';
 import { DiscountEntity, DiscountScope, DiscountType } from '../modules/pricing/discount.entity';
 import { CouponEntity } from '../modules/coupons/coupon.entity';
+import { CurrencyEntity } from '../modules/currency/currency.entity';
 
 /**
  * Idempotent seed — safe to re-run. Matches on the natural key and updates
@@ -22,6 +23,21 @@ import { CouponEntity } from '../modules/coupons/coupon.entity';
  * multi-currency is M11 — doing FX here would mean solving zero-decimal
  * currencies in the same milestone as rounding.
  */
+/**
+ * The three currencies M11 is built around, and JPY is the one that matters.
+ *
+ * USD and EUR both have two decimal places, so a codebase that assumes
+ * hundredths handles them correctly by accident. **Yen has none**, which is what
+ * makes the exponent data rather than a constant — and what makes the
+ * acceptance criterion ("the same product priced in three currencies") worth
+ * checking rather than assuming.
+ */
+const CURRENCIES = [
+  { code: 'USD', exponent: 2, name: 'US Dollar' },
+  { code: 'EUR', exponent: 2, name: 'Euro' },
+  { code: 'JPY', exponent: 0, name: 'Japanese Yen' },
+];
+
 const TAX_RATES = [
   {
     country: 'US',
@@ -160,6 +176,17 @@ const COUPONS = [
 
 async function seed(): Promise<void> {
   await AppDataSource.initialize();
+
+  const currencies = AppDataSource.getRepository(CurrencyEntity);
+
+  for (const currency of CURRENCIES) {
+    const existing = await currencies.findOne({ where: { code: currency.code } });
+    await currencies.save(existing ? { ...existing, ...currency } : currencies.create(currency));
+    console.log(
+      `  currency ${currency.code}  exponent ${currency.exponent}  ` +
+        `(1000 minor units = ${(1000 / 10 ** currency.exponent).toFixed(currency.exponent)})`,
+    );
+  }
 
   const taxRates = AppDataSource.getRepository(TaxRateEntity);
   const discounts = AppDataSource.getRepository(DiscountEntity);

@@ -52,6 +52,15 @@ export class DiscountEntity {
   valueBp: number | null;
 
   /** Minor units, for `fixed`. Null for a percentage discount. */
+  /**
+   * A fixed amount off — "$5 off" — in the **store's base currency**.
+   *
+   * M11's audit (docs/M11_CURRENCY_PLAN.md §3) found this is one of only three
+   * money columns in the project with no currency anywhere near it, and all
+   * three are in this service. That is not a coincidence: they were written
+   * when there was one currency. Recorded here rather than left implicit,
+   * because a quote in another currency has to convert it.
+   */
   @Column({ name: 'value_minor', type: 'integer', nullable: true })
   valueMinor: number | null;
 
@@ -65,6 +74,10 @@ export class DiscountEntity {
   /**
    * Checked against the basket's original subtotal, not what an earlier
    * promotion left of it: "$5 off orders over $50" is a claim about the basket.
+   */
+  /**
+   * The threshold a basket must reach — "spend $50" — in the **store's base
+   * currency**. See `valueMinor` above; same audit, same reason.
    */
   @Column({ name: 'min_subtotal_minor', type: 'integer', default: 0 })
   minSubtotalMinor: number;
