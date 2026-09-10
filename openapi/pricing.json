@@ -531,6 +531,21 @@
         ]
       }
     },
+    "/api/v1/pricing/fx-rates": {
+      "get": {
+        "operationId": "CurrencyController_rates",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "The exchange rate in force for each pair",
+        "tags": [
+          "pricing"
+        ]
+      }
+    },
     "/api/v1/pricing/quote": {
       "post": {
         "operationId": "PricingController_quote",

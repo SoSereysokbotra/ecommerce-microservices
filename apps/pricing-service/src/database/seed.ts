@@ -5,6 +5,7 @@ import { TaxRateEntity } from '../modules/pricing/tax-rate.entity';
 import { DiscountEntity, DiscountScope, DiscountType } from '../modules/pricing/discount.entity';
 import { CouponEntity } from '../modules/coupons/coupon.entity';
 import { CurrencyEntity } from '../modules/currency/currency.entity';
+import { FxRateEntity } from '../modules/currency/fx-rate.entity';
 
 /**
  * Idempotent seed — safe to re-run. Matches on the natural key and updates
@@ -36,6 +37,22 @@ const CURRENCIES = [
   { code: 'USD', exponent: 2, name: 'US Dollar' },
   { code: 'EUR', exponent: 2, name: 'Euro' },
   { code: 'JPY', exponent: 0, name: 'Japanese Yen' },
+];
+
+/**
+ * Opening rates, at 1e8 scale. Plausible rather than live — there is no FX
+ * provider configured, and the milestone's content is the pattern (append-only
+ * log, newest wins, rate frozen at purchase) rather than the HTTP call. Step 7
+ * adds a refresh job that can be pointed at a real provider.
+ *
+ * **Only the forward pairs are seeded.** `FxService` refuses to invert a rate,
+ * because real buy and sell rates are not reciprocals and a shop that sells at
+ * its buy rate loses the spread on every transaction. A reverse pair is a row,
+ * not a division.
+ */
+const FX_RATES = [
+  { baseCurrency: 'USD', quoteCurrency: 'EUR', rateE8: 92_500_000 }, // 0.925
+  { baseCurrency: 'USD', quoteCurrency: 'JPY', rateE8: 15_000_000_000 }, // 150.0
 ];
 
 const TAX_RATES = [
@@ -185,6 +202,37 @@ async function seed(): Promise<void> {
     console.log(
       `  currency ${currency.code}  exponent ${currency.exponent}  ` +
         `(1000 minor units = ${(1000 / 10 ** currency.exponent).toFixed(currency.exponent)})`,
+    );
+  }
+
+  /**
+   * Re-seeding must not append a duplicate observation.
+   *
+   * The table is append-only for *refreshes* — a new rate is a new row — but a
+   * seed re-run is not new information. Inserting one anyway would make the
+   * shop look like it had refreshed when nothing changed, and would put a
+   * fresh `fetched_at` on a stale number, defeating the staleness warning.
+   */
+  const fxRates = AppDataSource.getRepository(FxRateEntity);
+
+  for (const rate of FX_RATES) {
+    const existing = await fxRates.findOne({
+      where: {
+        baseCurrency: rate.baseCurrency,
+        quoteCurrency: rate.quoteCurrency,
+        source: 'seed',
+      },
+      order: { fetchedAt: 'DESC' },
+    });
+
+    if (existing) {
+      await fxRates.save({ ...existing, rateE8: rate.rateE8 });
+    } else {
+      await fxRates.save(fxRates.create({ ...rate, source: 'seed' }));
+    }
+
+    console.log(
+      `  fx  ${rate.baseCurrency}->${rate.quoteCurrency}  ${(rate.rateE8 / 1e8).toFixed(4)}`,
     );
   }
 

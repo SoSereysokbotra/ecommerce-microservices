@@ -3,15 +3,18 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CurrencyController } from './currency.controller';
 import { CurrencyService } from './currency.service';
 import { CurrencyEntity } from './currency.entity';
+import { FxRateEntity } from './fx-rate.entity';
+import { FxService } from './fx.service';
 
 /**
- * Step 1 of M11: the exponent, written down. `CurrencyService` is exported
- * because step 2's `FxService` and step 4's quoting both need it.
+ * The exponent and the rates. Both services are exported because step 4's
+ * quoting needs them — `FxService` to get the rate, `CurrencyService` to get
+ * the exponents that go with it.
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([CurrencyEntity])],
+  imports: [TypeOrmModule.forFeature([CurrencyEntity, FxRateEntity])],
   controllers: [CurrencyController],
-  providers: [CurrencyService],
-  exports: [CurrencyService],
+  providers: [CurrencyService, FxService],
+  exports: [CurrencyService, FxService],
 })
 export class CurrencyModule {}

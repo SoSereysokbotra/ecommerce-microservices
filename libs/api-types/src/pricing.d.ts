@@ -105,6 +105,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pricing/fx-rates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The exchange rate in force for each pair */
+        get: operations["CurrencyController_rates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pricing/quote": {
         parameters: {
             query?: never;
@@ -404,6 +421,23 @@ export interface operations {
         };
     };
     PricingController_discounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CurrencyController_rates: {
         parameters: {
             query?: never;
             header?: never;

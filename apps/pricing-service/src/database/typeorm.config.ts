@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { OutboxEventEntity, ProcessedEventEntity } from '@libs/outbox';
 import { TaxRateEntity } from '../modules/pricing/tax-rate.entity';
 import { CurrencyEntity } from '../modules/currency/currency.entity';
+import { FxRateEntity } from '../modules/currency/fx-rate.entity';
 import { DiscountEntity } from '../modules/pricing/discount.entity';
 import { CouponEntity } from '../modules/coupons/coupon.entity';
 import { CouponRedemptionEntity } from '../modules/coupons/coupon-redemption.entity';
@@ -76,6 +77,7 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
         TaxRateEntity,
         DiscountEntity,
         CurrencyEntity,
+        FxRateEntity,
         CouponEntity,
         CouponRedemptionEntity,
         // M9: the consumer writes a processed_events marker in the same
@@ -109,6 +111,7 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
         TaxRateEntity,
         DiscountEntity,
         CurrencyEntity,
+        FxRateEntity,
         CouponEntity,
         CouponRedemptionEntity,
         // M9: the consumer writes a processed_events marker in the same
@@ -135,6 +138,7 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
       TaxRateEntity,
       DiscountEntity,
       CurrencyEntity,
+      FxRateEntity,
       CouponEntity,
       CouponRedemptionEntity,
       // M9: the consumer writes a processed_events marker in the same
