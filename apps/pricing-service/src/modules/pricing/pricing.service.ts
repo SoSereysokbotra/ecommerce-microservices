@@ -4,10 +4,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { CatalogClient } from './catalog.client';
 import { ShippingClient, type ShippingOption } from './shipping.client';
+import { CurrencyService } from '../currency/currency.service';
+import { FxService } from '../currency/fx.service';
 import { CouponsService, type CouponRejection } from '../coupons/coupons.service';
 import { DiscountEntity } from './discount.entity';
 import { TaxRateEntity } from './tax-rate.entity';
 import { CreateQuoteDto } from './dto/quote.dto';
+import { convert } from './money';
 import {
   computeQuote,
   type Destination,
@@ -42,6 +45,11 @@ export interface QuoteView extends ReturnType<typeof computeQuote> {
   lines: (ReturnType<typeof computeQuote>['lines'][number] & { sku: string; name: string })[];
   coupon: QuoteCoupon | null;
   shipping: QuoteShipping | null;
+  /** Decimal places for `currency`. Zero for JPY — see M11. */
+  exponent: number;
+  baseCurrency: string;
+  fxRateE8: number;
+  fxRateAt: Date;
 }
 
 /**
@@ -61,6 +69,8 @@ export class PricingService {
     @InjectRepository(DiscountEntity) private readonly discounts: Repository<DiscountEntity>,
     private readonly catalog: CatalogClient,
     private readonly shipping: ShippingClient,
+    private readonly currencies: CurrencyService,
+    private readonly fx: FxService,
     private readonly config: ConfigService,
     private readonly coupons: CouponsService,
   ) {}
@@ -122,8 +132,26 @@ export class PricingService {
       }
     }
 
+    /**
+     * The currency this basket is priced in, and the one the catalog priced it
+     * in. They are the same until a shopper asks otherwise.
+     *
+     * An unknown code is a 404 from `require()` rather than a silent fall back
+     * to the base — a shopper who asked for yen and got dollars is charged the
+     * right number of the wrong unit.
+     */
+    const baseCurrency = currency;
+    const targetCurrency = (input.currency ?? baseCurrency).toUpperCase();
+
+    const [baseMeta, targetMeta] = await Promise.all([
+      this.currencies.require(baseCurrency),
+      this.currencies.require(targetCurrency),
+    ]);
+    const baseExponent = baseMeta.exponent;
+    const targetExponent = targetMeta.exponent;
+
     const priceable = {
-      currency,
+      currency: baseCurrency,
       destination,
       lines,
       taxRules: taxRules.map(toTaxRule),
@@ -165,10 +193,71 @@ export class PricingService {
     const selectedOption = shipping?.options.find((o) => o.code === shipping.selectedCode) ?? null;
     const shippingCostMinor = selectedOption?.costMinor ?? 0;
 
+    /**
+     * M11: price it again in the shopper's currency.
+     *
+     * ## What gets converted, and what does not
+     *
+     * **Unit prices and thresholds** convert; `computeQuote` does not change at
+     * all. Converting the *total* instead would be one line, and it would undo
+     * ADR-0007: a quote returns per-line subtotals, discounts and tax that
+     * orders freezes onto `order_items`, so those would have to be converted
+     * individually — the per-line rounding M8 spent a milestone removing — or
+     * allocated down from a converted total, a second allocation layer on the
+     * one that already exists. See docs/M11_CURRENCY_PLAN.md §4.
+     *
+     * Converting a unit price is the same act as a price-book entry, which is
+     * where the FX rounding belongs: exactly once, per product, on a number a
+     * customer actually sees.
+     *
+     * ## Why shipping was asked in the base currency
+     *
+     * The free-shipping threshold lives on the shipping rate and is denominated
+     * in that rate's own currency. Comparing against a converted subtotal would
+     * convert the *basket* to test a threshold, when converting neither and
+     * comparing like with like is available — so `shippingFor` above ran in the
+     * base currency, and only the resulting **cost** is converted here.
+     */
+    const rate = await this.fx.resolve(baseCurrency, targetCurrency);
+    const inTargetCurrency = targetCurrency !== baseCurrency;
+
+    const convertMinor = (amountMinor: number): number =>
+      inTargetCurrency
+        ? convert(amountMinor, {
+            rateE8: rate.rateE8,
+            fromExponent: baseExponent,
+            toExponent: targetExponent,
+          })
+        : amountMinor;
+
+    const shippingCostConverted = convertMinor(shippingCostMinor);
+
+    const priced = inTargetCurrency
+      ? {
+          ...priceable,
+          currency: targetCurrency,
+          lines: lines.map((line) => ({
+            ...line,
+            unitPriceMinor: convertMinor(line.unitPriceMinor),
+          })),
+          discounts: priceable.discounts.map((discount) => ({
+            ...discount,
+            // A fixed "$5 off" and a "spend $50" threshold are both denominated
+            // in the base currency and both have to move with it. The result is
+            // an odd-looking "€4.63 off" — recorded in ADR-0010 as the thing a
+            // real shop fixes with per-currency promotion rows.
+            valueMinor: discount.valueMinor === null ? null : convertMinor(discount.valueMinor),
+            minSubtotalMinor: convertMinor(discount.minSubtotalMinor),
+          })),
+        }
+      : priceable;
+
     const quote =
-      shippingCostMinor > 0
-        ? computeQuote({ ...priceable, shipping: { costMinor: shippingCostMinor } })
-        : goodsOnly;
+      shippingCostConverted > 0
+        ? computeQuote({ ...priced, shipping: { costMinor: shippingCostConverted } })
+        : inTargetCurrency
+          ? computeQuote(priced)
+          : goodsOnly;
 
     this.logger.log(
       `Quoted ${lines.length} line(s) for ${destination.country}` +
@@ -198,7 +287,24 @@ export class PricingService {
             rejectedBecause: couponRejection,
           }
         : null,
-      shipping,
+      // Every option converted, not just the one in the total — the storefront
+      // renders the whole picker from this, and a list mixing dollars with a
+      // euro total is the kind of thing nobody notices until they do.
+      shipping: shipping
+        ? {
+            ...shipping,
+            options: shipping.options.map((option) => ({
+              ...option,
+              costMinor: convertMinor(option.costMinor),
+              listPriceMinor: convertMinor(option.listPriceMinor),
+              currency: targetCurrency,
+            })),
+          }
+        : null,
+      exponent: targetExponent,
+      baseCurrency,
+      fxRateE8: rate.rateE8,
+      fxRateAt: rate.fetchedAt,
     };
   }
 

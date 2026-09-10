@@ -27,6 +27,10 @@
             "example": "SAVE10USES",
             "type": "string"
           },
+          "currency": {
+            "example": "JPY",
+            "type": "string"
+          },
           "customerId": {
             "type": "string"
           },
@@ -219,6 +223,11 @@
             },
             "type": "array"
           },
+          "baseCurrency": {
+            "description": "The catalog's own currency.",
+            "example": "USD",
+            "type": "string"
+          },
           "coupon": {
             "allOf": [
               {
@@ -234,6 +243,21 @@
             "$ref": "#/components/schemas/DestinationDto"
           },
           "discountMinor": {
+            "type": "number"
+          },
+          "exponent": {
+            "description": "Minor-unit exponent. Zero for JPY.",
+            "example": 0,
+            "type": "number"
+          },
+          "fxRateAt": {
+            "description": "When that rate was observed. Frozen onto the order.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "fxRateE8": {
+            "description": "Rate x 10^8 used to convert prices. 100000000 at parity.",
+            "example": 15000000000,
             "type": "number"
           },
           "lines": {
@@ -283,6 +307,10 @@
         },
         "required": [
           "currency",
+          "exponent",
+          "baseCurrency",
+          "fxRateE8",
+          "fxRateAt",
           "destination",
           "lines",
           "subtotalMinor",

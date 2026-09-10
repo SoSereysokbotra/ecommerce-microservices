@@ -185,6 +185,8 @@ export interface components {
         CreateQuoteDto: {
             /** @example SAVE10USES */
             couponCode?: string;
+            /** @example JPY */
+            currency?: string;
             customerId?: string;
             destination?: components["schemas"]["DestinationDto"];
             items: components["schemas"]["QuoteLineDto"][];
@@ -259,10 +261,30 @@ export interface components {
         };
         QuoteResponseDto: {
             appliedDiscounts: components["schemas"]["AppliedDiscountResponseDto"][];
+            /**
+             * @description The catalog's own currency.
+             * @example USD
+             */
+            baseCurrency: string;
             coupon?: components["schemas"]["QuoteCouponResponseDto"] | null;
             currency: string;
             destination: components["schemas"]["DestinationDto"];
             discountMinor: number;
+            /**
+             * @description Minor-unit exponent. Zero for JPY.
+             * @example 0
+             */
+            exponent: number;
+            /**
+             * Format: date-time
+             * @description When that rate was observed. Frozen onto the order.
+             */
+            fxRateAt: string;
+            /**
+             * @description Rate x 10^8 used to convert prices. 100000000 at parity.
+             * @example 15000000000
+             */
+            fxRateE8: number;
             lines: components["schemas"]["QuoteLineResponseDto"][];
             /** @description The amount excluding tax. */
             netMinor: number;

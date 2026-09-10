@@ -85,6 +85,19 @@ export class CreateQuoteDto {
   shippingRateCode?: string;
 
   /**
+   * What to price the basket in — 'USD', 'EUR', 'JPY'.
+   *
+   * Omitted, the catalog's own currency is used. An unknown code is a 404
+   * rather than a silent fall back to the base: a shopper who asked for yen and
+   * silently got dollars is charged the right number of the wrong unit.
+   */
+  @ApiPropertyOptional({ example: 'JPY' })
+  @IsOptional()
+  @IsString()
+  @Length(3, 3)
+  currency?: string;
+
+  /**
    * Set by orders-service so per-customer coupon limits can be checked. Guests
    * quoting from the cart page have no id, and simply do not get that check.
    */
@@ -175,6 +188,28 @@ export class QuoteShippingResponseDto {
 
 export class QuoteResponseDto {
   @ApiProperty() currency: string;
+
+  /**
+   * Decimal places for `currency` — 2 for USD and EUR, **0 for JPY**.
+   *
+   * On the wire so the storefront's formatter has one source of truth instead
+   * of a table duplicated in the browser. Dividing by a literal 100 is the bug
+   * M11 exists to remove.
+   */
+  @ApiProperty({ example: 0, description: 'Minor-unit exponent. Zero for JPY.' })
+  exponent: number;
+
+  @ApiProperty({ example: 'USD', description: "The catalog's own currency." })
+  baseCurrency: string;
+
+  @ApiProperty({
+    example: 15000000000,
+    description: 'Rate x 10^8 used to convert prices. 100000000 at parity.',
+  })
+  fxRateE8: number;
+
+  @ApiProperty({ description: 'When that rate was observed. Frozen onto the order.' })
+  fxRateAt: Date;
   @ApiProperty({ type: DestinationDto }) destination: DestinationDto;
   @ApiProperty({ type: [QuoteLineResponseDto] }) lines: QuoteLineResponseDto[];
   @ApiProperty({ description: 'Before any discount or tax.' }) subtotalMinor: number;

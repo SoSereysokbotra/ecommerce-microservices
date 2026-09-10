@@ -7,6 +7,7 @@ import { PricingController } from './pricing.controller';
 import { PricingService } from './pricing.service';
 import { TaxRateEntity } from './tax-rate.entity';
 import { CouponsModule } from '../coupons/coupons.module';
+import { CurrencyModule } from '../currency/currency.module';
 
 /**
  * Step 3 of M8. Note there is nothing to export: no other module in this
@@ -14,7 +15,7 @@ import { CouponsModule } from '../coupons/coupons.module';
  * jobs, no consumers. See app.module.ts for why that is deliberate.
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([TaxRateEntity, DiscountEntity]), CouponsModule],
+  imports: [TypeOrmModule.forFeature([TaxRateEntity, DiscountEntity]), CouponsModule, CurrencyModule],
   controllers: [PricingController],
   providers: [PricingService, CatalogClient, ShippingClient],
 })
