@@ -84,6 +84,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/me/addresses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My saved addresses, default first */
+        get: operations["AddressesController_list"];
+        put?: never;
+        /** Save an address */
+        post: operations["AddressesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/me/addresses/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One of my addresses */
+        get: operations["AddressesController_findOne"];
+        put?: never;
+        post?: never;
+        /** Delete an address */
+        delete: operations["AddressesController_remove"];
+        options?: never;
+        head?: never;
+        /** Edit an address */
+        patch: operations["AddressesController_update"];
+        trace?: never;
+    };
     "/api/v1/users/{id}": {
         parameters: {
             query?: never;
@@ -104,6 +141,55 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AddressResponseDto: {
+            city: string;
+            country: string;
+            /** Format: date-time */
+            createdAt: string;
+            id: string;
+            isDefault: boolean;
+            label?: Record<string, never> | null;
+            line1: string;
+            line2?: Record<string, never> | null;
+            phone?: Record<string, never> | null;
+            postcode?: Record<string, never> | null;
+            recipient: string;
+            region?: Record<string, never> | null;
+            /** Format: date-time */
+            updatedAt: string;
+            userId: string;
+        };
+        CreateAddressDto: {
+            /** @example San Francisco */
+            city: string;
+            /**
+             * @description ISO 3166-1 alpha-2.
+             * @example US
+             */
+            country: string;
+            /**
+             * @description Make this the one checkout pre-selects.
+             * @default false
+             */
+            isDefault: boolean;
+            /** @example Home */
+            label?: Record<string, never>;
+            /** @example 12 Ocean Avenue */
+            line1: string;
+            /** @example Apt 4 */
+            line2?: Record<string, never>;
+            /** @example +1 415 555 0123 */
+            phone?: Record<string, never>;
+            /** @example 94102 */
+            postcode?: Record<string, never>;
+            /** @example Ada Lovelace */
+            recipient: string;
+            /**
+             * @description State or province code.
+             * @example CA
+             */
+            region?: Record<string, never>;
+        };
         LoginDto: {
             email: string;
             password: string;
@@ -114,6 +200,37 @@ export interface components {
             password: string;
             /** @enum {string} */
             role?: "customer" | "staff" | "admin";
+        };
+        UpdateAddressDto: {
+            /** @example San Francisco */
+            city?: string;
+            /**
+             * @description ISO 3166-1 alpha-2.
+             * @example US
+             */
+            country?: string;
+            /**
+             * @description Make this the one checkout pre-selects.
+             * @default false
+             */
+            isDefault: boolean;
+            /** @example Home */
+            label?: Record<string, never>;
+            /** @example 12 Ocean Avenue */
+            line1?: string;
+            /** @example Apt 4 */
+            line2?: Record<string, never>;
+            /** @example +1 415 555 0123 */
+            phone?: Record<string, never>;
+            /** @example 94102 */
+            postcode?: Record<string, never>;
+            /** @example Ada Lovelace */
+            recipient?: string;
+            /**
+             * @description State or province code.
+             * @example CA
+             */
+            region?: Record<string, never>;
         };
         UpdateUserDto: {
             avatarUrl?: Record<string, never>;
@@ -221,6 +338,123 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    AddressesController_list: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-user-id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddressResponseDto"][];
+                };
+            };
+        };
+    };
+    AddressesController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-user-id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAddressDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddressResponseDto"];
+                };
+            };
+        };
+    };
+    AddressesController_findOne: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-user-id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddressResponseDto"];
+                };
+            };
+        };
+    };
+    AddressesController_remove: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-user-id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AddressesController_update: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-user-id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAddressDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddressResponseDto"];
+                };
             };
         };
     };

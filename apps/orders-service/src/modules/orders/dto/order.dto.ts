@@ -64,6 +64,42 @@ export class CreateOrderDto {
   @IsString()
   @Length(1, 64)
   couponCode?: string;
+
+  /**
+   * One of the customer's saved addresses.
+   *
+   * When given it **wins over `destination`**: the country and region are read
+   * from a row this customer owns, server-side, rather than taken from a field
+   * the browser filled in. That is the M8 placeholder closing — see
+   * `UsersClient`. The address is also frozen onto the order.
+   *
+   * Still optional, because a checkout with no saved address must work.
+   */
+  @ApiPropertyOptional({ description: "One of the caller's saved address ids." })
+  @IsOptional()
+  @IsUUID()
+  shippingAddressId?: string;
+
+  /**
+   * Which delivery service level to charge for — 'standard', 'express'.
+   * Omitted, the cheapest available applies.
+   */
+  @ApiPropertyOptional({ example: 'standard' })
+  @IsOptional()
+  @IsString()
+  @Length(1, 32)
+  shippingRateCode?: string;
+}
+
+export class OrderAddressResponseDto {
+  @ApiProperty() recipient: string;
+  @ApiProperty() line1: string;
+  @ApiPropertyOptional({ nullable: true }) line2?: string | null;
+  @ApiProperty() city: string;
+  @ApiPropertyOptional({ nullable: true }) region?: string | null;
+  @ApiPropertyOptional({ nullable: true }) postcode?: string | null;
+  @ApiProperty() country: string;
+  @ApiPropertyOptional({ nullable: true }) phone?: string | null;
 }
 
 export class OrderItemResponseDto {
@@ -88,7 +124,20 @@ export class OrderResponseDto {
   @ApiProperty({ description: 'The basket before anything was applied.' }) subtotalMinor: number;
   @ApiProperty({ description: 'What promotions took off, summed.' }) discountMinor: number;
   @ApiProperty({ description: 'Integer minor units.' }) taxMinor: number;
-  @ApiProperty({ description: 'What the customer pays. Includes tax from M8.' })
+  @ApiProperty({ description: 'What delivery cost. Zero before M10, and zero when free.' })
+  shippingMinor: number;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Which service level was charged. Null for orders placed before M10.',
+  })
+  shippingRateCode?: string | null;
+  @ApiPropertyOptional({
+    type: OrderAddressResponseDto,
+    nullable: true,
+    description: 'Where it is going, frozen at checkout. Null when no address was given.',
+  })
+  shippingAddress?: OrderAddressResponseDto | null;
+  @ApiProperty({ description: 'What the customer pays. Includes tax from M8, shipping from M10.' })
   totalMinor: number;
   @ApiPropertyOptional({ nullable: true, description: 'Null for orders placed before M8.' })
   taxCountry?: string | null;

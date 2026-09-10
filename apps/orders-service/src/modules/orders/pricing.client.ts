@@ -32,9 +32,23 @@ export interface Quote {
   subtotalMinor: number;
   discountMinor: number;
   taxMinor: number;
+  /** What delivery cost, as charged. Zero when free or when nothing shipped. */
+  shippingMinor: number;
+  /** Delivery's share of `taxMinor`. Already inside it, not additional. */
+  shippingTaxMinor: number;
   netMinor: number;
   totalMinor: number;
   coupon?: QuoteCoupon | null;
+  shipping?: QuoteShipping | null;
+}
+
+/** Which delivery option pricing folded into the total. */
+export interface QuoteShipping {
+  zone: string | null;
+  weightGrams: number;
+  options: { code: string; name: string; costMinor: number; freeApplied: boolean }[];
+  selectedCode: string | null;
+  requestedCodeUnavailable: boolean;
 }
 
 export interface QuoteRequest {
@@ -42,6 +56,7 @@ export interface QuoteRequest {
   destination?: { country: string; region?: string };
   couponCode?: string;
   customerId?: string;
+  shippingRateCode?: string;
 }
 
 /** What a coupon code did to the basket, as pricing reports it. */

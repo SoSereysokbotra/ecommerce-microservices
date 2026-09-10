@@ -15,10 +15,57 @@
               "$ref": "#/components/schemas/OrderLineDto"
             },
             "type": "array"
+          },
+          "shippingAddressId": {
+            "description": "One of the caller's saved address ids.",
+            "type": "string"
+          },
+          "shippingRateCode": {
+            "example": "standard",
+            "type": "string"
           }
         },
         "required": [
           "items"
+        ],
+        "type": "object"
+      },
+      "OrderAddressResponseDto": {
+        "properties": {
+          "city": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "line1": {
+            "type": "string"
+          },
+          "line2": {
+            "nullable": true,
+            "type": "object"
+          },
+          "phone": {
+            "nullable": true,
+            "type": "object"
+          },
+          "postcode": {
+            "nullable": true,
+            "type": "object"
+          },
+          "recipient": {
+            "type": "string"
+          },
+          "region": {
+            "nullable": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "recipient",
+          "line1",
+          "city",
+          "country"
         ],
         "type": "object"
       },
@@ -132,6 +179,24 @@
             },
             "type": "array"
           },
+          "shippingAddress": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrderAddressResponseDto"
+              }
+            ],
+            "description": "Where it is going, frozen at checkout. Null when no address was given.",
+            "nullable": true
+          },
+          "shippingMinor": {
+            "description": "What delivery cost. Zero before M10, and zero when free.",
+            "type": "number"
+          },
+          "shippingRateCode": {
+            "description": "Which service level was charged. Null for orders placed before M10.",
+            "nullable": true,
+            "type": "object"
+          },
           "status": {
             "enum": [
               "pending",
@@ -160,7 +225,7 @@
             "type": "object"
           },
           "totalMinor": {
-            "description": "What the customer pays. Includes tax from M8.",
+            "description": "What the customer pays. Includes tax from M8, shipping from M10.",
             "type": "number"
           },
           "updatedAt": {
@@ -176,6 +241,7 @@
           "subtotalMinor",
           "discountMinor",
           "taxMinor",
+          "shippingMinor",
           "totalMinor",
           "items",
           "createdAt",

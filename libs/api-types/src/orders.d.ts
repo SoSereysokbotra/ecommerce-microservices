@@ -80,6 +80,20 @@ export interface components {
             couponCode?: string;
             destination?: components["schemas"]["OrderDestinationDto"];
             items: components["schemas"]["OrderLineDto"][];
+            /** @description One of the caller's saved address ids. */
+            shippingAddressId?: string;
+            /** @example standard */
+            shippingRateCode?: string;
+        };
+        OrderAddressResponseDto: {
+            city: string;
+            country: string;
+            line1: string;
+            line2?: Record<string, never> | null;
+            phone?: Record<string, never> | null;
+            postcode?: Record<string, never> | null;
+            recipient: string;
+            region?: Record<string, never> | null;
         };
         OrderDestinationDto: {
             /**
@@ -123,6 +137,12 @@ export interface components {
             failureReason?: Record<string, never> | null;
             id: string;
             items: components["schemas"]["OrderItemResponseDto"][];
+            /** @description Where it is going, frozen at checkout. Null when no address was given. */
+            shippingAddress?: components["schemas"]["OrderAddressResponseDto"] | null;
+            /** @description What delivery cost. Zero before M10, and zero when free. */
+            shippingMinor: number;
+            /** @description Which service level was charged. Null for orders placed before M10. */
+            shippingRateCode?: Record<string, never> | null;
             /** @enum {string} */
             status: "pending" | "awaiting_payment" | "confirmed" | "cancelled" | "failed";
             /** @description The basket before anything was applied. */
@@ -132,7 +152,7 @@ export interface components {
             /** @description Integer minor units. */
             taxMinor: number;
             taxRegion?: Record<string, never> | null;
-            /** @description What the customer pays. Includes tax from M8. */
+            /** @description What the customer pays. Includes tax from M8, shipping from M10. */
             totalMinor: number;
             /** Format: date-time */
             updatedAt: string;

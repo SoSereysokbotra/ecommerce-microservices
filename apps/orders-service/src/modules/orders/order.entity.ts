@@ -20,6 +20,25 @@ export enum OrderStatus {
   FAILED = 'failed',
 }
 
+/**
+ * A delivery address as the order remembers it.
+ *
+ * Deliberately not the users-service entity: no id, no `isDefault`, no
+ * timestamps. Copying those would invite someone to treat this as a live
+ * reference and follow it back, which is exactly what a frozen snapshot must
+ * not be.
+ */
+export interface FrozenAddress {
+  recipient: string;
+  line1: string;
+  line2?: string | null;
+  city: string;
+  region?: string | null;
+  postcode?: string | null;
+  country: string;
+  phone?: string | null;
+}
+
 @Entity({ name: 'orders' })
 export class OrderEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -55,6 +74,29 @@ export class OrderEntity {
    */
   @Column({ name: 'total_minor', type: 'integer', default: 0 })
   totalMinor: number;
+
+  /**
+   * What delivery cost, frozen. Zero for orders placed before M10, and zero
+   * when the basket earned free shipping — the two are distinguishable by
+   * `shippingRateCode`, which is null only in the first case.
+   */
+  @Column({ name: 'shipping_minor', type: 'integer', default: 0 })
+  shippingMinor: number;
+
+  /** Which service level was chosen: 'standard', 'express'. */
+  @Column({ name: 'shipping_rate_code', type: 'varchar', nullable: true })
+  shippingRateCode?: string | null;
+
+  /**
+   * Where it is going, as agreed at checkout.
+   *
+   * A **snapshot**, not a reference. The customer's address book lives in
+   * users-service and can be edited or deleted; an order is a record of what
+   * was agreed, so it keeps its own copy — the same reason `order_items` copies
+   * sku and price rather than pointing at a product.
+   */
+  @Column({ name: 'shipping_address', type: 'jsonb', nullable: true })
+  shippingAddress?: FrozenAddress | null;
 
   /** The jurisdiction this order was taxed in. Null for orders placed before M8. */
   @Column({ name: 'tax_country', type: 'char', length: 2, nullable: true })

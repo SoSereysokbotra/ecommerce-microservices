@@ -8,6 +8,7 @@ import { AppController } from './app.controller';
 import { JwtGuard } from './modules/auth/guards/jwt.guard';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
+import { AddressesModule } from './modules/addresses/addresses.module';
 import { EmailModule } from './modules/email/email.module';
 import { EventsModule } from './events/events.module';
 import { databaseConfig } from './config/database.config';
@@ -31,6 +32,7 @@ import { typeOrmConfig } from './database/typeorm.config';
     EventsModule,
     AuthModule,
     UsersModule,
+    AddressesModule,
     EmailModule,
   ],
   controllers: [AppController],

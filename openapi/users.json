@@ -1,6 +1,125 @@
 {
   "components": {
     "schemas": {
+      "AddressResponseDto": {
+        "properties": {
+          "city": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "label": {
+            "nullable": true,
+            "type": "object"
+          },
+          "line1": {
+            "type": "string"
+          },
+          "line2": {
+            "nullable": true,
+            "type": "object"
+          },
+          "phone": {
+            "nullable": true,
+            "type": "object"
+          },
+          "postcode": {
+            "nullable": true,
+            "type": "object"
+          },
+          "recipient": {
+            "type": "string"
+          },
+          "region": {
+            "nullable": true,
+            "type": "object"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "recipient",
+          "line1",
+          "city",
+          "country",
+          "isDefault",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "CreateAddressDto": {
+        "properties": {
+          "city": {
+            "example": "San Francisco",
+            "type": "string"
+          },
+          "country": {
+            "description": "ISO 3166-1 alpha-2.",
+            "example": "US",
+            "type": "string"
+          },
+          "isDefault": {
+            "default": false,
+            "description": "Make this the one checkout pre-selects.",
+            "type": "boolean"
+          },
+          "label": {
+            "example": "Home",
+            "type": "object"
+          },
+          "line1": {
+            "example": "12 Ocean Avenue",
+            "type": "string"
+          },
+          "line2": {
+            "example": "Apt 4",
+            "type": "object"
+          },
+          "phone": {
+            "example": "+1 415 555 0123",
+            "type": "object"
+          },
+          "postcode": {
+            "example": "94102",
+            "type": "object"
+          },
+          "recipient": {
+            "example": "Ada Lovelace",
+            "type": "string"
+          },
+          "region": {
+            "description": "State or province code.",
+            "example": "CA",
+            "type": "object"
+          }
+        },
+        "required": [
+          "recipient",
+          "line1",
+          "city",
+          "country"
+        ],
+        "type": "object"
+      },
       "LoginDto": {
         "properties": {
           "email": {
@@ -41,6 +160,54 @@
           "name",
           "password"
         ],
+        "type": "object"
+      },
+      "UpdateAddressDto": {
+        "properties": {
+          "city": {
+            "example": "San Francisco",
+            "type": "string"
+          },
+          "country": {
+            "description": "ISO 3166-1 alpha-2.",
+            "example": "US",
+            "type": "string"
+          },
+          "isDefault": {
+            "default": false,
+            "description": "Make this the one checkout pre-selects.",
+            "type": "boolean"
+          },
+          "label": {
+            "example": "Home",
+            "type": "object"
+          },
+          "line1": {
+            "example": "12 Ocean Avenue",
+            "type": "string"
+          },
+          "line2": {
+            "example": "Apt 4",
+            "type": "object"
+          },
+          "phone": {
+            "example": "+1 415 555 0123",
+            "type": "object"
+          },
+          "postcode": {
+            "example": "94102",
+            "type": "object"
+          },
+          "recipient": {
+            "example": "Ada Lovelace",
+            "type": "string"
+          },
+          "region": {
+            "description": "State or province code.",
+            "example": "CA",
+            "type": "object"
+          }
+        },
         "type": "object"
       },
       "UpdateUserDto": {
@@ -169,6 +336,235 @@
         },
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/users/me/addresses": {
+      "get": {
+        "operationId": "AddressesController_list",
+        "parameters": [
+          {
+            "description": "Set by the gateway from the verified JWT.",
+            "in": "header",
+            "name": "x-user-id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AddressResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "My saved addresses, default first",
+        "tags": [
+          "addresses"
+        ]
+      },
+      "post": {
+        "operationId": "AddressesController_create",
+        "parameters": [
+          {
+            "description": "Set by the gateway from the verified JWT.",
+            "in": "header",
+            "name": "x-user-id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAddressDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Save an address",
+        "tags": [
+          "addresses"
+        ]
+      }
+    },
+    "/api/v1/users/me/addresses/{id}": {
+      "delete": {
+        "operationId": "AddressesController_remove",
+        "parameters": [
+          {
+            "description": "Set by the gateway from the verified JWT.",
+            "in": "header",
+            "name": "x-user-id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "summary": "Delete an address",
+        "tags": [
+          "addresses"
+        ]
+      },
+      "get": {
+        "operationId": "AddressesController_findOne",
+        "parameters": [
+          {
+            "description": "Set by the gateway from the verified JWT.",
+            "in": "header",
+            "name": "x-user-id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "One of my addresses",
+        "tags": [
+          "addresses"
+        ]
+      },
+      "patch": {
+        "operationId": "AddressesController_update",
+        "parameters": [
+          {
+            "description": "Set by the gateway from the verified JWT.",
+            "in": "header",
+            "name": "x-user-id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAddressDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Edit an address",
+        "tags": [
+          "addresses"
         ]
       }
     },
