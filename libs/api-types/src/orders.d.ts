@@ -78,6 +78,8 @@ export interface components {
         CreateOrderDto: {
             /** @example SAVE10USES */
             couponCode?: string;
+            /** @example JPY */
+            currency?: string;
             destination?: components["schemas"]["OrderDestinationDto"];
             items: components["schemas"]["OrderLineDto"][];
             /** @description One of the caller's saved address ids. */
@@ -128,6 +130,8 @@ export interface components {
             qty: number;
         };
         OrderResponseDto: {
+            /** @description What the catalog priced it in. Null for orders placed before M11. */
+            baseCurrency?: Record<string, never> | null;
             /** Format: date-time */
             createdAt: string;
             currency: string;
@@ -135,6 +139,10 @@ export interface components {
             /** @description What promotions took off, summed. */
             discountMinor: number;
             failureReason?: Record<string, never> | null;
+            /** @description When that rate was observed. */
+            fxRateAt?: Record<string, never> | null;
+            /** @description The rate used × 10^8, frozen at purchase. Nothing re-reads fx_rates on display. */
+            fxRateE8?: Record<string, never> | null;
             id: string;
             items: components["schemas"]["OrderItemResponseDto"][];
             /** @description Where it is going, frozen at checkout. Null when no address was given. */

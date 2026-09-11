@@ -40,6 +40,14 @@ export interface Quote {
   totalMinor: number;
   coupon?: QuoteCoupon | null;
   shipping?: QuoteShipping | null;
+  /** Decimal places for `currency`. Zero for JPY. */
+  exponent?: number;
+  /** What the catalog priced it in, before conversion. */
+  baseCurrency?: string;
+  /** The rate used, × 10^8. Parity is 100000000. */
+  fxRateE8?: number;
+  /** When that rate was observed. Frozen onto the order beside the rate. */
+  fxRateAt?: string;
 }
 
 /** Which delivery option pricing folded into the total. */
@@ -57,6 +65,7 @@ export interface QuoteRequest {
   couponCode?: string;
   customerId?: string;
   shippingRateCode?: string;
+  currency?: string;
 }
 
 /** What a coupon code did to the basket, as pricing reports it. */

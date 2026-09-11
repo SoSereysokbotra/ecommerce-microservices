@@ -7,6 +7,10 @@
             "example": "SAVE10USES",
             "type": "string"
           },
+          "currency": {
+            "example": "JPY",
+            "type": "string"
+          },
           "destination": {
             "$ref": "#/components/schemas/OrderDestinationDto"
           },
@@ -152,6 +156,11 @@
       },
       "OrderResponseDto": {
         "properties": {
+          "baseCurrency": {
+            "description": "What the catalog priced it in. Null for orders placed before M11.",
+            "nullable": true,
+            "type": "object"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -167,6 +176,16 @@
             "type": "number"
           },
           "failureReason": {
+            "nullable": true,
+            "type": "object"
+          },
+          "fxRateAt": {
+            "description": "When that rate was observed.",
+            "nullable": true,
+            "type": "object"
+          },
+          "fxRateE8": {
+            "description": "The rate used × 10^8, frozen at purchase. Nothing re-reads fx_rates on display.",
             "nullable": true,
             "type": "object"
           },

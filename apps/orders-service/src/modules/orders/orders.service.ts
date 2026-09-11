@@ -80,6 +80,7 @@ export class OrdersService {
         couponCode: input.couponCode,
         customerId,
         shippingRateCode: input.shippingRateCode,
+        currency: input.currency,
       },
       correlationId,
     );
@@ -144,6 +145,22 @@ export class OrdersService {
             shippingMinor: quote.shippingMinor ?? 0,
             shippingRateCode: quote.shipping?.selectedCode ?? null,
             shippingAddress: freeze(address),
+            /**
+             * The rate, frozen — M11's "watch for" made structural.
+             *
+             * Nothing re-reads `fx_rates` to display an order, so a rate that
+             * moves tomorrow cannot move what this customer paid. Storing it
+             * anyway is what makes the figure auditable rather than merely
+             * stable: a disputed total can be reconstructed from the rate and
+             * the moment it was observed.
+             *
+             * Left null when pricing did not report one, rather than defaulted
+             * to parity — null means "no rate was involved", which is a
+             * different fact.
+             */
+            baseCurrency: quote.baseCurrency ?? null,
+            fxRateE8: quote.fxRateE8 ?? null,
+            fxRateAt: quote.fxRateAt ? new Date(quote.fxRateAt) : null,
             totalMinor: quote.totalMinor,
             taxCountry: quote.destination.country,
             taxRegion: quote.destination.region,
@@ -208,7 +225,8 @@ export class OrdersService {
       `Order ${orderId} created: subtotal ${quote.subtotalMinor}, ` +
         `discount ${quote.discountMinor}, shipping ${quote.shippingMinor ?? 0}` +
         `${quote.shipping?.selectedCode ? ` (${quote.shipping.selectedCode})` : ''}, ` +
-        `tax ${quote.taxMinor}, total ${quote.totalMinor} ` +
+        `tax ${quote.taxMinor}, total ${quote.totalMinor} ${quote.currency}` +
+        `${quote.baseCurrency && quote.baseCurrency !== quote.currency ? ` @ ${(quote.fxRateE8 ?? 0) / 1e8} from ${quote.baseCurrency}` : ''} ` +
         `(${quote.destination.country}${quote.destination.region ? `-${quote.destination.region}` : ''}), ` +
         `awaiting reservation [${correlationId}]`,
     );

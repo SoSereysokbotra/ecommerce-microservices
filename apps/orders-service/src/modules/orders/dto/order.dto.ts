@@ -89,6 +89,18 @@ export class CreateOrderDto {
   @IsString()
   @Length(1, 32)
   shippingRateCode?: string;
+
+  /**
+   * What to charge in — 'USD', 'EUR', 'JPY'. Defaults to the catalog's own.
+   *
+   * The rate used is frozen onto the order, so a rate that moves tomorrow
+   * cannot move what this customer paid.
+   */
+  @ApiPropertyOptional({ example: 'JPY' })
+  @IsOptional()
+  @IsString()
+  @Length(3, 3)
+  currency?: string;
 }
 
 export class OrderAddressResponseDto {
@@ -139,6 +151,18 @@ export class OrderResponseDto {
   shippingAddress?: OrderAddressResponseDto | null;
   @ApiProperty({ description: 'What the customer pays. Includes tax from M8, shipping from M10.' })
   totalMinor: number;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'What the catalog priced it in. Null for orders placed before M11.',
+  })
+  baseCurrency?: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'The rate used × 10^8, frozen at purchase. Nothing re-reads fx_rates on display.',
+  })
+  fxRateE8?: number | null;
+  @ApiPropertyOptional({ nullable: true, description: 'When that rate was observed.' })
+  fxRateAt?: Date | null;
   @ApiPropertyOptional({ nullable: true, description: 'Null for orders placed before M8.' })
   taxCountry?: string | null;
   @ApiPropertyOptional({ nullable: true }) taxRegion?: string | null;

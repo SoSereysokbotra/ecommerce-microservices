@@ -98,6 +98,44 @@ export class OrderEntity {
   @Column({ name: 'shipping_address', type: 'jsonb', nullable: true })
   shippingAddress?: FrozenAddress | null;
 
+  /**
+   * What the catalog priced the goods in, before conversion.
+   *
+   * Null for an order placed before M11 — which is a different fact from
+   * "placed in the base currency at parity", and the distinction is why this is
+   * nullable rather than defaulted. See the migration.
+   */
+  @Column({ name: 'base_currency', type: 'char', length: 3, nullable: true })
+  baseCurrency?: string | null;
+
+  /**
+   * The rate used, × 10^8, frozen at purchase.
+   *
+   * **Nothing re-reads `fx_rates` to display an order.** A rate that moves
+   * tomorrow cannot move what this customer was charged — the same guarantee
+   * M8 gave tax and M10 gave shipping. This column is what makes the figure
+   * *auditable* as well as stable: with it and `fxRateAt`, a disputed total can
+   * be reconstructed instead of merely believed.
+   *
+   * Read through a transformer because TypeORM hands `bigint` back as a string,
+   * and `'15000000000' * 2` is the kind of bug that yields a plausible wrong
+   * number rather than an error.
+   */
+  @Column({
+    name: 'fx_rate_e8',
+    type: 'bigint',
+    nullable: true,
+    transformer: {
+      to: (value: number | null | undefined) => value ?? null,
+      from: (value: string | number | null) => (value === null ? null : Number(value)),
+    },
+  })
+  fxRateE8?: number | null;
+
+  /** When that rate was observed — not when the order was placed. */
+  @Column({ name: 'fx_rate_at', type: 'timestamptz', nullable: true })
+  fxRateAt?: Date | null;
+
   /** The jurisdiction this order was taxed in. Null for orders placed before M8. */
   @Column({ name: 'tax_country', type: 'char', length: 2, nullable: true })
   taxCountry?: string | null;

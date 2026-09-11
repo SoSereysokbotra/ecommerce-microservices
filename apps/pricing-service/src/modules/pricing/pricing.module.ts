@@ -15,7 +15,11 @@ import { CurrencyModule } from '../currency/currency.module';
  * jobs, no consumers. See app.module.ts for why that is deliberate.
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([TaxRateEntity, DiscountEntity]), CouponsModule, CurrencyModule],
+  imports: [
+    TypeOrmModule.forFeature([TaxRateEntity, DiscountEntity]),
+    CouponsModule,
+    CurrencyModule,
+  ],
   controllers: [PricingController],
   providers: [PricingService, CatalogClient, ShippingClient],
 })
