@@ -1,9 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { OutboxService } from '@libs/outbox';
 import Stripe from 'stripe';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { PaymentEntity, PaymentStatus } from './payment.entity';
+import { isThreeDecimal, stripeExponentFor } from './stripe-currencies';
 import { RefundEntity } from './refund.entity';
 import { WebhookEventEntity } from './webhook-event.entity';
 import { StripeService } from './stripe.service';
@@ -28,10 +29,71 @@ export class PaymentsService {
    * from the order id, so even a simultaneous second call gets back the same
    * intent rather than creating another.
    */
+  /**
+   * Refuse to charge in a currency whose minor unit we cannot vouch for.
+   *
+   * Stripe is handed `amountMinor` directly, so a charge is correct only if our
+   * minor-unit convention matches Stripe's. `stripe-currencies.ts` holds
+   * Stripe's own list; pricing's `currencies` table holds ours; this is where
+   * the two are compared, and it is the last point before real money moves.
+   *
+   * Three refusals, each for a failure that would otherwise be silent:
+   *
+   * - **A disagreement.** If pricing thinks JPY has two decimals and Stripe
+   *     knows it has none, the customer is charged 100× what they agreed to.
+   *     Nothing downstream would flag that — the amount is a valid integer and
+   *     Stripe accepts it.
+   * - **A currency Stripe has no convention for.** Passing the amount through
+   *     and hoping is the guess this whole milestone exists to remove.
+   * - **A three-decimal currency.** Stripe accepts those but requires the
+   *     amount rounded to the nearest hundred, and this project does not do
+   *     that rounding. Better to refuse than to submit an amount that is
+   *     quietly truncated.
+   *
+   * An order placed before M11 carries no exponent. That is read as the old
+   * assumption of two rather than refused, because it *was* two — every order
+   * in the table before this milestone was in dollars.
+   */
+  private assertCurrencyIsChargeable(currency: string, exponent?: number | null): void {
+    const stripeExponent = stripeExponentFor(currency);
+
+    if (stripeExponent === null) {
+      throw new BadRequestException(
+        `Cannot charge in '${currency}': no known minor-unit convention for it`,
+      );
+    }
+
+    if (isThreeDecimal(currency)) {
+      throw new BadRequestException(
+        `Cannot charge in '${currency}': Stripe requires three-decimal amounts rounded ` +
+          `to the nearest hundred, which this service does not do`,
+      );
+    }
+
+    const ours = exponent ?? 2;
+
+    if (ours !== stripeExponent) {
+      throw new BadRequestException(
+        `Refusing to charge ${currency}: priced with exponent ${ours}, ` +
+          `Stripe expects ${stripeExponent}. That is a factor of ` +
+          `${10 ** Math.abs(ours - stripeExponent)} on a real charge.`,
+      );
+    }
+  }
+
   async createIntentForOrder(
     manager: EntityManager,
-    input: { orderId: string; amountMinor: number; currency: string; correlationId?: string },
+    input: {
+      orderId: string;
+      amountMinor: number;
+      currency: string;
+      /** What pricing used. Null for an order placed before M11. */
+      exponent?: number | null;
+      correlationId?: string;
+    },
   ): Promise<PaymentEntity> {
+    this.assertCurrencyIsChargeable(input.currency, input.exponent);
+
     const repo = manager.getRepository(PaymentEntity);
     const existing = await repo.findOne({ where: { orderId: input.orderId } });
 

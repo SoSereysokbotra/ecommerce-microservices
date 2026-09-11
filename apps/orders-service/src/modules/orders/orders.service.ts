@@ -158,6 +158,7 @@ export class OrdersService {
              * to parity — null means "no rate was involved", which is a
              * different fact.
              */
+            exponent: quote.exponent ?? null,
             baseCurrency: quote.baseCurrency ?? null,
             fxRateE8: quote.fxRateE8 ?? null,
             fxRateAt: quote.fxRateAt ? new Date(quote.fxRateAt) : null,

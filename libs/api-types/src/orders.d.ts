@@ -138,6 +138,8 @@ export interface components {
             customerId: string;
             /** @description What promotions took off, summed. */
             discountMinor: number;
+            /** @description Decimal places for currency. Zero for JPY. Null before M11. */
+            exponent?: Record<string, never> | null;
             failureReason?: Record<string, never> | null;
             /** @description When that rate was observed. */
             fxRateAt?: Record<string, never> | null;

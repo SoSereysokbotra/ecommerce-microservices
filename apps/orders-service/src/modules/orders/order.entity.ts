@@ -99,6 +99,15 @@ export class OrderEntity {
   shippingAddress?: FrozenAddress | null;
 
   /**
+   * Decimal places for `currency` — how to read every other amount here.
+   *
+   * Null for an order placed before M11, where two was a constant nobody wrote
+   * down. See the migration for why it is stored rather than looked up.
+   */
+  @Column({ type: 'smallint', nullable: true })
+  exponent?: number | null;
+
+  /**
    * What the catalog priced the goods in, before conversion.
    *
    * Null for an order placed before M11 — which is a different fact from

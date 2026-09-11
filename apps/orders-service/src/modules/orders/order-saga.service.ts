@@ -63,6 +63,18 @@ export class OrderSagaService {
           amountMinor: order.totalMinor,
           currency: order.currency,
           customerId: order.customerId,
+          /**
+           * M11: how to read `amountMinor`.
+           *
+           * Stripe is handed this number directly, so the charge is right only
+           * if our minor-unit convention matches theirs. payments holds
+           * Stripe's own list and refuses when the two disagree — two
+           * independent sources for one fact, compared before money moves.
+           *
+           * Null for an order placed before M11, which payments reads as the
+           * old assumption of two.
+           */
+          exponent: order.exponent ?? null,
         },
       });
 

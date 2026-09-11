@@ -59,6 +59,10 @@ export class PaymentEventsListener implements OnModuleInit {
         orderId,
         amountMinor,
         currency,
+        // M11: what pricing's minor-unit convention was. Compared against
+        // Stripe's own before an intent is created — a disagreement is a 100×
+        // charge. Absent on an order placed before M11, which is read as two.
+        exponent: event.payload?.exponent as number | null | undefined,
         correlationId: event.correlationId,
       });
     });

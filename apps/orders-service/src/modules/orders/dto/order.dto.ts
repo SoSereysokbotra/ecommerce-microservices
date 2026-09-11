@@ -153,6 +153,11 @@ export class OrderResponseDto {
   totalMinor: number;
   @ApiPropertyOptional({
     nullable: true,
+    description: 'Decimal places for currency. Zero for JPY. Null before M11.',
+  })
+  exponent?: number | null;
+  @ApiPropertyOptional({
+    nullable: true,
     description: 'What the catalog priced it in. Null for orders placed before M11.',
   })
   baseCurrency?: string | null;

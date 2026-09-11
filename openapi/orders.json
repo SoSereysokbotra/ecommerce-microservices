@@ -175,6 +175,11 @@
             "description": "What promotions took off, summed.",
             "type": "number"
           },
+          "exponent": {
+            "description": "Decimal places for currency. Zero for JPY. Null before M11.",
+            "nullable": true,
+            "type": "object"
+          },
           "failureReason": {
             "nullable": true,
             "type": "object"
