@@ -99,6 +99,18 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
   if (error) return <div className="notice crit">{error}</div>;
   if (!order) return <p className="muted">Loading order…</p>;
 
+  /**
+   * The order is rendered in the currency it was **placed** in, always.
+   *
+   * The header's switcher does not apply here. An order is a record of what
+   * was agreed; a shopper who switches to euros must not see last month's
+   * dollar order restated, and a yen order must not grow two decimal places.
+   * The exponent is read off the order for the same reason the rate is —
+   * nothing about displaying a historical order may depend on a table that can
+   * change. Null means placed before M11, when two was the only answer.
+   */
+  const exponent = order.exponent ?? 2;
+
   return (
     <>
       <p className="small">
@@ -145,8 +157,8 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
                 {i.name} <span className="small muted">{i.sku}</span>
               </td>
               <td className="num">{i.qty}</td>
-              <td className="num">{formatMoney(i.unitPriceMinor, order.currency)}</td>
-              <td className="num">{formatMoney(i.unitPriceMinor * i.qty, order.currency)}</td>
+              <td className="num">{formatMoney(i.unitPriceMinor, order.currency, exponent)}</td>
+              <td className="num">{formatMoney(i.unitPriceMinor * i.qty, order.currency, exponent)}</td>
             </tr>
           ))}
           {/* The stored breakdown, never a recomputed one. These numbers were
@@ -157,7 +169,7 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
               Subtotal
             </td>
             <td className="num" data-testid="order-subtotal">
-              {formatMoney(order.subtotalMinor, order.currency)}
+              {formatMoney(order.subtotalMinor, order.currency, exponent)}
             </td>
           </tr>
           {order.discountMinor > 0 && (
@@ -166,7 +178,7 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
                 Discount
               </td>
               <td className="num" data-testid="order-discount">
-                −{formatMoney(order.discountMinor, order.currency)}
+                −{formatMoney(order.discountMinor, order.currency, exponent)}
               </td>
             </tr>
           )}
@@ -181,7 +193,7 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
               <td className="num" data-testid="order-shipping">
                 {order.shippingMinor === 0
                   ? 'Free'
-                  : formatMoney(order.shippingMinor, order.currency)}
+                  : formatMoney(order.shippingMinor, order.currency, exponent)}
               </td>
             </tr>
           )}
@@ -197,16 +209,24 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
               )}
             </td>
             <td className="num" data-testid="order-tax">
-              {formatMoney(order.taxMinor, order.currency)}
+              {formatMoney(order.taxMinor, order.currency, exponent)}
             </td>
           </tr>
+          {order.baseCurrency && order.baseCurrency !== order.currency && order.fxRateE8 && (
+            <tr>
+              <td colSpan={4} className="small muted" data-testid="order-fx-note">
+                Converted from {order.baseCurrency} at {(order.fxRateE8 / 1e8).toFixed(4)}, the
+                rate on the day. This order will not change if the rate does.
+              </td>
+            </tr>
+          )}
           <tr>
             <td colSpan={3}>
               <strong>Total</strong>
             </td>
             <td className="num">
               <strong data-testid="order-total">
-                {formatMoney(order.totalMinor, order.currency)}
+                {formatMoney(order.totalMinor, order.currency, exponent)}
               </strong>
             </td>
           </tr>

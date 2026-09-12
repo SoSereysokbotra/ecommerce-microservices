@@ -1,8 +1,16 @@
 # M11 — Multi-currency: implementation plan
 
 **Written:** 2026-09-10
-**Status:** Draft, for review. Nothing built yet.
+**Status:** Complete. All eight steps of §13 built, verified and committed.
+Decisions recorded in ADR-0010.
 **Milestone:** M11, fifth of R2
+
+> **One departure, decided while building.** §7 sketched `GET /pricing/fx-rates`
+> as a debugging aid and it was built; §9 said the order page keeps its original
+> currency and it does. But §8's payments check needed something §7's data
+> section did not list: an **`exponent` column on the order**, so the check has
+> two independent sources to compare and the order page can format a historical
+> order without re-reading a table that can change. It arrived at step 6.
 
 Read §3, §4 and §5 before agreeing to this.
 

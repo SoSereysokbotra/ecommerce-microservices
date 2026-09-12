@@ -114,6 +114,33 @@ export function setShippingChoice(choice: StoredShipping): void {
   window.localStorage.setItem(SHIPPING_KEY, JSON.stringify(choice));
 }
 
+/**
+ * The currency the shopper chose to see prices in.
+ *
+ * A global choice, not a cart one, so it lives in the header rather than on the
+ * cart page. Independent of the destination: "Germany means euros" is a guess
+ * that is wrong for every expat, so the two are never conflated.
+ *
+ * Not the source of truth for anything. The order sends the code, pricing does
+ * the conversion server-side, and the rate used is frozen onto the order.
+ */
+const CURRENCY_KEY = 'commerce.currency';
+
+export function getCurrency(): string | null {
+  if (typeof window === 'undefined') return null;
+  const code = window.localStorage.getItem(CURRENCY_KEY);
+  return code && /^[A-Z]{3}$/.test(code) ? code : null;
+}
+
+export function setCurrency(code: string | null): void {
+  if (typeof window === 'undefined') return;
+  if (code === null) {
+    window.localStorage.removeItem(CURRENCY_KEY);
+  } else {
+    window.localStorage.setItem(CURRENCY_KEY, code.toUpperCase());
+  }
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,

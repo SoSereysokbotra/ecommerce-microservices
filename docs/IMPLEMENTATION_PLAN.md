@@ -517,10 +517,39 @@ lifecycle `PENDING → DISPATCHED → DELIVERED`; consumes `order.paid`.
 > **taxed** differs by jurisdiction — California does not tax it, Pennsylvania
 > does, Germany puts VAT inside the price.
 
-### M11 — Multi-currency
+### M11 — Multi-currency — **done (2026-09-12)**
 Minor units audited everywhere; `fx_rates` table with scheduled refresh; **the rate
 used is frozen onto the order at purchase time**; storefront currency switcher.
 *Watch for:* historical orders must never re-price when rates change.
+
+> **Corrections, from building it.** Full reasoning in ADR-0010 and
+> `docs/M11_CURRENCY_PLAN.md`.
+>
+> **"Minor units audited everywhere" was the whole milestone, not a preamble.**
+> Seventeen money columns, four with a currency, and every one of them assumed
+> a minor unit is a hundredth. Yen has no minor unit. The exponent is now a
+> column, and `formatMoney` no longer divides by a literal 100.
+>
+> **Unit prices convert, not totals.** Converting the total would have forced
+> per-line rounding or a second allocation layer — the thing ADR-0007 exists to
+> prevent. Converting the price and running the pipeline unchanged left
+> `quote.ts` untouched.
+>
+> **The conversion is in BigInt.** Amount × rate × 10^exponent passes
+> `MAX_SAFE_INTEGER` for a large basket. `money.ts` bans floats, not large
+> integers.
+>
+> **Rates are never inverted, and the log is append-only.** Buy and sell rates
+> are not reciprocals. A reverse pair is a row.
+>
+> **The "watch for" was already solved by M8's freezing pattern**; M11 adds the
+> audit trail (rate and timestamp on the order) and proved it by moving the rate
+> after placing an order.
+>
+> **One thing the entry did not anticipate:** payments must compare our minor
+> unit against Stripe's before charging, because a disagreement is a 100× charge
+> that nothing downstream would notice. A real JPY order was confirmed with
+> Stripe as `amount=3815 currency=jpy`.
 
 ---
 
@@ -627,3 +656,4 @@ Write one whenever a choice has a defensible alternative. Keep them short.
 | 0007 | Round once per tax group; pricing owns money, orders stops pricing | M8 |
 | 0008 | Atomic coupon claim over optimistic locking; hold/commit/release | M9 |
 | 0009 | Shipping through the quote; addresses in users; a shipment is not a saga step | M10 |
+| 0010 | Convert prices not totals; exponent is data; append-only rates, never inverted | M11 |

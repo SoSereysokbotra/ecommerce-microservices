@@ -6,6 +6,7 @@ import Link from 'next/link';
 import {
   api,
   ApiError,
+  getCurrency,
   getShippingChoice,
   getToken,
   setShippingChoice,
@@ -62,6 +63,9 @@ export default function CartPage() {
    * total is not a cart page.
    */
   const [signedIn] = useState(() => getToken() !== null);
+  // The header's choice. Sent with every quote and with the order; the browser
+  // never converts anything itself.
+  const [currencyChoice] = useState<string | null>(() => getCurrency());
   const [addressId, setAddressId] = useState<string | null>(() => getShippingChoice().addressId ?? null);
   const [address, setAddress] = useState<Address | null>(null);
   const [rateCode, setRateCode] = useState<string | null>(() => getShippingChoice().rateCode ?? null);
@@ -124,6 +128,7 @@ export default function CartPage() {
           ...(quoteDestination ? { destination: quoteDestination } : {}),
           ...(couponCode ? { couponCode } : {}),
           ...(rateCode ? { shippingRateCode: rateCode } : {}),
+          ...(currencyChoice ? { currency: currencyChoice } : {}),
         });
         // The basket may have changed while this was in flight; a stale quote
         // showing the wrong total is worse than showing none.
@@ -138,10 +143,13 @@ export default function CartPage() {
     return () => {
       cancelled = true;
     };
-  }, [items, destination, address, couponCode, rateCode]);
+  }, [items, destination, address, couponCode, rateCode, currencyChoice]);
 
   const priced = items.map((line) => ({ ...line, product: products[line.productId] }));
   const currency = quote?.currency ?? priced.find((line) => line.product)?.product?.currency ?? 'USD';
+  // Zero for JPY. Only the quote knows; the line prices below are catalog
+  // figures in the base currency and format with the default until it lands.
+  const exponent = quote?.exponent ?? 2;
 
   async function checkout() {
     if (!getToken()) {
@@ -167,6 +175,9 @@ export default function CartPage() {
          */
         ...(addressId ? { shippingAddressId: addressId } : {}),
         ...(rateCode ? { shippingRateCode: rateCode } : {}),
+        // Charged in the currency the basket was shown in. The rate pricing
+        // used is frozen onto the order, so this figure cannot move later.
+        ...(currencyChoice ? { currency: currencyChoice } : {}),
         // Still sent, and still the only option for a guest checkout or an
         // account with no saved address. Ignored when an address id is given.
         ...(destination
@@ -243,7 +254,18 @@ export default function CartPage() {
               />
 
               <span className="price">
-                {line.product ? formatMoney(line.product.priceMinor * line.qty, line.product.currency) : '—'}
+                {/* The quote's line, once it lands: that is the figure in the
+                    chosen currency, and the one the total is built from. The
+                    catalog price is the fallback for the moment before the
+                    first quote — and it is the base currency, so a JPY shopper
+                    would briefly see dollars. Better than seeing nothing. */}
+                {(() => {
+                  const quoted = quote?.lines.find((q) => q.productId === line.productId);
+                  if (quoted) return formatMoney(quoted.lineSubtotalMinor, currency, exponent);
+                  return line.product
+                    ? formatMoney(line.product.priceMinor * line.qty, line.product.currency)
+                    : '—';
+                })()}
               </span>
 
               <button className="ghost small" onClick={() => void removeItem(line.productId)}>
@@ -293,7 +315,7 @@ export default function CartPage() {
                   {quote.shipping.options.map((option) => (
                     <option key={option.code} value={option.code}>
                       {option.name} —{' '}
-                      {option.costMinor === 0 ? 'Free' : formatMoney(option.costMinor, currency)}
+                      {option.costMinor === 0 ? 'Free' : formatMoney(option.costMinor, currency, exponent)}
                     </option>
                   ))}
                 </select>
@@ -374,7 +396,7 @@ export default function CartPage() {
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <span className="muted">Subtotal</span>
               <span className="price" data-testid="cart-subtotal">
-                {quote ? formatMoney(quote.subtotalMinor, currency) : '—'}
+                {quote ? formatMoney(quote.subtotalMinor, currency, exponent) : '—'}
               </span>
             </div>
 
@@ -387,7 +409,7 @@ export default function CartPage() {
               >
                 <span className="muted">{discount.name}</span>
                 <span className="price" data-testid="cart-discount-amount">
-                  −{formatMoney(discount.amountMinor, currency)}
+                  −{formatMoney(discount.amountMinor, currency, exponent)}
                 </span>
               </div>
             ))}
@@ -398,7 +420,7 @@ export default function CartPage() {
                 {/* "Free" rather than "$0.00": a shopper who qualified for free
                     delivery should be told they did, not shown a zero. */}
                 <span className="price" data-testid="cart-shipping">
-                  {quote.shippingMinor === 0 ? 'Free' : formatMoney(quote.shippingMinor, currency)}
+                  {quote.shippingMinor === 0 ? 'Free' : formatMoney(quote.shippingMinor, currency, exponent)}
                 </span>
               </div>
             )}
@@ -408,14 +430,14 @@ export default function CartPage() {
                 {quote ? taxLabel(quote.taxBreakdown) : 'Tax'}
               </span>
               <span className="price" data-testid="cart-tax">
-                {quote ? formatMoney(quote.taxMinor, currency) : '—'}
+                {quote ? formatMoney(quote.taxMinor, currency, exponent) : '—'}
               </span>
             </div>
 
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <strong>Total</strong>
               <strong className="price" data-testid="cart-total">
-                {quote ? formatMoney(quote.totalMinor, currency) : '—'}
+                {quote ? formatMoney(quote.totalMinor, currency, exponent) : '—'}
               </strong>
             </div>
 

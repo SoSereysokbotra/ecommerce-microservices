@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { CartProvider } from '@/components/CartProvider';
 import { CartLink } from '@/components/CartLink';
+import { CurrencySwitcher } from '@/components/CurrencySwitcher';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </Link>
               <nav className="row small">
                 <Link href="/">Products</Link>
+                <CurrencySwitcher />
                 <CartLink />
                 <Link href="/login">Sign in</Link>
               </nav>

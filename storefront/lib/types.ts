@@ -57,6 +57,10 @@ export interface Order {
   /** Where it is going, frozen at checkout. */
   shippingAddress?: Omit<Address, 'id' | 'isDefault' | 'label'> | null;
   totalMinor: number;
+  /** Decimal places for `currency`. Null before M11, which means two. */
+  exponent?: number | null;
+  baseCurrency?: string | null;
+  fxRateE8?: number | null;
   /** Null on orders placed before M8, which were taxed nowhere. */
   taxCountry?: string | null;
   taxRegion?: string | null;
@@ -197,6 +201,12 @@ export interface Quote {
   totalMinor: number;
   coupon?: QuoteCoupon | null;
   shipping?: QuoteShipping | null;
+  /** Decimal places for `currency`. Zero for JPY — pass it to formatMoney. */
+  exponent: number;
+  /** What the catalog priced the goods in. */
+  baseCurrency: string;
+  /** The rate used × 10^8. 100000000 at parity. */
+  fxRateE8: number;
 }
 
 /** A saved delivery address. */
@@ -279,7 +289,29 @@ export function taxLabel(groups: TaxGroup[]): string {
   return `${noun} (${rates.join(' + ')}%${inclusive ? ', included' : ''})`;
 }
 
-/** Money is integer minor units everywhere; format only at the edge. */
-export function formatMoney(amountMinor: number, currency: string): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amountMinor / 100);
+/**
+ * Money is integer minor units everywhere; format only at the edge.
+ *
+ * `exponent` is how many minor units make one unit — **2 for USD and EUR, 0
+ * for JPY**. Until M11 this function divided by a literal 100, which showed
+ * ¥10.00 for a ¥1000 item and was wrong by a factor of a hundred for every
+ * currency that is not hundredths. The exponent comes from the quote or the
+ * order, so the browser holds no table of its own that could drift from the
+ * one pricing uses.
+ *
+ * Defaults to 2 for the callers that predate M11 and only ever see the base
+ * currency; a JPY figure formatted without its exponent would be a bug at the
+ * call site, and `Intl` would at least render it without decimals.
+ */
+export function formatMoney(amountMinor: number, currency: string, exponent = 2): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(
+    amountMinor / 10 ** exponent,
+  );
+}
+
+export interface Currency {
+  code: string;
+  /** Minor-unit exponent. Zero for JPY. */
+  exponent: number;
+  name: string;
 }
