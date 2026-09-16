@@ -46,6 +46,46 @@ services:
       retries: 10
     networks: [commerce]
 
+  opensearch:
+    image: opensearchproject/opensearch:2
+    container_name: commerce-opensearch
+    restart: unless-stopped
+    environment:
+      # Single node, no security plugin, and a heap pinned to 512 MB. The
+      # Docker VM has ~7.6 GB and eleven containers already; an unpinned JVM
+      # would take half the machine. docs/M12_SEARCH_PLAN.md §5 has the
+      # numbers and the Postgres full-text fallback if this proves too heavy.
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+      # Lock the heap so the VM cannot swap it out from under the JVM; the
+      # memlock ulimit below is what lets it. Both from OpenSearch's own
+      # reference compose file.
+      bootstrap.memory_lock: "true"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "9200:9200"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    healthcheck:
+      # The image has curl. `/_cluster/health` answers 200 for yellow as well
+      # as green; the index itself sets replicas to 0 so a single node is
+      # green, and search-service's /ready refuses only on red.
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      # A JVM takes a while: measured ~40s to first answer on this machine.
+      start_period: 90s
+    networks: [commerce]
+
   # ---------------------------------------------------------------------- services
   users-service:
     build:
@@ -315,6 +355,41 @@ services:
       start_period: 90s
     networks: [commerce]
 
+  search-service:
+    build:
+      context: .
+      dockerfile: ./apps/search-service/Dockerfile
+      target: development
+    container_name: commerce-search-service
+    restart: unless-stopped
+    ports:
+      - "3009:3009"
+    env_file:
+      - ./apps/search-service/.env
+    volumes:
+      - .:/app
+      - search_service_node_modules:/app/apps/search-service/node_modules
+    depends_on:
+      # No Postgres — this block is deliberately shaped unlike every other
+      # service's. search-service owns a read model in OpenSearch that is
+      # built only from catalog's events over RabbitMQ and can be deleted and
+      # rebuilt from them. `docker compose config search-service` shows no
+      # DATABASE_URL of any kind, and that absence is the design
+      # (docs/M12_SEARCH_PLAN.md §4).
+      opensearch:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3009/api/v1/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      # ts-node takes ~29s to register before Nest logs a line; there is no
+      # cold Neon endpoint here, but the same 90s keeps the services uniform.
+      start_period: 90s
+    networks: [commerce]
+
   api-gateway:
     build:
       context: .
@@ -346,6 +421,8 @@ services:
         condition: service_healthy
       shipping-service:
         condition: service_healthy
+      search-service:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/v1/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 10s
@@ -357,6 +434,7 @@ services:
 volumes:
   rabbitmq_data:
   redis_data:
+  opensearch_data:
   users_service_node_modules:
   catalog_service_node_modules:
   inventory_service_node_modules:
@@ -366,6 +444,7 @@ volumes:
   cart_service_node_modules:
   pricing_service_node_modules:
   shipping_service_node_modules:
+  search_service_node_modules:
 
 networks:
   commerce:

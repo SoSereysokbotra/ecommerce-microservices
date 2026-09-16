@@ -1,6 +1,6 @@
 # Handoff — read this first
 
-**Written:** 2026-09-01. **Last updated:** 2026-09-17 (M10 and M11 complete; M12 step 1 of 7 done).
+**Written:** 2026-09-01. **Last updated:** 2026-09-17 (M10 and M11 complete; M12 steps 1–2 of 7 done).
 **Repo:** https://github.com/SoSereysokbotra/ecommerce-microservices (public, `main`)
 **Local:** `d:\Year2\Microservices\Order‑Inventory‑Payment Microservices\ecommerce-microservices`
 
@@ -11,11 +11,11 @@ way and will cost hours to rediscover.
 **Where things stand (2026-09-17):** R1 is finished and deployed (via Cloudflare
 Tunnel, from this machine). **R2 is complete** — M7 (cart), M8 (tax and
 discounts), M9 (coupons), **M10 (shipping)** and **M11 (multi-currency)** are
-all done and pushed. R3 has started: **M12 (search) is one step in** — catalog
-now emits events; search-service does not exist yet.
+all done and pushed. R3 has started: **M12 (search) is two steps in** — catalog
+emits events, and search-service exists on 3009 with OpenSearch behind it, but
+consumes nothing yet.
 
-**The next task is M12 step 2 — scaffold search-service and OpenSearch.** See
-§10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
+**The next task is M12 step 3 — the projection.** See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
 
 **Running it is now one command: `npm run dev`.** See §4 — the old
 `docker stop jobfit-redis` step is gone.
@@ -77,7 +77,7 @@ finished and must not be modified. See §9 — it has a live security problem.
 | **M9** | **Coupons — the concurrency milestone** | **done** |
 | **M10** | **Shipping: addresses, rates by weight/zone, shipment lifecycle** | **done** |
 | **M11** | **Multi-currency: exponents, FX rates frozen on the order** | **done** |
-| M12 | Search: OpenSearch index built from catalog events (CQRS) | **step 1 of 7 done** |
+| M12 | Search: OpenSearch index built from catalog events (CQRS) | **steps 1–2 of 7 done** |
 | M13–M22 | Rest of R3, then R4–R5 | not started |
 
 **M6** was met on 2026-09-02 via **Cloudflare Tunnel**, not a managed platform —
@@ -110,14 +110,14 @@ creation is a saga step) and the ADR argues both.
 **M11** was built 2026-09-10/12 in eight steps. Design in
 **`docs/M11_CURRENCY_PLAN.md`**, decisions in **ADR-0010**.
 
-**M12** step 1 landed 2026-09-17. Design in **`docs/M12_SEARCH_PLAN.md`**.
-Steps 2–7 remain. See §10.
+**M12** steps 1 and 2 landed 2026-09-17. Design in **`docs/M12_SEARCH_PLAN.md`**.
+Steps 3–7 remain. See §10.
 
 Read ADR-0007 through ADR-0010 before touching pricing-service,
 `OrdersService.create()`, the saga's terminal transitions, or anything that
 formats or converts money.
 
-**Next task: M12 step 2.** See §10.
+**Next task: M12 step 3.** See §10.
 
 ### What M7 added, in one paragraph
 
@@ -199,6 +199,19 @@ same transaction as every write, and has `RabbitMQModule` configured
 collision test proved a lost update — so `ProductsService.update()` is a
 conditional `UPDATE ... WHERE id = $1 AND version = $2`, the M9 pattern. See §5.
 
+### What M12 step 2 added
+
+A ninth service, `search-service` on **port 3009**, and **OpenSearch** in
+compose (single node, 512 MB heap, healthchecked, 90 s `start_period`). The
+service has **no database**: no `TypeOrmModule`, no `@libs/outbox`, no
+`DATABASE_URL` — `docker compose config search-service` proves the absence.
+It boots by creating the `products` index with the §6 mapping if missing
+(`dynamic: strict`, 0 replicas so a single node is green), and `/ready` is
+503 unless the cluster answers, is not red, and the index exists — verified by
+stopping OpenSearch. Its queue binds `product.*` and `category.*` from the
+scaffold so events queue up before the consumer exists. 10 unit tests, no
+cluster needed.
+
 ---
 
 ## 3. Architecture
@@ -219,12 +232,12 @@ search-service, which by design will have **none** (see `M12_SEARCH_PLAN.md`
 | cart-service | 3006 | Guest + signed-in carts, merge on login, abandonment sweep |
 | pricing-service | 3007 | Tax rules, promotions, coupons, **currencies and FX rates**, `POST /pricing/quote` (which now includes shipping) |
 | shipping-service | 3008 | Zones, weight-banded rates, shipments (created from `order.confirmed`) |
-| search-service | 3009 | **Not built yet.** OpenSearch read model fed by catalog events. No Postgres. |
+| search-service | 3009 | OpenSearch read model fed by catalog events. **No Postgres.** Scaffold only — the consumer is step 3. |
 | storefront | 3100 | Next.js UI |
 
 Supporting: RabbitMQ (5672 / 15672), Redis (**6380** on the host, 6379 inside
-the network — used since M7 for guest carts), and from M12 step 2 **OpenSearch**
-(single node, 512 MB heap — see §10).
+the network — used since M7 for guest carts), and since M12 step 2 **OpenSearch**
+(**9200**, single node, 512 MB heap, no security plugin).
 
 Events added since M9: `order.confirmed` now carries the shipping address and
 rate; `payment.requested` carries the currency **exponent**; `shipment.dispatched`
@@ -302,6 +315,7 @@ recreated on a new machine**. `.env.example` files show the shape.
 | `apps/shipping-service/.env` | `DATABASE_URL` (its own Neon db — provisioned 2026-09-10), `RABBITMQ_URL`, `JWT_SECRET` |
 | `apps/catalog-service/.env` | also `RABBITMQ_URL`, `RABBITMQ_EXCHANGE` since M12 (no `RABBITMQ_QUEUE` — publish-only) |
 | `apps/orders-service/.env` | also `USERS_SERVICE_URL` since M10 |
+| `apps/search-service/.env` | `OPENSEARCH_URL`, `RABBITMQ_URL`, `RABBITMQ_EXCHANGE`, `RABBITMQ_QUEUE`, `JWT_SECRET`. **No `DATABASE_URL`, by design.** |
 | `apps/api-gateway/.env` | `JWT_SECRET`, `CORS_ORIGINS` |
 | `storefront/.env.local` | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` |
 
@@ -738,6 +752,16 @@ tests; 5 → 9 with the cart suite). CI on GitHub is green.
 | Two editors read v4, both `save()` | **lost update** — TypeORM's lock did not fire (the bug) |
 | Same, through the conditional UPDATE | A affected 1, B affected 0 — refused (the fix) |
 
+### Added by M12 step 2 — also do not redo
+
+| Scenario | Result |
+|---|---|
+| `docker compose config search-service` | no `DATABASE_URL`, no `typeorm`, no `pg` in the block or the package |
+| First boot | `products` index created with the mapping; `GET :9200/products` shows `dynamic: strict`, 0 replicas |
+| `docker stop commerce-opensearch` | `/ready` → **503** "opensearch unreachable"; `/health` still 200 |
+| OpenSearch back | `/ready` → 200 with no restart of search-service |
+| Queue `search-service` in the management UI | bound to `product.*` and `category.*`, 0 consumers (step 3) |
+
 
 ## 7. Deliberate decisions someone might otherwise "fix"
 
@@ -1015,10 +1039,10 @@ dependency locally and reintroduce the two-copies bug in §5.
 `storefront/` fails because of it. The root `npm run lint` only covers
 `{apps,libs}` so CI does not see it.
 
-**Docker Desktop's memory allocation (7.6 GB VM) will be tight with OpenSearch.**
-Eleven containers plus a JVM. If M12 step 2 shows the stack thrashing, either
-raise the VM allocation in Docker Desktop settings or take the Postgres
-full-text fallback in `M12_SEARCH_PLAN.md` §5.
+**Docker Desktop's memory allocation (7.6 GB VM) is tight with OpenSearch.**
+Twelve containers plus a JVM pinned to 512 MB heap. It fit at step 2; if the
+stack starts thrashing, either raise the VM allocation in Docker Desktop
+settings or take the Postgres full-text fallback in `M12_SEARCH_PLAN.md` §5.
 
 **Enable the pre-commit hook on any new clone:**
 `git config core.hooksPath .githooks`. The repo is public, so CI's secret scan
@@ -1038,7 +1062,7 @@ painful fast.
 
 ---
 
-## 10. The next task: M12 step 2 — scaffold search-service and OpenSearch
+## 10. The next task: M12 step 3 — the projection
 
 M12's plan is written, reviewed and committed: **`docs/M12_SEARCH_PLAN.md`**.
 Both open decisions were taken as recommended — **no read-side Postgres**
@@ -1049,48 +1073,50 @@ ordering-safe on its own) and **OpenSearch over Postgres full-text**.
 catalog emits `product.created` / `product.updated` with full state and a
 version, publish-only RabbitMQ, conditional-UPDATE version guard.
 
-**Step 2, next**, from the plan's §11:
+**Step 2 is done** (commit "M12 step 2: search-service scaffold and
+OpenSearch"): `apps/search-service/` on 3009, `opensearch` in compose,
+`OpenSearchClient` with index bootstrap, `/ready` on the cluster, queue bound
+to `product.*` / `category.*`. No consumer.
 
-> Scaffold search-service and OpenSearch — compose, healthchecks, index
-> bootstrap with the mapping, `/ready` that checks the cluster. No consumer
-> yet. Verify the compose block has no database.
+**Step 3, next**, from the plan's §11:
+
+> The projection — the consumer, versioned upserts, and the three no-op
+> proofs (redelivery, republication, **reordering**). This is the CQRS
+> content; if time runs short, stop after this and the lesson is still there.
 
 Concretely:
 
-- `apps/search-service/` on **port 3009**. Copy shipping-service's scaffold
-  (it is the newest); **drop everything Postgres** — no `typeorm.config.ts`,
-  no `DATABASE_URL`, no `@libs/outbox`. `RabbitMQModule` with a queue bound
-  to `product.*` and `category.*` (the consumer itself is step 3).
-- An `opensearch` service in `docker-compose.yml`:
-  `opensearchproject/opensearch:2` single node, `discovery.type=single-node`,
-  `DISABLE_SECURITY_PLUGIN=true`, `OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m`, a
-  named volume, and a healthcheck on `/_cluster/health` with a `start_period`
-  of at least 90 s — a JVM takes a while.
-- `opensearch.client.ts`: a thin wrapper (the official `@opensearch-project/opensearch`
-  client) that creates the `products` index with the mapping in the plan's §6
-  on boot if it is missing. Mapping matters now because changing it later means
-  a reindex.
-- `/ready` returns 503 unless the cluster answers. Verify it by stopping
-  OpenSearch, the way M10 step 1 verified `/ready` by stopping Postgres.
-- Root `package.json` scripts, `scripts/gen-api-spec.sh` (`[search]=3009`),
-  `build:all`, `test:all`. The gateway already routes `/api/v1/search` to
-  `searchServiceUrl`.
-- **Prove the absence:** `docker compose config` for search-service shows no
-  `DATABASE_URL` of any kind.
+- `src/modules/search/product-document.ts`: one pure function from a
+  `product.*` event payload to the §6 document. Unit-test it, including an
+  inactive product and a product with no category.
+- `src/events/catalog-events.listener.ts`: subscribe to the `search-service`
+  queue (`RabbitMQService.subscribe`, the shipping listener is the model),
+  and on `product.*` write the document with
+  `index({ id, version: event.version, version_type: 'external', body })`
+  through `OpenSearchClient.raw`. **A 409 is success**: log at debug and
+  return, never throw — a throw nacks with `requeue=false` and the event is
+  gone. `category.*` can be a no-op until step 6.
+- The mapping is `dynamic: strict` — a field on the event that is not in
+  `products.index.ts` fails the write. That is the point; map it or drop it
+  in `product-document.ts`, do not loosen the mapping.
+- **The three proofs, against the live stack**: redeliver the same
+  `product.updated` (document unchanged, 409 logged); republish it with a new
+  event id (same); deliver v6 *after* v7 (v7 stays). Use the scratch publisher
+  pattern from M10 step 7, or `PATCH` a product twice and replay the older
+  outbox row. The reordering proof is the one `processed_events` could never
+  pass — record it in the §6 table.
+- Then steps 4–7 as the plan lists them.
 
-Then steps 3–7 as the plan lists them. Step 3 (the projection with the three
-no-op proofs — redelivery, republication, **reordering**) is the milestone's
-content; the reordering proof is the one `processed_events` could never pass.
+What earlier steps leave you that matters here:
 
-What M10 and M11 leave you that matters here:
-
-- **`product.*` events are already flowing.** Every catalog write publishes one.
-  You can watch them with the scratch publisher pattern from M10 step 7, or by
-  binding a throwaway queue to `product.#` in the RabbitMQ management UI.
+- **`product.*` events are already flowing and now queue up** in
+  `search-service` — since step 2 the queue exists with no consumer, so the
+  first boot of the consumer will drain everything published since. That is
+  fine (versioned writes) and is itself a small replay test.
 - **Every event carries `version`**, `categorySlug`, `categoryName` and
   `categoryVersion`. The projection needs nothing else.
-- **`weightGrams`, `priceMinor`, `currency`** are on the event. The index stores
-  the base-currency price and does not convert — ADR-0010 recorded why.
+- **`weightGrams`, `priceMinor`, `currency`** are on the event. The index
+  stores the base-currency price and does not convert — ADR-0010 recorded why.
 - **The `_update_by_query` fan-out for category renames** (step 6) has no
   write path to trigger it yet; the republish command (step 5) is the first
   thing that will emit `category.updated`.
