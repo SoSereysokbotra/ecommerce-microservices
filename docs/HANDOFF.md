@@ -1,6 +1,6 @@
 # Handoff — read this first
 
-**Written:** 2026-09-01. **Last updated:** 2026-09-09 (M9 complete).
+**Written:** 2026-09-01. **Last updated:** 2026-09-17 (M10 and M11 complete; M12 step 1 of 7 done).
 **Repo:** https://github.com/SoSereysokbotra/ecommerce-microservices (public, `main`)
 **Local:** `d:\Year2\Microservices\Order‑Inventory‑Payment Microservices\ecommerce-microservices`
 
@@ -8,12 +8,14 @@ This document exists so a new session can continue without re-deriving anything.
 Read it fully before touching code — several things here were learned the hard
 way and will cost hours to rediscover.
 
-**Where things stand (2026-09-09):** R1 is finished and deployed (via Cloudflare
-Tunnel, from this machine). R2 is three milestones in — **M7 (cart)**, **M8 (tax
-and discounts)** and **M9 (coupons)** are all complete and pushed.
-`pricing-service` on port 3007 owns tax, promotions and coupons.
+**Where things stand (2026-09-17):** R1 is finished and deployed (via Cloudflare
+Tunnel, from this machine). **R2 is complete** — M7 (cart), M8 (tax and
+discounts), M9 (coupons), **M10 (shipping)** and **M11 (multi-currency)** are
+all done and pushed. R3 has started: **M12 (search) is one step in** — catalog
+now emits events; search-service does not exist yet.
 
-**The next milestone is M10 — shipping.** See §10.
+**The next task is M12 step 2 — scaffold search-service and OpenSearch.** See
+§10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
 
 **Running it is now one command: `npm run dev`.** See §4 — the old
 `docker stop jobfit-redis` step is gone.
@@ -30,8 +32,11 @@ If you are starting fresh, read in this order:
    deliberate departures from `IMPLEMENTATION_PLAN.md` that look like mistakes
    otherwise.
 3. `docs/DEPLOYMENT.md` — only if you are deploying.
-4. `docs/IMPLEMENTATION_PLAN.md` §3, the M8 entry, before starting the next
-   milestone.
+4. `docs/M12_SEARCH_PLAN.md` — the current milestone. Its §4 (versioned
+   projection, no read-side database) and §11 (order of work) are what step 2
+   onward follows.
+5. `docs/adr/0009-*` and `docs/adr/0010-*` before touching pricing-service,
+   orders-service, or anything that formats money.
 
 Do not re-verify what §6 lists as already verified.
 
@@ -56,7 +61,7 @@ finished and must not be modified. See §9 — it has a live security problem.
 
 ---
 
-## 2. Status: 10 of 23 milestones done — R1 complete, R2 half done
+## 2. Status: 12 of 23 milestones done — R1 and R2 complete, R3 started
 
 | | Milestone | State |
 |---|---|---|
@@ -70,8 +75,10 @@ finished and must not be modified. See §9 — it has a live security problem.
 | **M7** | **Cart: guest carts, merge on login, abandonment** | **done** |
 | **M8** | **Pricing: tax + discounts** | **done** |
 | **M9** | **Coupons — the concurrency milestone** | **done** |
-| M10 | Shipping: addresses, rates, shipment lifecycle | **next** |
-| M11–M22 | Rest of R2, then R3–R5 | not started |
+| **M10** | **Shipping: addresses, rates by weight/zone, shipment lifecycle** | **done** |
+| **M11** | **Multi-currency: exponents, FX rates frozen on the order** | **done** |
+| M12 | Search: OpenSearch index built from catalog events (CQRS) | **step 1 of 7 done** |
+| M13–M22 | Rest of R3, then R4–R5 | not started |
 
 **M6** was met on 2026-09-02 via **Cloudflare Tunnel**, not a managed platform —
 Railway's trial had expired on the available account. Verified with real Stripe
@@ -95,10 +102,22 @@ and would otherwise look like mistakes.
 `IMPLEMENTATION_PLAN.md` on the locking mechanism, and the ADR has the
 measurement that justifies it.
 
-Read ADR-0007 and ADR-0008 before touching pricing-service,
-`OrdersService.create()`, or the saga's terminal transitions.
+**M10** was built 2026-09-09/10 in eight steps. Design in
+**`docs/M10_SHIPPING_PLAN.md`**, decisions in **ADR-0009**. It contradicts
+`IMPLEMENTATION_PLAN.md` on two things (where addresses live; whether shipment
+creation is a saga step) and the ADR argues both.
 
-**Next task: M10 — shipping.** See §10.
+**M11** was built 2026-09-10/12 in eight steps. Design in
+**`docs/M11_CURRENCY_PLAN.md`**, decisions in **ADR-0010**.
+
+**M12** step 1 landed 2026-09-17. Design in **`docs/M12_SEARCH_PLAN.md`**.
+Steps 2–7 remain. See §10.
+
+Read ADR-0007 through ADR-0010 before touching pricing-service,
+`OrdersService.create()`, the saga's terminal transitions, or anything that
+formats or converts money.
+
+**Next task: M12 step 2.** See §10.
 
 ### What M7 added, in one paragraph
 
@@ -140,12 +159,54 @@ to make that possible the saga now **announces `order.confirmed` and
 `order.cancelled`**, which it never did before. `pricing-service` therefore
 gained the outbox and consumer wiring that M8 deliberately left out.
 
+### What M10 added, in one paragraph
+
+An eighth service, `shipping-service` on **port 3008**, with its own Neon
+database. **Addresses live in users-service** (`/users/me/addresses`), not
+shipping — the two plan documents disagreed and ADR-0009 argues for the profile
+side. An order sends an **address id**; orders reads the address server-side, so
+the tax jurisdiction comes from a row the customer owns rather than from the
+browser — closing the placeholder M8 left. **Shipping cost goes *through* the
+quote**: pricing calls shipping and folds the rate in, so exactly one thing
+still computes a total. Delivery is taxed per jurisdiction (California no,
+Pennsylvania yes, Germany inside the price) and **joins the tax group for its
+rate** so ADR-0007's round-once rule stays literally true. Catalog gained
+`weight_grams`. A shipment is created by consuming `order.confirmed` and is
+**not a saga step** — nothing has to be undone if it fails. Lifecycle `pending →
+dispatched → delivered`, illegal transitions refused.
+
+### What M11 added, in one paragraph
+
+No new service. A `currencies` table with a **minor-unit exponent** — the whole
+codebase had assumed a minor unit is a hundredth, and yen has none. `fx_rates`
+is an **append-only** log (newest wins, never inverted). Quoting in EUR or JPY
+**converts unit prices, not totals**, then runs `quote.ts` unchanged, so
+ADR-0007 is untouched. The rate, its timestamp and the exponent are **frozen
+onto the order**; a historical order was proved not to move when the rate did.
+**payments compares our exponent against Stripe's own zero-decimal list before
+charging** — a disagreement is a 100× charge nothing else would notice. A real
+JPY order was confirmed with Stripe as `amount=3815 currency=jpy`. `formatMoney`
+takes an exponent; a currency switcher sits in the header; order pages always
+render in the currency they were placed in.
+
+### What M12 step 1 added
+
+catalog-service was the last backend service with no outbox. It now emits
+`product.created` / `product.updated` (full state, plus a **version**) in the
+same transaction as every write, and has `RabbitMQModule` configured
+**publish-only** (no queue). Products and categories gained `version` columns.
+**TypeORM's `@VersionColumn` does not check the version on `save()`** — a
+collision test proved a lost update — so `ProductsService.update()` is a
+conditional `UPDATE ... WHERE id = $1 AND version = $2`, the M9 pattern. See §5.
+
 ---
 
 ## 3. Architecture
 
-Six backend services plus a Next.js storefront. Every service owns its own Neon
-PostgreSQL database. Nothing is reachable from a browser except the gateway.
+Eight backend services plus a Next.js storefront, with a ninth (search) in
+progress. Every service owns its own Neon PostgreSQL database — except
+search-service, which by design will have **none** (see `M12_SEARCH_PLAN.md`
+§4). Nothing is reachable from a browser except the gateway.
 
 | Service | Port | Owns |
 |---|---:|---|
@@ -156,12 +217,19 @@ PostgreSQL database. Nothing is reachable from a browser except the gateway.
 | orders-service | 3004 | Orders + **saga orchestrator** |
 | payments-service | 3005 | Stripe intents, webhooks, refunds |
 | cart-service | 3006 | Guest + signed-in carts, merge on login, abandonment sweep |
-| pricing-service | 3007 | Tax rules, promotions, **coupons**, `POST /pricing/quote` |
+| pricing-service | 3007 | Tax rules, promotions, coupons, **currencies and FX rates**, `POST /pricing/quote` (which now includes shipping) |
+| shipping-service | 3008 | Zones, weight-banded rates, shipments (created from `order.confirmed`) |
+| search-service | 3009 | **Not built yet.** OpenSearch read model fed by catalog events. No Postgres. |
 | storefront | 3100 | Next.js UI |
 
 Supporting: RabbitMQ (5672 / 15672), Redis (**6380** on the host, 6379 inside
-the network — **actually used since M7**,
-for guest carts; before that it was declared and idle).
+the network — used since M7 for guest carts), and from M12 step 2 **OpenSearch**
+(single node, 512 MB heap — see §10).
+
+Events added since M9: `order.confirmed` now carries the shipping address and
+rate; `payment.requested` carries the currency **exponent**; `shipment.dispatched`
+/ `shipment.delivered` (no consumer yet); `product.created` / `product.updated`
+(consumer arrives in M12 step 3).
 
 ### The saga
 
@@ -230,7 +298,10 @@ recreated on a new machine**. `.env.example` files show the shape.
 | `apps/orders-service/.env` | `DATABASE_URL`, `JWT_SECRET` |
 | `apps/payments-service/.env` | `DATABASE_URL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `JWT_SECRET` |
 | `apps/cart-service/.env` | `DATABASE_URL` (its own Neon db), `REDIS_URL`, `RABBITMQ_URL`, `JWT_SECRET`, `INVENTORY_SERVICE_URL` |
-| `apps/pricing-service/.env` | `DATABASE_URL` (its own Neon db), `CATALOG_SERVICE_URL`, `DEFAULT_TAX_COUNTRY`, `DEFAULT_TAX_REGION`, `JWT_SECRET` |
+| `apps/pricing-service/.env` | `DATABASE_URL` (its own Neon db), `CATALOG_SERVICE_URL`, `SHIPPING_SERVICE_URL`, `DEFAULT_TAX_COUNTRY`, `DEFAULT_TAX_REGION`, `JWT_SECRET`. `FX_PROVIDER_URL` is deliberately unset — see ADR-0010. |
+| `apps/shipping-service/.env` | `DATABASE_URL` (its own Neon db — provisioned 2026-09-10), `RABBITMQ_URL`, `JWT_SECRET` |
+| `apps/catalog-service/.env` | also `RABBITMQ_URL`, `RABBITMQ_EXCHANGE` since M12 (no `RABBITMQ_QUEUE` — publish-only) |
+| `apps/orders-service/.env` | also `USERS_SERVICE_URL` since M10 |
 | `apps/api-gateway/.env` | `JWT_SECRET`, `CORS_ORIGINS` |
 | `storefront/.env.local` | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` |
 
@@ -275,11 +346,11 @@ that works.
 
 ### First time on a new machine
 
-Migrations and seeds, once per database. **Seven** databases now —
-pricing-service was added in M8:
+Migrations and seeds, once per database. **Eight** databases now —
+shipping-service was added in M10:
 
 ```bash
-for s in users catalog inventory orders payments cart pricing; do
+for s in users catalog inventory orders payments cart pricing shipping; do
   npm run migration:run --prefix apps/$s-service
 done
 
@@ -287,8 +358,9 @@ done
 npm run seed --prefix apps/catalog-service
 npm run seed --prefix apps/inventory-service
 
-# Tax rules and promotions. Independent of the other two.
+# Tax rules, promotions, coupons, currencies and FX rates. Zones and rates.
 npm run seed:pricing
+npm run seed:shipping
 ```
 
 Run migrations **from the host**, not `docker compose exec`: Neon is reachable
@@ -299,7 +371,7 @@ cannot be exec'd into.
 
 ```bash
 npm run lint
-npm run test:all                    # 95 unit tests, no database needed
+npm run test:all                    # ~175 unit tests, no database needed
 npm run gen:spec && npm run gen:types   # gen:spec needs the stack running
 bash scripts/scan-secrets.sh
 ```
@@ -314,10 +386,11 @@ COUPON_TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:15433/coupontest  
 ```
 
 
-The 15 Playwright tests need the stack, the storefront on :3100, `stripe listen`
+The 26 Playwright tests need the stack, the storefront on :3100, `stripe listen`
 running, **and the Stripe key exported**. Only the 2 payment tests need
-`stripe listen`; the other 11 (cart, pricing, browsing) run without it — without the last one the two payment
-tests fail with an error that looks like a code bug:
+`stripe listen`; the other 24 (cart, pricing, shipping, currency, browsing) run
+without it — and were last run green on 2026-09-12. Without the key the two
+payment tests fail with an error that looks like a code bug:
 
 ```bash
 cd storefront
@@ -491,6 +564,65 @@ reason, run `docker compose ps -a` before debugging code.
 
 ---
 
+### Learned during M10–M12 — newest
+
+**Docker Desktop dies every time the laptop sleeps, and it got worse.** It
+happened roughly a dozen times across M10–M12. Every container exits, and
+`docker compose ps` shows them `Exited (1)` hours ago. Restart with
+`Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"`, wait for
+`docker info` to answer, then `docker compose up -d`. The storefront dev server
+dies with it and needs `npm run dev:storefront` again. **Check this before
+debugging anything that "stopped working".**
+
+**TypeORM's `@VersionColumn` does not give you optimistic locking on `save()`.**
+The SQL it emits is `UPDATE ... SET version = version + 1 WHERE id = $1` — no
+`AND version = $2`. Two editors who read the same row both succeed and the
+second silently wins. A collision test in M12 step 1 proved it. The guard has to
+be written by hand as a conditional UPDATE and a check on rows affected, which
+is exactly how M9 claimed a coupon. `ProductsService.update()` is the worked
+example.
+
+**`typeorm.config.ts` loads `.env` with `override: true`**, so a `DATABASE_URL`
+set in the shell does not win. To run a migration against a different database
+(a throwaway, say), write a temporary `throwaway.datasource.ts` next to the real
+one and pass it with `-d`. Delete it afterwards; never commit it. Every M10–M12
+migration was tested this way before touching Neon.
+
+**Bash heredocs containing TypeScript will randomly fail with "unexpected EOF
+while looking for matching `'`"** in this environment, and when they do,
+*nothing* in the command runs — not even the parts before the heredoc. Use the
+Write tool for any file with quotes in it, or write a `.py` patch script and run
+that. Git Bash also rewrites `/tmp/x` and `/dev/null` into Windows paths inside
+`docker exec` arguments; `MSYS_NO_PATHCONV=1` fixes the former and breaks the
+latter, so never set it on a command that also uses `-o /dev/null`.
+
+**`information_schema.columns WHERE column_name = 'version'` matches
+`outbox.version` and two `pg_catalog` views.** A "column still present after
+revert" check that does not filter by `table_name` reports a phantom failure.
+Same family as the M10 CASCADE test that passed for the wrong reason: confirm
+*why* a check says what it says.
+
+**A signed-in shopper with an empty address book had no way to choose a
+destination** in the first version of the M10 cart page. A *pricing* test that
+signs in caught it. Both the address picker and the region selector render until
+an address exists.
+
+**Playwright helpers that click and then `page.goto()` abort the in-flight
+POST.** The cart is then empty for reasons that look like a page bug. Always
+wait for `added-notice` after `add-to-cart`, the way `cart.spec.ts` has since
+M7.
+
+**Delivery is taxed differently in every seeded jurisdiction**, and the pricing
+E2E tests had to change to say what they meant: `expect(pa).toBeLessThan(ca)`
+was comparing totals to assert a claim about tax, and a hardcoded `money(0)`
+assumed a tee in Pennsylvania is untaxed — the shirt still is, its postage is
+not. ADR-0009 has the figures.
+
+**The stale `poll` lint error in `storefront/app/orders/[id]/page.tsx`** is
+still there and still pre-existing. It moves line number every time that file
+is edited. `npm run lint` in `storefront/` reports exactly 1 problem; more than
+1 means you added one.
+
 ## 6. Verification already done — do not redo
 
 All against the live stack with real Stripe test-mode payments.
@@ -561,6 +693,50 @@ tests; 5 → 9 with the cart suite). CI on GitHub is green.
 
 **95 unit tests** (+5 concurrency tests that skip without a database) and
 **15 Playwright tests**, all green.
+
+### Added by M10 — also do not redo
+
+| Scenario | Result |
+|---|---|
+| Rate: US-CA beats US beats ROW; a region-less US address does **not** match US-CA | correct, 8 destinations |
+| Band boundary: 999g → band 1, **1000g → band 2** (half-open) | exactly one band matched at every weight 0–3000 |
+| Free threshold on the **discounted** subtotal | 5 mugs (gross 6250, disc. 4812) charged; 6 mugs free |
+| Three regions, one basket, delivery in the total, hand-computed first | US-CA 10038, US-PA 9579 (both **identical to M8's figures**, free shipping), DE 10858 |
+| Express, taxed per jurisdiction | CA: 0bp group for postage; PA: postage joins the 6% group (base 5665); DE: one inclusive group |
+| Mutation: delivery in its **own** tax group | caught — DE postage tax 144 vs 143, two 19% rows |
+| Address scoping | another customer's id → **404**, not 403; delete → 404, still there |
+| Saved address vs a request body claiming `KH` | taxed at **US-CA** — the address wins |
+| One default per customer | partial unique index; two defaults rejected |
+| `order.confirmed` redelivered / republished with a new id | one shipment — marker for the first, `UQ_shipments_order` for the second |
+| Lifecycle | deliver-while-pending 409; dispatch→deliver ok; deliver again 409 (terminal) |
+| Cancelled order | no shipment |
+| Shipping-service down mid-quote | **503**, not 400 |
+| All 114 orders audited for breakdown consistency | 66 add up; 47 pre-M8 (0/0/0, documented); **1** from the step-5 window; 0 unexplained |
+
+### Added by M11 — also do not redo
+
+| Scenario | Result |
+|---|---|
+| `convert()` USD→JPY at 150: 1999 cents | **2999** yen, not 299850, not 29 |
+| Round trip is not the identity | $19.99 → 20 (exp 0) → $20.00, asserted |
+| BigInt: $100,000 × 150 | ¥15,000,000 — numerator 1.5e17, past MAX_SAFE, still exact |
+| Mutations on `convert()` | delta reversed 7 fail, term dropped 7, truncate 5, parity 2 |
+| Three currencies, hand-computed first | USD 2543, EUR 2352, JPY 3815 — all matched first run |
+| `quote.ts` | **unchanged** by M11 — the §4 test held |
+| Historical order after rate moved 150→200 | new quote 5086; **existing order still 3815** |
+| Real JPY order to Stripe | Stripe API reports `amount=3815 currency=jpy` |
+| Payments guard decision table | JPY/0 ok; JPY/2 refused (×100); USD/0 refused; KWD refused (3-dp); unknown refused |
+| FX refresh against a stub provider | 2 recorded, 3 skipped; provider down → last rate stands, quotes work; negative/zero filtered |
+| Browser: yen total | rendered `¥3,815`, no decimal point; order page stays in JPY after switching header to USD |
+
+### Added by M12 step 1 — also do not redo
+
+| Scenario | Result |
+|---|---|
+| `PATCH /catalog/products/:id` | `product.updated` v2 in outbox, `categorySlug` denormalised, published |
+| `POST /catalog/products` | `product.created` v1, published |
+| Two editors read v4, both `save()` | **lost update** — TypeORM's lock did not fire (the bug) |
+| Same, through the conditional UPDATE | A affected 1, B affected 0 — refused (the fix) |
 
 
 ## 7. Deliberate decisions someone might otherwise "fix"
@@ -675,6 +851,58 @@ tests; 5 → 9 with the cart suite). CI on GitHub is green.
   because they are one pattern, exactly as cart-service did in M7.
 
 
+### Added by M10 — full reasoning in ADR-0009
+
+- **Addresses are in users-service.** `IMPLEMENTATION_PLAN.md` said shipping.
+  An address book is a profile concern; shipping needs a destination and a
+  frozen snapshot, not the book.
+- **Shipping cost goes through `POST /pricing/quote`.** Orders does no
+  arithmetic of its own. Having orders add a rate to a quote would re-create
+  the two-totals defect M8 removed.
+- **Delivery joins the tax group for its own rate**, never a private group.
+  "Round once per tax rate group" means once per *rate*. Measured: a private
+  group gives DE postage tax 144 instead of 143 and two 19% rows.
+- **A shipment is not a saga step**, despite `PROJECT_PLAN.md` numbering it 9.
+  Nothing has to be undone if creating it fails. The saga still ends at
+  `CONFIRMED`; there is no `FULFILLED`.
+- **`order.confirmed` gained the shipping address and rate** because a consumer
+  genuinely needs them — the same test M8 applied to `order.created`.
+- **Three shipment states, not four.** Nothing reaches `cancelled`.
+- **`shipment.dispatched` / `shipment.delivered` are emitted with no consumer**
+  until M15. Labelled as an imagined future; deleting them costs nothing else.
+- **`shipments.weight_g` is always 0.** The order does not carry the basket's
+  weight. A guess would be worse than a zero.
+- **Rating writes nothing**, exactly as quoting never redeems a coupon.
+
+### Added by M11 — full reasoning in ADR-0010
+
+- **Unit prices convert, not totals.** Converting the total would force
+  per-line rounding or a second allocation layer — the thing ADR-0007 exists
+  to prevent. `quote.ts` is untouched.
+- **`convert()` is in BigInt.** `money.ts` bans floats, not large integers.
+- **`fx_rates` is append-only; no unique constraint on the pair.** Newest wins.
+- **Rates are never inverted.** Buy and sell rates are not reciprocals. A
+  reverse pair is a row. A same-currency row is forbidden at the column.
+- **Thresholds convert with the same rate** — "spend €46.30" is odd, and
+  recorded as the first thing a real shop would fix with per-currency rows.
+- **`orders.exponent` and the three FX columns are nullable, not defaulted.**
+  Null means "placed before M11", a different fact from "exponent 2".
+- **payments holds Stripe's own zero-decimal list** as an independent second
+  source and refuses a disagreement before creating an intent.
+- **`FX_PROVIDER_URL` is unset by default.** The job is verified against a
+  stub. The content is the pattern, not the vendor call.
+- **Product listings do not convert.** The cart is where the number becomes
+  binding, and the cart converts.
+
+### Added by M12 step 1 — full reasoning to come in ADR-0011
+
+- **Events carry full state, not a diff**, so a projection can be rebuilt from
+  scratch by replay.
+- **catalog is publish-only**: `RabbitMQModule` with no `queue`.
+- **No `product.deleted`.** Catalog sets `active: false`; the event carries it.
+- **The version guard is a hand-written conditional UPDATE**, because
+  `@VersionColumn` does not check on save. See §5.
+
 ## 8. Deployment — done, with a caveat
 
 M6 was finished with Cloudflare Tunnel (`bash scripts/tunnel-up.sh`), not a
@@ -701,12 +929,10 @@ account available, and free tiers that sleep idle services would break the
 of the project. A single always-free VM running the existing `docker-compose.yml`
 (Oracle Cloud) was the other option discussed and is still open.
 
-Note that Part B's service list is now **eight** services, not six: cart-service
-was added in M7 and needs its own Railway service, its own Neon database, and a
-real Redis; pricing-service was added in M8 and needs its own service and Neon
-database (but no Redis and no queue — it publishes and consumes nothing). The
-`deploy/railway/` directory has **neither** `cart-service.json` nor
-`pricing-service.json`.
+Note that Part B's service list is now **nine** services plus OpenSearch:
+cart (M7), pricing (M8, and it *does* use the queue since M9), shipping (M10)
+and search (M12, in progress — needs OpenSearch, no Postgres). The
+`deploy/railway/` directory has configs for none of the four.
 
 ---
 
@@ -735,6 +961,25 @@ re-confirms whatever row it started on, which is easy to do by accident.
 per-customer coupon limit is enforced by a read and is therefore best-effort
 (one customer racing themselves could pass it twice — it cannot over-redeem the
 coupon), and `pricing-service` has an `outbox` table nothing publishes to yet.
+
+**No roles until M16, and the pile of staff-only endpoints grew.** M10 added
+`POST /shipping/shipments/:id/dispatch` and `/deliver`; M12 will add
+`POST /catalog/admin/republish` and `POST /search/admin/recreate-index`. All of
+them are protected by nothing but a valid JWT — anyone with an account can mark
+any parcel delivered. The M16 entry should list every one of these.
+
+**One order sits between M10 step 5 and step 6** with a total that includes
+delivery and `shipping_minor = 0`, because the column did not exist yet. Not
+backfilled — a guessed breakdown is worse than an honest zero. ADR-0009 lists it.
+
+**`AddressesService`'s default-switching logic has no unit test.** Verified
+live only; covering it needs a database, like M9's concurrency test.
+
+**Category events have no write path yet.** `announceCategory` exists but
+nothing calls it — there is no category create/update API. M12 step 5's
+republish command will be the first caller.
+
+**The Stripe test key is still not rolled.** Five milestones have deferred it.
 
 **Roll the Stripe test secret key.** It was pasted into a chat transcript twice.
 Dashboard → Developers → API keys → Roll, then update
@@ -770,6 +1015,11 @@ dependency locally and reintroduce the two-copies bug in §5.
 `storefront/` fails because of it. The root `npm run lint` only covers
 `{apps,libs}` so CI does not see it.
 
+**Docker Desktop's memory allocation (7.6 GB VM) will be tight with OpenSearch.**
+Eleven containers plus a JVM. If M12 step 2 shows the stack thrashing, either
+raise the VM allocation in Docker Desktop settings or take the Postgres
+full-text fallback in `M12_SEARCH_PLAN.md` §5.
+
 **Enable the pre-commit hook on any new clone:**
 `git config core.hooksPath .githooks`. The repo is public, so CI's secret scan
 runs one moment too late; the hook is the real guard.
@@ -788,44 +1038,64 @@ painful fast.
 
 ---
 
-## 10. The next milestone: M10 — shipping
+## 10. The next task: M12 step 2 — scaffold search-service and OpenSearch
 
-From `docs/IMPLEMENTATION_PLAN.md` §3:
+M12's plan is written, reviewed and committed: **`docs/M12_SEARCH_PLAN.md`**.
+Both open decisions were taken as recommended — **no read-side Postgres**
+(OpenSearch's external versioning makes the projection idempotent and
+ordering-safe on its own) and **OpenSearch over Postgres full-text**.
 
-> shipping-service; customer addresses; rate calculation by weight/zone;
-> shipment lifecycle `PENDING → DISPATCHED → DELIVERED`; consumes `order.paid`.
+**Step 1 is done** (commit "M12 step 1: catalog joins the event system"):
+catalog emits `product.created` / `product.updated` with full state and a
+version, publish-only RabbitMQ, conditional-UPDATE version guard.
 
-**Start by writing `docs/M10_SHIPPING_PLAN.md`** and having it reviewed, the way
-M7, M8 and M9 each began. Those plan documents are where the decisions get
-argued *before* code, and all three found something the implementation plan had
-not anticipated.
+**Step 2, next**, from the plan's §11:
 
-What the last three milestones leave you:
+> Scaffold search-service and OpenSearch — compose, healthchecks, index
+> bootstrap with the mapping, `/ready` that checks the cluster. No consumer
+> yet. Verify the compose block has no database.
 
-- **Addresses finally have a reason to exist.** M8 punted on them: the tax
-  destination travels on the request (`POST /pricing/quote` and `POST /orders`
-  both take an optional `destination`, falling back to a configured store
-  default). M10 is where a real shipping address becomes the thing that
-  populates that field. **Nothing inside pricing-service needs to change** — it
-  was built for this.
-- **`order.confirmed` already exists** as of M9. The plan says shipping consumes
-  `order.paid`; there is no such event, but `order.confirmed` is the fact it
-  means, published from the saga in the same transaction as the status change.
-- **A ninth Neon database** will be needed, plus the usual `.env` with a matching
-  `JWT_SECRET`, a `docker-compose.yml` block (copy pricing's, and note that
-  healthchecks here need `start_period: 90s`), and an entry in
-  `scripts/gen-api-spec.sh`.
-- **`pricing-service` is the newest worked example** of the standard shape,
-  including an outbox, a consumer and `processed_events`. Remember to register
-  `OutboxEventEntity` and `ProcessedEventEntity` in the DataSource — forgetting
-  that in M9 produced a baffling `this.subQuery is not a function`.
-- **Shipping cost will change the order total**, which means touching
-  `OrdersService.create()` and the frozen quote again. M8's precedent applies:
-  add columns with safe defaults, freeze the figure onto the order, and do not
-  recompute it on read.
+Concretely:
 
-Money is integer minor units everywhere; rounding rules are in ADR-0007 and
-apply to shipping too.
+- `apps/search-service/` on **port 3009**. Copy shipping-service's scaffold
+  (it is the newest); **drop everything Postgres** — no `typeorm.config.ts`,
+  no `DATABASE_URL`, no `@libs/outbox`. `RabbitMQModule` with a queue bound
+  to `product.*` and `category.*` (the consumer itself is step 3).
+- An `opensearch` service in `docker-compose.yml`:
+  `opensearchproject/opensearch:2` single node, `discovery.type=single-node`,
+  `DISABLE_SECURITY_PLUGIN=true`, `OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m`, a
+  named volume, and a healthcheck on `/_cluster/health` with a `start_period`
+  of at least 90 s — a JVM takes a while.
+- `opensearch.client.ts`: a thin wrapper (the official `@opensearch-project/opensearch`
+  client) that creates the `products` index with the mapping in the plan's §6
+  on boot if it is missing. Mapping matters now because changing it later means
+  a reindex.
+- `/ready` returns 503 unless the cluster answers. Verify it by stopping
+  OpenSearch, the way M10 step 1 verified `/ready` by stopping Postgres.
+- Root `package.json` scripts, `scripts/gen-api-spec.sh` (`[search]=3009`),
+  `build:all`, `test:all`. The gateway already routes `/api/v1/search` to
+  `searchServiceUrl`.
+- **Prove the absence:** `docker compose config` for search-service shows no
+  `DATABASE_URL` of any kind.
+
+Then steps 3–7 as the plan lists them. Step 3 (the projection with the three
+no-op proofs — redelivery, republication, **reordering**) is the milestone's
+content; the reordering proof is the one `processed_events` could never pass.
+
+What M10 and M11 leave you that matters here:
+
+- **`product.*` events are already flowing.** Every catalog write publishes one.
+  You can watch them with the scratch publisher pattern from M10 step 7, or by
+  binding a throwaway queue to `product.#` in the RabbitMQ management UI.
+- **Every event carries `version`**, `categorySlug`, `categoryName` and
+  `categoryVersion`. The projection needs nothing else.
+- **`weightGrams`, `priceMinor`, `currency`** are on the event. The index stores
+  the base-currency price and does not convert — ADR-0010 recorded why.
+- **The `_update_by_query` fan-out for category renames** (step 6) has no
+  write path to trigger it yet; the republish command (step 5) is the first
+  thing that will emit `category.updated`.
+
+Money is integer minor units everywhere; the exponent is data (ADR-0010).
 
 ---
 
@@ -839,3 +1109,10 @@ apply to shipping too.
   was really scanning the wrong directory, and a hook test that reported failure
   because of a piped exit code, both looked like results and were not.
 - State what was not done and why, rather than letting scope quietly shrink.
+- **Keep replies short.** Lead with what the user must do — commands, numbered
+  steps — and cut the narration. The user asked for this twice, with visible
+  frustration, after a one-line "the Neon database isn't provisioned" was
+  buried under forty lines of test results and they had no idea what to do.
+  Findings belong in the plan doc, the ADR and the commit message, not
+  repeated in chat. If nothing needs their action, say so in one line.
+- Give the commit command; the user commits. One commit per step.
