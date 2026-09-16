@@ -249,7 +249,16 @@
       },
       "post": {
         "operationId": "ProductsController_create",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -316,6 +325,14 @@
           {
             "in": "path",
             "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
             "required": true,
             "schema": {
               "type": "string"

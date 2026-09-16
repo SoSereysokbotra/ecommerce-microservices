@@ -4,6 +4,7 @@ import { DataSource, DataSourceOptions } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { ProductEntity } from '../modules/products/product.entity';
 import { CategoryEntity } from '../modules/categories/category.entity';
+import { OutboxEventEntity, ProcessedEventEntity } from '@libs/outbox';
 
 loadEnv({ path: resolve(process.cwd(), '../../.env') });
 loadEnv({ path: resolve(__dirname, '../../.env'), override: true });
@@ -68,7 +69,9 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
       username: DB_USER,
       password: DB_PASSWORD,
       database: DB_NAME,
-      entities: [ProductEntity, CategoryEntity],
+      // M12: the outbox relay reads its own table through this DataSource, and
+      // forgetting these produces "this.subQuery is not a function" (HANDOFF §5).
+      entities: [ProductEntity, CategoryEntity, OutboxEventEntity, ProcessedEventEntity],
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
       synchronize: false,
       logging: !isProduction,
@@ -89,7 +92,9 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
       username: parsed.username || 'postgres',
       password: parsed.password || localPassword,
       database: parsed.pathname.replace(/^\//, ''),
-      entities: [ProductEntity, CategoryEntity],
+      // M12: the outbox relay reads its own table through this DataSource, and
+      // forgetting these produces "this.subQuery is not a function" (HANDOFF §5).
+      entities: [ProductEntity, CategoryEntity, OutboxEventEntity, ProcessedEventEntity],
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
       synchronize: false,
       logging: !isProduction,
@@ -103,7 +108,9 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
   return {
     type: 'postgres',
     url: DATABASE_URL,
-    entities: [ProductEntity, CategoryEntity],
+    // M12: the outbox relay reads its own table through this DataSource, and
+    // forgetting these produces "this.subQuery is not a function" (HANDOFF §5).
+    entities: [ProductEntity, CategoryEntity, OutboxEventEntity, ProcessedEventEntity],
     migrations: [__dirname + '/migrations/*{.ts,.js}'],
     synchronize: false,
     logging: !isProduction,

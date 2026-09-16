@@ -4,6 +4,7 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  VersionColumn,
 } from 'typeorm';
 
 @Entity({ name: 'products' })
@@ -51,6 +52,18 @@ export class ProductEntity {
 
   @Column({ default: true })
   active: boolean;
+
+  /**
+   * Incremented on every write. **Not** checked by TypeORM on `save()` — the
+   * SQL it emits has no `AND version = ?`, which a collision test proved. The
+   * guard is the conditional UPDATE in `ProductsService.update()`.
+   *
+   * Added in M12 for the search projection — it travels on every event so the
+   * read side can refuse a stale update — and, with that guard, it closes the
+   * lost-update bug catalog has had since M1.
+   */
+  @VersionColumn()
+  version: number;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

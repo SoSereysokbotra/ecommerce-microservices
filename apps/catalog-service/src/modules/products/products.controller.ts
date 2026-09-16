@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Headers, Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { CORRELATION_ID_HEADER } from '@libs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '@libs/common';
 import { ProductsService } from './products.service';
@@ -37,14 +38,21 @@ export class ProductsController {
   @Post()
   @ApiOperation({ summary: 'Create a product' })
   @ApiOkResponse({ type: ProductResponseDto })
-  create(@Body() body: CreateProductDto): Promise<ProductResponseDto> {
-    return this.products.create(body);
+  create(
+    @Body() body: CreateProductDto,
+    @Headers(CORRELATION_ID_HEADER) correlationId?: string,
+  ): Promise<ProductResponseDto> {
+    return this.products.create(body, correlationId);
   }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update a product' })
   @ApiOkResponse({ type: ProductResponseDto })
-  update(@Param('id') id: string, @Body() body: UpdateProductDto): Promise<ProductResponseDto> {
-    return this.products.update(id, body);
+  update(
+    @Param('id') id: string,
+    @Body() body: UpdateProductDto,
+    @Headers(CORRELATION_ID_HEADER) correlationId?: string,
+  ): Promise<ProductResponseDto> {
+    return this.products.update(id, body, correlationId);
   }
 }

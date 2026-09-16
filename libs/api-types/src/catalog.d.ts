@@ -223,7 +223,9 @@ export interface operations {
     ProductsController_create: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "x-correlation-id": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -267,7 +269,9 @@ export interface operations {
     ProductsController_update: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "x-correlation-id": string;
+            };
             path: {
                 id: string;
             };
