@@ -4,6 +4,7 @@ import { CorrelationIdMiddleware } from '@libs/common';
 import { RabbitMQModule } from '@libs/rabbitmq';
 import { AppController } from './app.controller';
 import { SearchModule } from './modules/search/search.module';
+import { EventsModule } from './events/events.module';
 
 /**
  * search-service — the ninth service, and the first with **no database**.
@@ -15,9 +16,9 @@ import { SearchModule } from './modules/search/search.module';
  * table because none is needed — OpenSearch's external versioning makes every
  * write idempotent and ordering-safe on its own (docs/M12_SEARCH_PLAN.md §4).
  *
- * The queue and its bindings are declared from the scaffold, before the
- * consumer exists (step 3), so that events published in the meantime wait in
- * the queue rather than being dropped on the exchange floor.
+ * The queue and its bindings were declared at the scaffold (step 2), before
+ * the consumer existed, so events published in between waited in the queue
+ * rather than being dropped on the exchange floor. `EventsModule` drains it.
  */
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { SearchModule } from './modules/search/search.module';
       bindingKeys: ['product.*', 'category.*'],
     }),
     SearchModule,
+    EventsModule,
   ],
   controllers: [AppController],
 })
