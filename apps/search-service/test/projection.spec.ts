@@ -175,10 +175,19 @@ describe('CatalogEventsListener.handle', () => {
     expect(index).toHaveBeenLastCalledWith(expect.objectContaining({ version: 8 }));
   });
 
-  it('ignores category events for now', async () => {
+  it('never treats a category event as a product upsert', async () => {
     const index = jest.fn();
-    await listenerWith(index).handle(event('category.updated', { id: 'c-1', version: 2 }));
+    const updateByQuery = jest.fn(async () => ({ body: { total: 0, updated: 0 } }));
+    const client = { index, updateByQuery } as unknown as Client;
+    const listener = new CatalogEventsListener(
+      {} as never,
+      new ProductsProjection(new OpenSearchClient(client)),
+    );
+    await listener.handle(
+      event('category.updated', { id: 'c-1', slug: 'x', name: 'X', version: 2 }),
+    );
     expect(index).not.toHaveBeenCalled();
+    expect(updateByQuery).toHaveBeenCalledTimes(1);
   });
 
   it('drops an unusable payload instead of throwing', async () => {

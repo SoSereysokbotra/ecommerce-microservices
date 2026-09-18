@@ -23,8 +23,8 @@ export class CategoryEntity {
 
   /**
    * Incremented on every write, and carried on every event so the search
-   * projection can refuse a stale one. Categories have no write API yet; the
-   * seed and the republish command are the only writers.
+   * projection can refuse a stale one. Written by `PATCH /catalog/categories/:id`
+   * (M12 step 6), the seed and the republish command.
    */
   @VersionColumn()
   version: number;

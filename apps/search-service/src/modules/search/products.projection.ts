@@ -3,8 +3,14 @@ import { errors } from '@opensearch-project/opensearch';
 import { OpenSearchClient } from './opensearch.client';
 import { ProductDocument } from './product-document';
 import { PRODUCTS_INDEX } from './products.index';
+import { CategoryEventPayload, buildCategoryFanout } from './category-fanout';
 
 export type UpsertOutcome = 'written' | 'stale';
+
+export interface FanoutOutcome {
+  matched: number;
+  updated: number;
+}
 
 /**
  * The versioned write — the whole of M12's idempotency, in one call.
@@ -55,6 +61,21 @@ export class ProductsProjection {
       }
       throw error;
     }
+  }
+
+  /**
+   * A category changed: rewrite its fields on every product that carries an
+   * older `categoryVersion`. Zero matched means the rename was stale (or had
+   * already fanned out) — a no-op, never an error. See `category-fanout.ts`.
+   */
+  async fanoutCategory(category: CategoryEventPayload): Promise<FanoutOutcome> {
+    const response = await this.opensearch.raw.updateByQuery(buildCategoryFanout(category));
+    const body = response.body as { total?: number; updated?: number };
+    const outcome = { matched: body.total ?? 0, updated: body.updated ?? 0 };
+    if (outcome.matched === 0) {
+      this.logger.debug(`Category ${category.id} v${category.version} is stale or already applied`);
+    }
+    return outcome;
   }
 }
 

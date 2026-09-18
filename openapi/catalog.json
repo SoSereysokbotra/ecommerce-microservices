@@ -1,6 +1,44 @@
 {
   "components": {
     "schemas": {
+      "CategoryResponseDto": {
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "nullable": true,
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "description": "Bumped on every write; carried on category.updated.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "name",
+          "version",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
       "CreateProductDto": {
         "properties": {
           "active": {
@@ -144,6 +182,19 @@
         ],
         "type": "object"
       },
+      "UpdateCategoryDto": {
+        "properties": {
+          "description": {
+            "nullable": true,
+            "type": "object"
+          },
+          "name": {
+            "example": "Clothing",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "UpdateProductDto": {
         "properties": {
           "active": {
@@ -227,10 +278,69 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CategoryResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": ""
           }
         },
         "summary": "List categories",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/categories/{id}": {
+      "patch": {
+        "operationId": "CategoriesController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCategoryDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Rename a category or change its description; the slug is immutable",
         "tags": [
           "catalog"
         ]

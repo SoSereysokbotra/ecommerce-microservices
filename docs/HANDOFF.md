@@ -1,6 +1,6 @@
 # Handoff — read this first
 
-**Written:** 2026-09-01. **Last updated:** 2026-09-18 (M10 and M11 complete; M12 steps 1–5 of 7 done).
+**Written:** 2026-09-01. **Last updated:** 2026-09-18 (M10 and M11 complete; M12 steps 1–6 of 7 done).
 **Repo:** https://github.com/SoSereysokbotra/ecommerce-microservices (public, `main`)
 **Local:** `d:\Year2\Microservices\Order‑Inventory‑Payment Microservices\ecommerce-microservices`
 
@@ -11,14 +11,13 @@ way and will cost hours to rediscover.
 **Where things stand (2026-09-17):** R1 is finished and deployed (via Cloudflare
 Tunnel, from this machine). **R2 is complete** — M7 (cart), M8 (tax and
 discounts), M9 (coupons), **M10 (shipping)** and **M11 (multi-currency)** are
-all done and pushed. R3 has started: **M12 (search) is five steps in** — catalog
-emits events, search-service projects them with versioned writes,
-`GET /search/products` answers with facets, and **the read model was thrown
-away and rebuilt from events alone with identical results** (2.41 s). The
-acceptance criterion is met (edit searchable in 1.21 s). Category fan-out and
-the storefront remain.
+all done and pushed. R3 has started: **M12 (search) is six steps in** — all of the backend is
+done: events, versioned projection, query with facets, delete-and-rebuild,
+and the category rename fan-out with its stale-rename proof. What remains is
+step 7: the storefront, Playwright, ADR-0005 and ADR-0011.
 
-**The next task is M12 step 6 — category rename fan-out.** See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
+**The next task is M12 step 7 — storefront, Playwright and the two ADRs.**
+See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
 
 **Running it is now one command: `npm run dev`.** See §4 — the old
 `docker stop jobfit-redis` step is gone.
@@ -80,7 +79,7 @@ finished and must not be modified. See §9 — it has a live security problem.
 | **M9** | **Coupons — the concurrency milestone** | **done** |
 | **M10** | **Shipping: addresses, rates by weight/zone, shipment lifecycle** | **done** |
 | **M11** | **Multi-currency: exponents, FX rates frozen on the order** | **done** |
-| M12 | Search: OpenSearch index built from catalog events (CQRS) | **steps 1–5 of 7 done** |
+| M12 | Search: OpenSearch index built from catalog events (CQRS) | **steps 1–6 of 7 done** |
 | M13–M22 | Rest of R3, then R4–R5 | not started |
 
 **M6** was met on 2026-09-02 via **Cloudflare Tunnel**, not a managed platform —
@@ -113,15 +112,15 @@ creation is a saga step) and the ADR argues both.
 **M11** was built 2026-09-10/12 in eight steps. Design in
 **`docs/M11_CURRENCY_PLAN.md`**, decisions in **ADR-0010**.
 
-**M12** steps 1–5 landed 2026-09-17/18. Design in **`docs/M12_SEARCH_PLAN.md`**.
-Steps 6–7 remain. See §10. The acceptance criterion and the delete-and-rebuild
-proof are both done.
+**M12** steps 1–6 landed 2026-09-17/18. Design in **`docs/M12_SEARCH_PLAN.md`**.
+Step 7 remains. See §10. The backend is complete and every §8 proof in the
+plan is recorded in §6 below.
 
 Read ADR-0007 through ADR-0010 before touching pricing-service,
 `OrdersService.create()`, the saga's terminal transitions, or anything that
 formats or converts money.
 
-**Next task: M12 step 6.** See §10.
+**Next task: M12 step 7.** See §10.
 
 ### What M7 added, in one paragraph
 
@@ -254,6 +253,20 @@ with the mapping; the response says what to run next. Both JWT-guarded
 byte-identical**. Republish against the live index: 13 `stale`, nothing
 changed. 40 unit tests.
 
+### What M12 step 6 added
+
+The fan-out. **catalog** gained its first category write API,
+`PATCH /catalog/categories/:id` — name and description only, **slug
+immutable** (it is the facet key and on every product document), the same
+conditional-UPDATE version guard as products, `category.updated` in the
+transaction. **search** handles `category.updated` with one
+`_update_by_query`: filter `categoryId = X AND categoryVersion < event.version`,
+script sets slug/name/categoryVersion. **The version guard is the query** —
+a stale rename matches zero documents. Live: Apparel → Clothing reached all
+6 products and the facet in 2.54 s; a stale v1 injected afterwards changed
+nothing; redelivery updated 0; a product edited after the rename carried the
+new name itself. 51 unit tests.
+
 ---
 
 ## 3. Architecture
@@ -267,7 +280,7 @@ search-service, which by design will have **none** (see `M12_SEARCH_PLAN.md`
 |---|---:|---|
 | api-gateway | 3000 | Routing, JWT, rate limiting, correlation ids, raw-body passthrough for Stripe |
 | users-service | 3001 | Auth, customers |
-| catalog-service | 3002 | Products, categories; `POST /catalog/admin/republish` (write-side replay) |
+| catalog-service | 3002 | Products, categories (`PATCH /catalog/categories/:id` since M12); `POST /catalog/admin/republish` (write-side replay) |
 | inventory-service | 3003 | Stock, reservations, expiry sweep |
 | orders-service | 3004 | Orders + **saga orchestrator** |
 | payments-service | 3005 | Stripe intents, webhooks, refunds |
@@ -284,8 +297,8 @@ the network — used since M7 for guest carts), and since M12 step 2 **OpenSearc
 Events added since M9: `order.confirmed` now carries the shipping address and
 rate; `payment.requested` carries the currency **exponent**; `shipment.dispatched`
 / `shipment.delivered` (no consumer yet); `product.created` / `product.updated`
-(consumed by search-service since M12 step 3; `category.*` bound but ignored
-until step 6).
+(consumed by search-service since M12 step 3); `category.updated` (fan-out
+in search-service since step 6).
 
 ### The saga
 
@@ -862,6 +875,17 @@ All through the gateway, 12 products in the index (filled by one no-op
 | Republish again, against the live index | 13 × `stale or already indexed`, results identical, 0 nacks |
 | `category.updated` × 3, twice | consumed and ignored (step 6 uses them); queue 0, 32 acks = 2 × (13 + 3) |
 
+### Added by M12 step 6 — also do not redo
+
+| Scenario | Result |
+|---|---|
+| `PATCH /catalog/categories/:id` without a token; with `{ slug }` | 401; **400** — the slug is not on the whitelist |
+| Rename Apparel → "Clothing" (category v1 → v2) | all **6** apparel hits show `categoryName: Clothing`, facet `Clothing (6)`, in **2.54 s**; log `fanned out to 6 of 6` |
+| Inject a **stale** `category.updated` (v1, name "Apparel") after the rename | unchanged — still Clothing; log `v1 is stale or already applied` (matched 0) |
+| Redeliver the current v2 | unchanged; matched 0 |
+| Edit a tee after the rename (product v3 → v4) | its document carries `Clothing` from the product event itself; the fan-out and the upsert agree |
+| Rename back (v3) | 6 of 6 again; facet `Apparel (6)` |
+
 
 ## 7. Deliberate decisions someone might otherwise "fix"
 
@@ -1079,6 +1103,26 @@ All through the gateway, 12 products in the index (filled by one no-op
 - **One transaction for the whole republish.** Three categories, a dozen
   products. Batching would be the change if a catalogue ever made it one.
 
+### Added by M12 step 6
+
+- **The category slug is immutable.** It is the facet key, the value on
+  every product document, and a URL. `UpdateCategoryDto` has no `slug`;
+  the validation pipe's whitelist turns one into a 400. Renaming changes
+  what a category is called, not what it is — the same rule as `sku`.
+- **The fan-out's version guard is in the query**, `categoryVersion <
+  event.version`, not in application code. A stale rename is a no-op
+  because it matches nothing — `_update_by_query` has no external
+  versioning, so the range is how the same rule is expressed.
+- **The fan-out never touches the product's `version`.** That is the
+  product's; `categoryVersion` is the category's. Two aggregates, two
+  clocks, on one document. The next `product.updated` carries the current
+  name anyway.
+- **`conflicts: 'proceed'`.** A product being rewritten by its own event
+  at the same instant is skipped, not a failed batch — that event carries
+  the current category name itself.
+- **`category.created` is handled like `category.updated`**, which makes it
+  a no-op: nothing can be in a category that did not exist a moment ago.
+
 ## 8. Deployment — done, with a caveat
 
 M6 was finished with Cloudflare Tunnel (`bash scripts/tunnel-up.sh`), not a
@@ -1140,8 +1184,8 @@ coupon), and `pricing-service` has an `outbox` table nothing publishes to yet.
 
 **No roles until M16, and the pile of staff-only endpoints grew.** M10 added
 `POST /shipping/shipments/:id/dispatch` and `/deliver`; M12 added
-`POST /catalog/admin/republish` and `POST /search/admin/recreate-index`
-(step 5) and will add `PATCH /catalog/categories/:id` (step 6). All of them
+`POST /catalog/admin/republish`, `POST /search/admin/recreate-index` and
+`PATCH /catalog/categories/:id`. All of them
 are protected by nothing but a valid JWT — anyone with an account can mark any
 parcel delivered or empty the search index. The M16 entry should list every
 one of these.
@@ -1153,10 +1197,9 @@ backfilled — a guessed breakdown is worse than an honest zero. ADR-0009 lists 
 **`AddressesService`'s default-switching logic has no unit test.** Verified
 live only; covering it needs a database, like M9's concurrency test.
 
-**Category events have no write path yet.** `announceCategory` exists but
-nothing calls it — there is no category create/update API. M12 step 5's
-republish command will be the first caller. search-service receives
-`category.*` (bound since step 2) and ignores it until step 6.
+**There is still no category *create* API.** `PATCH /catalog/categories/:id`
+(M12 step 6) renames; the seed is the only thing that creates a category.
+`category.created` is bound and handled as a no-op on the search side.
 
 **A fresh clone's search index is empty until republished.** The seed does
 not go through the outbox. After `npm run seed --prefix apps/catalog-service`,
@@ -1222,60 +1265,64 @@ painful fast.
 
 ---
 
-## 10. The next task: M12 step 6 — category rename fan-out
+## 10. The next task: M12 step 7 — storefront, Playwright, ADR-0005 and ADR-0011
 
-M12's plan is **`docs/M12_SEARCH_PLAN.md`**. Steps 1–5 are done, each its own
-commit. The milestone's two headline claims are recorded in §6: edit visible
-in **1.21 s**; delete-and-rebuild **identical** in 2.41 s.
+M12's plan is **`docs/M12_SEARCH_PLAN.md`**. Steps 1–6 are done, each its own
+commit; the backend is complete and every proof in the plan's §8 is in §6
+above. Step 7 is the finish.
 
-**Step 6, next**, from the plan's §11:
+**Step 7**, from the plan's §11:
 
-> Category fan-out — `_update_by_query`, version-guarded, with the
-> stale-rename test.
+> Storefront, Playwright, ADR-0005 and ADR-0011.
 
 Concretely:
 
-- **There is no category write API.** Add `PATCH /catalog/categories/:id`
-  (name and/or description) with the same conditional-UPDATE version guard
-  `ProductsService.update()` uses, announcing `category.updated` in the
-  transaction. Without it the fan-out has no trigger except republish.
-- **search:** in `CatalogEventsListener`, on `category.updated` run
-  `updateByQuery` on `products` with
-  `query: { bool: { filter: [{ term: { categoryId } }, { range: { categoryVersion: { lt: version } } }] } }`
-  and a painless script setting `categorySlug`, `categoryName`,
-  `categoryVersion`. The `range` **is** the version guard: a stale rename
-  matches no documents. Use `conflicts: 'proceed'` and `refresh: true`.
-  Return counts; log `updated` vs `noop`.
-- **Note what `_update_by_query` does not do:** it does not touch the
-  document's external `version`. A product's `version` stays the product's;
-  `categoryVersion` is the category's. The next `product.updated` (at a
-  higher product version) carries the current category name anyway. Say
-  this in ADR-0011.
-- **The proofs, live:** rename Apparel → "Clothing"; every apparel product
-  shows the new name in `GET /search/products` and the facet reads
-  `clothing`/`Clothing`... — careful: a **slug** change would also change
-  the facet key; decide whether `PATCH` may change the slug (recommended:
-  name and description only, slug immutable, the way `sku` is). Then inject
-  a **stale** `category.updated` (older `version`) with the old name via the
-  scratch publisher pattern: nothing changes. Redeliver the current one:
-  `updated: 0`.
-- Add the two new admin endpoints (`republish`, `recreate-index`) and the
-  category PATCH to §9's M16 list. `gen:spec` + `gen:types`.
+- **Storefront** (Next 16 / React 19 — read `storefront/AGENTS.md` and the
+  §5 notes on hydration and `allowedDevOrigins` first):
+  - A search box in the header that submits to `/search?q=`.
+  - `app/search/page.tsx`: reads `q`, `category`, `minPrice`, `maxPrice`,
+    `sort`, `page` from the URL, calls `GET /search/products` through the
+    gateway (types in `libs/api-types/src/search.d.ts`), renders hits, the
+    category facet as links that set `category=`, a min/max price form and
+    a sort select. Prices via `formatMoney(priceMinor, exponent)` — the hit
+    carries `exponent`. Each hit links to the existing product page.
+  - **Eventual consistency, said out loud:** a hit deactivated a moment ago
+    404s on click. The product page already handles a 404; make sure it
+    says something useful rather than crashing (plan §7).
+  - Empty state for zero hits. Keep the home page's catalog listing.
+- **Playwright** (`storefront/e2e/search.spec.ts`): search for "tee", see
+  the three tees; click the `drinkware` facet, see three hits and the other
+  facets still listed; open a hit and land on the product page. Follow the
+  `added-notice` lesson in §5 — wait for the results, do not race the
+  fetch. Run with the documented command; the other 26 must still pass.
+- **ADR-0005 — OpenSearch over Postgres full-text.** Reserved since M0.
+  Options: Postgres `tsvector` + GIN in a search-service database vs a
+  single-node OpenSearch. Decision and why (faceting, relevance, a
+  genuinely different store — the CQRS lesson), the cost (a JVM on a 7.6 GB
+  VM; §5's Docker deaths), the fallback (plan §5) and when to take it.
+- **ADR-0011 — versioned projection, no read-side database, write-side
+  replay.** The table in `products.projection.ts`; the reordering proof
+  that `processed_events` cannot pass; why 409 is success; the tombstone
+  gotcha; the fan-out's guard-in-the-query; `POST /catalog/admin/republish`
+  on the write side because catalog's outbox is a queue, not a log; the
+  two clocks on one document. Every figure from §6.
+- **`IMPLEMENTATION_PLAN.md` §4** correction: search-service has no
+  database; the reindex command lives on catalog.
+- Tick **`M12_SEARCH_PLAN.md` §9** (Definition of Done). Two items will
+  stay unticked and should say so: the catalog migrations were tested on a
+  throwaway in step 1 (tick it), and "Playwright: search, filter, open a
+  hit" is this step.
+- `npm run lint` in `storefront/` must report exactly **1** problem (the
+  pre-existing `poll` error, §5). More means you added one.
 
-Then step 7: storefront (search box, results page with facets, graceful 404
-on a stale hit), Playwright, **ADR-0005** (OpenSearch over Postgres FTS —
-reserved since M0) and **ADR-0011** (versioned projection, no read-side
-database, write-side replay), correction into `IMPLEMENTATION_PLAN.md` §4,
-and tick the §9 Definition of Done in the plan.
+What step 6 leaves you that matters here:
 
-What step 5 leaves you that matters here:
-
-- **`category.updated` already flows** (from republish) and the listener
-  ignores it. The step-6 handler replaces that `return`.
-- **Republish is the recovery for anything step 6 gets wrong**: recreate,
-  republish, and the index is right again.
-- **Docker Desktop died once more during step 5** — the restart recipe in
-  §5 (`Start-Process` … then `docker compose up -d`) worked in ~20 s.
+- **The index is in sync with catalog** (13 docs, 12 active, Apparel
+  restored). If in doubt: `POST /search/admin/recreate-index` then
+  `POST /catalog/admin/republish`.
+- **The gateway serves `GET /search/*` publicly**; the storefront needs no
+  token for search.
+- **Docker Desktop died twice during M12.** §5 recipe, ~20 s.
 
 Money is integer minor units everywhere; the exponent is data (ADR-0010).
 

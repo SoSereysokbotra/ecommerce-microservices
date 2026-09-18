@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { DomainEvent, RabbitMQService } from '@libs/rabbitmq';
 import { isProductEventPayload, toProductDocument } from '../modules/search/product-document';
+import { isCategoryEventPayload } from '../modules/search/category-fanout';
 import { ProductsProjection } from '../modules/search/products.projection';
 
 /**
@@ -16,8 +17,11 @@ import { ProductsProjection } from '../modules/search/products.projection';
  * full state, so both are an upsert; the name records what happened on the
  * write side and is irrelevant here.
  *
- * `category.*` is received (the queue binds it since step 2) and ignored
- * until step 6, where a rename fans out to every product in the category.
+ * `category.updated` is the fan-out: the category's fields are denormalised
+ * onto every product document, so a rename rewrites all of them in one
+ * `_update_by_query`, guarded by `categoryVersion` (step 6). `category.created`
+ * has nothing to fan out to — no product can be in a category that did not
+ * exist a moment ago — and is treated the same way, which makes it a no-op.
  */
 @Injectable()
 export class CatalogEventsListener implements OnModuleInit {
@@ -37,6 +41,10 @@ export class CatalogEventsListener implements OnModuleInit {
   }
 
   async handle(event: DomainEvent): Promise<void> {
+    if (event.eventType === 'category.created' || event.eventType === 'category.updated') {
+      return this.handleCategory(event);
+    }
+
     if (event.eventType !== 'product.created' && event.eventType !== 'product.updated') {
       return;
     }
@@ -53,6 +61,21 @@ export class CatalogEventsListener implements OnModuleInit {
 
     if (outcome === 'written') {
       this.logger.log(`Indexed product ${doc.id} v${doc.version} (${event.eventType})`);
+    }
+  }
+
+  private async handleCategory(event: DomainEvent): Promise<void> {
+    if (!isCategoryEventPayload(event.payload)) {
+      this.logger.warn(`${event.eventType} (${event.eventId}) has an unusable payload; dropping`);
+      return;
+    }
+
+    const outcome = await this.projection.fanoutCategory(event.payload);
+    if (outcome.matched > 0) {
+      this.logger.log(
+        `Category ${event.payload.id} v${event.payload.version} "${event.payload.name}" ` +
+          `fanned out to ${outcome.updated} of ${outcome.matched} products`,
+      );
     }
   }
 }

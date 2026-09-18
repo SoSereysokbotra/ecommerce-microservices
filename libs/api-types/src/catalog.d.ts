@@ -41,6 +41,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/catalog/categories/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Rename a category or change its description; the slug is immutable */
+        patch: operations["CategoriesController_update"];
+        trace?: never;
+    };
     "/api/v1/catalog/products": {
         parameters: {
             query?: never;
@@ -129,6 +146,18 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        CategoryResponseDto: {
+            /** Format: date-time */
+            createdAt: string;
+            description?: Record<string, never> | null;
+            id: string;
+            name: string;
+            slug: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** @description Bumped on every write; carried on category.updated. */
+            version: number;
+        };
         CreateProductDto: {
             /** @default true */
             active: boolean;
@@ -181,6 +210,11 @@ export interface components {
             categories: number;
             /** @description product.updated events appended, one per product. */
             products: number;
+        };
+        UpdateCategoryDto: {
+            description?: Record<string, never> | null;
+            /** @example Clothing */
+            name?: string;
         };
         UpdateProductDto: {
             active?: boolean;
@@ -236,7 +270,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CategoryResponseDto"][];
+                };
+            };
+        };
+    };
+    CategoriesController_update: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-correlation-id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCategoryDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryResponseDto"];
+                };
             };
         };
     };
