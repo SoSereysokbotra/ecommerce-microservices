@@ -14,7 +14,8 @@ discounts), M9 (coupons), **M10 (shipping)** and **M11 (multi-currency)** are
 all done and pushed. R3 has started: **M12 (search) is complete** — seven commits, ADR-0005 and
 ADR-0011 written, 32 Playwright tests green. Thirteen of 23 milestones done.
 
-**The next task is M13 — reviews.** See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
+**The next task is M13 — reviews.** The plan is written and awaits review:
+`docs/M13_REVIEWS_PLAN.md`. See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
 
 **Running it is now one command: `npm run dev`.** See §4 — the old
 `docker stop jobfit-redis` step is gone.
@@ -1327,9 +1328,10 @@ ADR-0011 are written; every live figure is in §6.
 > reviews-service; verified-purchase flag derived from order events;
 > moderation queue; rating rollup projected onto the search index.
 
-**Before writing code, write `docs/M13_REVIEWS_PLAN.md`** the way M7–M12
-were planned, and get it reviewed. Things the plan will have to decide, with
-what M12 leaves you:
+**The plan is written: `docs/M13_REVIEWS_PLAN.md` (draft, 2026-09-18) — review
+it before any code.** Its §3, §4 and §5 are the three decisions; §10 lists what
+to settle first (one of them is whether a ninth Neon project is even
+available). What follows is the sketch the plan grew from, kept for context:
 
 - **A tenth service, `reviews-service`**, with its own Neon database — this
   one genuinely has state that is written by requests (a review is not a
