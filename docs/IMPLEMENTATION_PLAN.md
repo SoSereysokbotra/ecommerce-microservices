@@ -557,8 +557,41 @@ used is frozen onto the order at purchase time**; storefront currency switcher.
 
 **Outline only.**
 
-- **M12 Search** — OpenSearch index built **from catalog events**, never by reading
-  catalog's database. This is the CQRS milestone. Include a reindex-from-scratch command.
+- **M12 Search** — **done (2026-09-18)**. OpenSearch index built **from catalog
+  events**, never by reading catalog's database. This is the CQRS milestone.
+  Include a reindex-from-scratch command.
+
+  > **Corrections, from building it.** Full reasoning in ADR-0005, ADR-0011 and
+  > `docs/M12_SEARCH_PLAN.md`.
+  >
+  > **search-service has no database at all.** Not "no shared database" — none.
+  > Every write to the index is versioned (`version_type: external`), which
+  > makes redelivery, republication *and reordering* no-ops in one mechanism the
+  > store enforces. `processed_events` could not have caught reordering, and a
+  > ninth Neon database would have bought nothing. `docker compose config
+  > search-service` shows no `DATABASE_URL`.
+  >
+  > **The reindex command lives on the write side.** The read side cannot walk
+  > catalog's tables — that is the rule — and catalog's outbox is a delivery
+  > queue, not a retained log. So it is two commands: `POST
+  > /search/admin/recreate-index` (drop, recreate empty) then `POST
+  > /catalog/admin/republish` (re-announce everything at its current version).
+  > Measured: the index dropped and rebuilt in 2.41 s with five queries
+  > byte-identical.
+  >
+  > **catalog had to join the event system first.** It was the last service
+  > with no outbox and no version column — and TypeORM's `@VersionColumn` does
+  > not check on `save()`, so the optimistic lock it was assumed to provide
+  > never existed. A collision test proved a lost update; the guard is now a
+  > conditional UPDATE, as M9 wrote it.
+  >
+  > **Category renames fan out with the version guard in the query**
+  > (`categoryVersion < event.version` in `_update_by_query`), so a stale
+  > rename matches nothing. The category slug is immutable — it is the facet
+  > key and on every document.
+  >
+  > **Acceptance:** a product edit was searchable through the gateway in
+  > **1.21 s**.
 - **M13 Reviews** — reviews-service; verified-purchase flag derived from order
   events; moderation queue; rating rollup projected onto the search index.
 - **M14 Recommendations** — co-purchase pairs computed from `order.paid` events.
@@ -657,3 +690,4 @@ Write one whenever a choice has a defensible alternative. Keep them short.
 | 0008 | Atomic coupon claim over optimistic locking; hold/commit/release | M9 |
 | 0009 | Shipping through the quote; addresses in users; a shipment is not a saga step | M10 |
 | 0010 | Convert prices not totals; exponent is data; append-only rates, never inverted | M11 |
+| 0011 | Versioned projection, no read-side database, replay owned by the write side | M12 |

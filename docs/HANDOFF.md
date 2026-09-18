@@ -1,6 +1,6 @@
 # Handoff — read this first
 
-**Written:** 2026-09-01. **Last updated:** 2026-09-18 (M10 and M11 complete; M12 steps 1–6 of 7 done).
+**Written:** 2026-09-01. **Last updated:** 2026-09-18 (M10, M11 and M12 complete).
 **Repo:** https://github.com/SoSereysokbotra/ecommerce-microservices (public, `main`)
 **Local:** `d:\Year2\Microservices\Order‑Inventory‑Payment Microservices\ecommerce-microservices`
 
@@ -11,13 +11,10 @@ way and will cost hours to rediscover.
 **Where things stand (2026-09-17):** R1 is finished and deployed (via Cloudflare
 Tunnel, from this machine). **R2 is complete** — M7 (cart), M8 (tax and
 discounts), M9 (coupons), **M10 (shipping)** and **M11 (multi-currency)** are
-all done and pushed. R3 has started: **M12 (search) is six steps in** — all of the backend is
-done: events, versioned projection, query with facets, delete-and-rebuild,
-and the category rename fan-out with its stale-rename proof. What remains is
-step 7: the storefront, Playwright, ADR-0005 and ADR-0011.
+all done and pushed. R3 has started: **M12 (search) is complete** — seven commits, ADR-0005 and
+ADR-0011 written, 32 Playwright tests green. Thirteen of 23 milestones done.
 
-**The next task is M12 step 7 — storefront, Playwright and the two ADRs.**
-See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
+**The next task is M13 — reviews.** See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
 
 **Running it is now one command: `npm run dev`.** See §4 — the old
 `docker stop jobfit-redis` step is gone.
@@ -63,7 +60,7 @@ finished and must not be modified. See §9 — it has a live security problem.
 
 ---
 
-## 2. Status: 12 of 23 milestones done — R1 and R2 complete, R3 started
+## 2. Status: 13 of 23 milestones done — R1 and R2 complete, R3 one in
 
 | | Milestone | State |
 |---|---|---|
@@ -79,7 +76,7 @@ finished and must not be modified. See §9 — it has a live security problem.
 | **M9** | **Coupons — the concurrency milestone** | **done** |
 | **M10** | **Shipping: addresses, rates by weight/zone, shipment lifecycle** | **done** |
 | **M11** | **Multi-currency: exponents, FX rates frozen on the order** | **done** |
-| M12 | Search: OpenSearch index built from catalog events (CQRS) | **steps 1–6 of 7 done** |
+| **M12** | **Search: OpenSearch index built from catalog events (CQRS)** | **done** |
 | M13–M22 | Rest of R3, then R4–R5 | not started |
 
 **M6** was met on 2026-09-02 via **Cloudflare Tunnel**, not a managed platform —
@@ -112,15 +109,16 @@ creation is a saga step) and the ADR argues both.
 **M11** was built 2026-09-10/12 in eight steps. Design in
 **`docs/M11_CURRENCY_PLAN.md`**, decisions in **ADR-0010**.
 
-**M12** steps 1–6 landed 2026-09-17/18. Design in **`docs/M12_SEARCH_PLAN.md`**.
-Step 7 remains. See §10. The backend is complete and every §8 proof in the
-plan is recorded in §6 below.
+**M12** was built 2026-09-17/18 in seven steps. Design in
+**`docs/M12_SEARCH_PLAN.md`**, decisions in **ADR-0005** and **ADR-0011**.
+It departs from `IMPLEMENTATION_PLAN.md` on two things (no read-side database
+at all; the reindex command is on catalog) and the ADRs argue both.
 
 Read ADR-0007 through ADR-0010 before touching pricing-service,
 `OrdersService.create()`, the saga's terminal transitions, or anything that
 formats or converts money.
 
-**Next task: M12 step 7.** See §10.
+**Next task: M13.** See §10.
 
 ### What M7 added, in one paragraph
 
@@ -191,6 +189,24 @@ charging** — a disagreement is a 100× charge nothing else would notice. A rea
 JPY order was confirmed with Stripe as `amount=3815 currency=jpy`. `formatMoney`
 takes an exponent; a currency switcher sits in the header; order pages always
 render in the currency they were placed in.
+
+### What M12 added, in one paragraph
+
+A ninth service, `search-service` on **port 3009**, with **no database** —
+an OpenSearch index built only by consuming catalog's events. catalog got
+the outbox it never had, `version` columns, and a real optimistic lock (a
+collision test proved `@VersionColumn` alone does not lock). Every index
+write is `version_type: external`, which makes redelivery, republication
+**and reordering** no-ops in one store-enforced rule — the one thing
+`processed_events` could never do, and why there is no ninth Neon database.
+`GET /search/products` has a category facet (`post_filter`, so counts
+survive a click), a price range and sorts. The reindex is two commands on
+two sides: `recreate-index` on search, `republish` on catalog, because the
+write side owns replay. A category rename fans out with the version guard
+*in the query*. Storefront: a header search box, `/search` with facets, and
+a product page that explains a stale hit. **Edit searchable in 1.21 s;
+index dropped and rebuilt identically in 2.41 s.** The step-by-step record
+follows.
 
 ### What M12 step 1 added
 
@@ -266,6 +282,17 @@ a stale rename matches zero documents. Live: Apparel → Clothing reached all
 6 products and the facet in 2.54 s; a stale v1 injected afterwards changed
 nothing; redelivery updated 0; a product edited after the rename carried the
 new name itself. 51 unit tests.
+
+### What M12 step 7 added
+
+`components/SearchBox.tsx` in the header; `app/search/page.tsx` (Server
+Component, `<Suspense>`) wrapping `SearchResults.tsx`, where **the URL is
+the state** — every control writes the query string and one effect
+re-fetches from it. Loading is *derived* (answer tagged with its query),
+not set inside the effect, because React 19 rejects that. The product page
+turns a 404 into "no longer available… may still appear in search for a
+moment". `e2e/search.spec.ts`: 6 tests. **ADR-0005** and **ADR-0011**
+written; `IMPLEMENTATION_PLAN.md` §4 corrected; the plan's §9 all ticked.
 
 ---
 
@@ -460,10 +487,11 @@ COUPON_TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:15433/coupontest  
 ```
 
 
-The 26 Playwright tests need the stack, the storefront on :3100, `stripe listen`
+The 32 Playwright tests need the stack, the storefront on :3100, `stripe listen`
 running, **and the Stripe key exported**. Only the 2 payment tests need
-`stripe listen`; the other 24 (cart, pricing, shipping, currency, browsing) run
-without it — and were last run green on 2026-09-12. Without the key the two
+`stripe listen`; the other 30 (cart, pricing, shipping, currency, search,
+browsing) run without it — the 27 in the cart/pricing/shipping/currency/search
+suites were last run green on 2026-09-18. Without the key the two
 payment tests fail with an error that looks like a code bug:
 
 ```bash
@@ -886,6 +914,19 @@ All through the gateway, 12 products in the index (filled by one no-op
 | Edit a tee after the rename (product v3 → v4) | its document carries `Clothing` from the product event itself; the fan-out and the upsert agree |
 | Rename back (v3) | 6 of 6 again; facet `Apparel (6)` |
 
+### Added by M12 step 7 — also do not redo
+
+| Scenario | Result |
+|---|---|
+| `e2e/search.spec.ts` — header box → `/search?q=tee`, count matches the API, no sticker | pass |
+| Facet click filters hits, keeps every category listed, adds "← All categories" | pass |
+| `sort=price_asc` puts the API's cheapest first | pass |
+| A hit opens the product page (heading matches, add-to-cart visible) | pass |
+| `/products/<missing>` shows the "no longer available" notice with a link back to search | pass |
+| `q=zzzzqqqq` → "Nothing matches" | pass |
+| All non-payment suites (cart, pricing, shipping, currency, search) | **27 passed** (1.4 min) — after one real flake: the summary line rendered from the previous answer while a new query was in flight; fixed in the page, not the test |
+| `npm run lint` in `storefront/` | exactly 1 problem — the pre-existing `poll` error |
+
 
 ## 7. Deliberate decisions someone might otherwise "fix"
 
@@ -1123,6 +1164,17 @@ All through the gateway, 12 products in the index (filled by one no-op
 - **`category.created` is handled like `category.updated`**, which makes it
   a no-op: nothing can be in a category that did not exist a moment ago.
 
+### Added by M12 step 7
+
+- **The search page's state is the URL.** Facets, range, sort and page all
+  write the query string; back/forward and shared links work for free. Do
+  not lift any of it into React state.
+- **Search prices come from the hit** (`priceMinor`, `currency`,
+  `exponent`) and are not converted by the currency switcher. Same rule as
+  the product grid (ADR-0010).
+- **The 404 is explained, not hidden.** The window between deactivation
+  and the index catching up is real (≈1 s) and the product page says so.
+
 ## 8. Deployment — done, with a caveat
 
 M6 was finished with Cloudflare Tunnel (`bash scripts/tunnel-up.sh`), not a
@@ -1265,63 +1317,58 @@ painful fast.
 
 ---
 
-## 10. The next task: M12 step 7 — storefront, Playwright, ADR-0005 and ADR-0011
+## 10. The next task: M13 — reviews
 
-M12's plan is **`docs/M12_SEARCH_PLAN.md`**. Steps 1–6 are done, each its own
-commit; the backend is complete and every proof in the plan's §8 is in §6
-above. Step 7 is the finish.
+M12 is complete. `docs/M12_SEARCH_PLAN.md` §9 is fully ticked; ADR-0005 and
+ADR-0011 are written; every live figure is in §6.
 
-**Step 7**, from the plan's §11:
+**M13, from `IMPLEMENTATION_PLAN.md` §4:**
 
-> Storefront, Playwright, ADR-0005 and ADR-0011.
+> reviews-service; verified-purchase flag derived from order events;
+> moderation queue; rating rollup projected onto the search index.
 
-Concretely:
+**Before writing code, write `docs/M13_REVIEWS_PLAN.md`** the way M7–M12
+were planned, and get it reviewed. Things the plan will have to decide, with
+what M12 leaves you:
 
-- **Storefront** (Next 16 / React 19 — read `storefront/AGENTS.md` and the
-  §5 notes on hydration and `allowedDevOrigins` first):
-  - A search box in the header that submits to `/search?q=`.
-  - `app/search/page.tsx`: reads `q`, `category`, `minPrice`, `maxPrice`,
-    `sort`, `page` from the URL, calls `GET /search/products` through the
-    gateway (types in `libs/api-types/src/search.d.ts`), renders hits, the
-    category facet as links that set `category=`, a min/max price form and
-    a sort select. Prices via `formatMoney(priceMinor, exponent)` — the hit
-    carries `exponent`. Each hit links to the existing product page.
-  - **Eventual consistency, said out loud:** a hit deactivated a moment ago
-    404s on click. The product page already handles a 404; make sure it
-    says something useful rather than crashing (plan §7).
-  - Empty state for zero hits. Keep the home page's catalog listing.
-- **Playwright** (`storefront/e2e/search.spec.ts`): search for "tee", see
-  the three tees; click the `drinkware` facet, see three hits and the other
-  facets still listed; open a hit and land on the product page. Follow the
-  `added-notice` lesson in §5 — wait for the results, do not race the
-  fetch. Run with the documented command; the other 26 must still pass.
-- **ADR-0005 — OpenSearch over Postgres full-text.** Reserved since M0.
-  Options: Postgres `tsvector` + GIN in a search-service database vs a
-  single-node OpenSearch. Decision and why (faceting, relevance, a
-  genuinely different store — the CQRS lesson), the cost (a JVM on a 7.6 GB
-  VM; §5's Docker deaths), the fallback (plan §5) and when to take it.
-- **ADR-0011 — versioned projection, no read-side database, write-side
-  replay.** The table in `products.projection.ts`; the reordering proof
-  that `processed_events` cannot pass; why 409 is success; the tombstone
-  gotcha; the fan-out's guard-in-the-query; `POST /catalog/admin/republish`
-  on the write side because catalog's outbox is a queue, not a log; the
-  two clocks on one document. Every figure from §6.
-- **`IMPLEMENTATION_PLAN.md` §4** correction: search-service has no
-  database; the reindex command lives on catalog.
-- Tick **`M12_SEARCH_PLAN.md` §9** (Definition of Done). Two items will
-  stay unticked and should say so: the catalog migrations were tested on a
-  throwaway in step 1 (tick it), and "Playwright: search, filter, open a
-  hit" is this step.
-- `npm run lint` in `storefront/` must report exactly **1** problem (the
-  pre-existing `poll` error, §5). More means you added one.
+- **A tenth service, `reviews-service`**, with its own Neon database — this
+  one genuinely has state that is written by requests (a review is not a
+  projection). Port: `IMPLEMENTATION_PLAN.md` Appendix B reserves the next.
+  Copy search-service's scaffold for the non-Postgres parts and
+  shipping-service's for TypeORM + outbox + `processed_events`.
+- **"Verified purchase" is derived from `order.confirmed`** — the leaf event
+  M9 added and shipping already consumes. Reviews consumes it too and
+  records `(customerId, productId)` pairs. A second consumer of the same
+  event is a good moment to name in the ADR why choreography works here
+  and orchestration did not for the saga.
+- **The rating rollup is a second projection onto the `products` index.**
+  This is the interesting part. The mapping is `dynamic: strict`, so
+  `ratingAvg` / `ratingCount` must be **added to `products.index.ts`**, and
+  a mapping change is a reindex (`recreate-index` + `republish`). The
+  rollup write must not fight the product upsert: it is a *third clock* on
+  the document (product version, category version, and now a review
+  version or count). Use `_update` with a script guarded by a
+  `ratingVersion` the way the category fan-out is, or `update_by_query`
+  with the same range trick — and say in the ADR why the product's external
+  `version` must not be touched by it.
+- **Moderation queue**: a status on the review (`pending → approved |
+  rejected`), a staff endpoint to move it (M16 debt again), and the rollup
+  counts only `approved`. Only approved reviews are emitted to search.
+- **Search-side changes**: `product-document.ts` must carry the rating
+  fields through a `product.updated` (the event will not have them — the
+  projection must *preserve* them on upsert, which `index()` does not;
+  this is the M13 design problem, and `_update` with `doc` + `doc_as_upsert`
+  or a two-field script is the likely answer). `search-query.ts` gains
+  `sort=rating`. The storefront shows stars on hits and on the product
+  page.
 
-What step 6 leaves you that matters here:
+What M12 leaves you that matters here:
 
-- **The index is in sync with catalog** (13 docs, 12 active, Apparel
-  restored). If in doubt: `POST /search/admin/recreate-index` then
-  `POST /catalog/admin/republish`.
-- **The gateway serves `GET /search/*` publicly**; the storefront needs no
-  token for search.
+- **`CatalogEventsListener` is the model for a second consumer** in
+  search-service; `ProductsProjection` is where a `applyRating()` would go.
+- **Republish rebuilds product fields only.** After a mapping change, the
+  rating rollup would need its own republish from reviews-service — the
+  write side owns replay, for every write side.
 - **Docker Desktop died twice during M12.** §5 recipe, ~20 s.
 
 Money is integer minor units everywhere; the exponent is data (ADR-0010).

@@ -24,12 +24,7 @@ export interface Stock {
   reservedQty: number;
 }
 
-export type OrderStatus =
-  | 'pending'
-  | 'awaiting_payment'
-  | 'confirmed'
-  | 'cancelled'
-  | 'failed';
+export type OrderStatus = 'pending' | 'awaiting_payment' | 'confirmed' | 'cancelled' | 'failed';
 
 export interface OrderItem {
   id: string;
@@ -315,3 +310,42 @@ export interface Currency {
   exponent: number;
   name: string;
 }
+
+/**
+ * A hit from `GET /search/products` — the search read model's copy of a
+ * product, seconds behind catalog at worst. It carries the base-currency
+ * price and its exponent; nothing here is converted (ADR-0010). The product
+ * page, which reads catalog directly, stays the source of truth.
+ */
+export interface SearchHit {
+  id: string;
+  sku: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  priceMinor: number;
+  currency: string;
+  exponent: number;
+  categorySlug: string | null;
+  categoryName: string | null;
+  weightGrams: number;
+  version: number;
+  updatedAt: string;
+}
+
+export interface CategoryFacet {
+  slug: string;
+  name: string;
+  /** Hits you would get by clicking it — computed over the same text and price filters. */
+  count: number;
+}
+
+export interface SearchResponse {
+  hits: SearchHit[];
+  total: number;
+  page: number;
+  limit: number;
+  facets: { categories: CategoryFacet[] };
+}
+
+export type SearchSort = 'relevance' | 'price_asc' | 'price_desc';

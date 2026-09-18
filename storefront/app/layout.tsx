@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { CartProvider } from '@/components/CartProvider';
 import { CartLink } from '@/components/CartLink';
 import { CurrencySwitcher } from '@/components/CurrencySwitcher';
+import { SearchBox } from '@/components/SearchBox';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -25,6 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </Link>
               <nav className="row small">
                 <Link href="/">Products</Link>
+                <SearchBox />
                 <CurrencySwitcher />
                 <CartLink />
                 <Link href="/login">Sign in</Link>

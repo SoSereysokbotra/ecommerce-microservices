@@ -1,7 +1,7 @@
 # M12 — Search: implementation plan
 
 **Written:** 2026-09-16
-**Status:** Draft, for review. Nothing built yet.
+**Status:** Built, 2026-09-17/18, in seven commits. Every §8 check is recorded in `HANDOFF.md` §6; decisions in ADR-0005 and ADR-0011.
 **Milestone:** M12, first of R3
 
 Read §3, §4 and §5 before agreeing to this.
@@ -292,24 +292,22 @@ next to each category are the numbers you will get if you click it.
 
 ## 9. Definition of Done
 
-- [ ] catalog-service has an outbox and emits `product.*` / `category.*` with full state and a version
-- [ ] `@VersionColumn` on products and categories — optimistic locking proved by a concurrent-update test
-- [ ] `search-service` on 3009 with **no Postgres** — the compose block has no database connection
-- [ ] OpenSearch single node, 512 MB heap, healthchecked
-- [ ] Versioned upserts: redelivery, republication **and reordering** all proved no-ops
-- [ ] `GET /search/products` with query, category facet, price range, sort; active only
-- [ ] Category rename fans out, version-guarded
-- [ ] `POST /catalog/admin/republish` and `POST /search/admin/recreate-index`; **delete-and-rebuild yields identical results**
-- [ ] **Product edit visible in search within seconds**, latency recorded
-- [ ] Storefront: search box, results page with facets, graceful 404 on a stale hit
-- [ ] `gen-api-spec.sh` gains `[search]=3009`; `test:all` and `build:all` gain the service
-- [ ] Migrations reversible on a **throwaway Postgres** (catalog's, for the outbox and version columns)
-- [ ] `lint`, `test:all`, `gen:spec` + `gen:types`, `scan-secrets.sh` green
-- [ ] Playwright: search for a product, filter by category, open a hit
-- [ ] **ADR-0005** written at last (OpenSearch over Postgres FTS — reserved since M0) and **ADR-0011** (versioned projection, no read-side database, write-side replay)
-- [ ] Correction into `IMPLEMENTATION_PLAN.md` §4
-
----
+- [x] catalog-service has an outbox and emits `product.*` / `category.*` with full state and a version
+- [x] `@VersionColumn` on products and categories — optimistic locking proved by a concurrent-update test (and found that `@VersionColumn` alone does **not** lock; the guard is a conditional UPDATE)
+- [x] `search-service` on 3009 with **no Postgres** — the compose block has no database connection
+- [x] OpenSearch single node, 512 MB heap, healthchecked
+- [x] Versioned upserts: redelivery, republication **and reordering** all proved no-ops
+- [x] `GET /search/products` with query, category facet, price range, sort; active only
+- [x] Category rename fans out, version-guarded (`PATCH /catalog/categories/:id` added; slug immutable)
+- [x] `POST /catalog/admin/republish` and `POST /search/admin/recreate-index`; **delete-and-rebuild yields identical results** (2.41 s)
+- [x] **Product edit visible in search within seconds**, latency recorded: **1.21 s** through the gateway
+- [x] Storefront: search box, results page with facets, graceful 404 on a stale hit
+- [x] `gen-api-spec.sh` gains `[search]=3009`; `test:all` and `build:all` gain the service
+- [x] Migrations reversible on a **throwaway Postgres** (catalog's, for the outbox and version columns — step 1)
+- [x] `lint`, `test:all`, `gen:spec` + `gen:types`, `scan-secrets.sh` green
+- [x] Playwright: search for a product, filter by category, open a hit (6 tests)
+- [x] **ADR-0005** written at last (OpenSearch over Postgres FTS — reserved since M0) and **ADR-0011** (versioned projection, no read-side database, write-side replay)
+- [x] Correction into `IMPLEMENTATION_PLAN.md` §4
 
 ## 10. Before starting
 

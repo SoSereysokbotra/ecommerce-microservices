@@ -15,6 +15,7 @@ export default function ProductPage({ params }: { params: Promise<{ slug: string
   const [available, setAvailable] = useState<number | null>(null);
   const [qty, setQty] = useState(1);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [added, setAdded] = useState(false);
 
@@ -28,6 +29,10 @@ export default function ProductPage({ params }: { params: Promise<{ slug: string
         const rows = await api.get<Stock[]>(`/inventory/stock?productIds=${p.id}`);
         setAvailable(rows[0]?.availableQty ?? 0);
       } catch (e) {
+        if (e instanceof ApiError && e.status === 404) {
+          setNotFound(true);
+          return;
+        }
         setError(e instanceof Error ? e.message : String(e));
       }
     })();
@@ -77,6 +82,21 @@ export default function ProductPage({ params }: { params: Promise<{ slug: string
     }
   }
 
+  if (notFound) {
+    // A search hit can point here after the product was deactivated — the
+    // index is a projection, seconds behind catalog at worst. Say that,
+    // rather than showing a bare 404 for something the shopper just saw
+    // listed (docs/M12_SEARCH_PLAN.md §7).
+    return (
+      <div className="notice" data-testid="product-gone">
+        <strong>This product is no longer available.</strong>
+        <p className="small muted" style={{ margin: '0.35rem 0 0' }}>
+          It may still appear in search results for a moment.{' '}
+          <Link href="/search">Back to search</Link> · <Link href="/">All products</Link>
+        </p>
+      </div>
+    );
+  }
   if (error && !product) return <div className="notice crit">{error}</div>;
   if (!product) return <p className="muted">Loading…</p>;
 
@@ -137,8 +157,8 @@ export default function ProductPage({ params }: { params: Promise<{ slug: string
         {error && <div className="notice crit small">{error}</div>}
 
         <p className="small muted">
-          Placing an order reserves the stock, then asks for payment. If payment
-          fails the reservation is released automatically.
+          Placing an order reserves the stock, then asks for payment. If payment fails the
+          reservation is released automatically.
         </p>
       </div>
     </>
