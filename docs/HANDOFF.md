@@ -1,6 +1,6 @@
 # Handoff — read this first
 
-**Written:** 2026-09-01. **Last updated:** 2026-09-17 (M10 and M11 complete; M12 steps 1–4 of 7 done).
+**Written:** 2026-09-01. **Last updated:** 2026-09-18 (M10 and M11 complete; M12 steps 1–5 of 7 done).
 **Repo:** https://github.com/SoSereysokbotra/ecommerce-microservices (public, `main`)
 **Local:** `d:\Year2\Microservices\Order‑Inventory‑Payment Microservices\ecommerce-microservices`
 
@@ -11,14 +11,14 @@ way and will cost hours to rediscover.
 **Where things stand (2026-09-17):** R1 is finished and deployed (via Cloudflare
 Tunnel, from this machine). **R2 is complete** — M7 (cart), M8 (tax and
 discounts), M9 (coupons), **M10 (shipping)** and **M11 (multi-currency)** are
-all done and pushed. R3 has started: **M12 (search) is four steps in** — catalog
-emits events, search-service projects them into OpenSearch with versioned
-writes, the three no-op proofs are done, and `GET /search/products` answers
-with facets, a price range and sorts. **The acceptance criterion is met:
-an edit is searchable in 1.21 s.** Republish/recreate, category fan-out and
+all done and pushed. R3 has started: **M12 (search) is five steps in** — catalog
+emits events, search-service projects them with versioned writes,
+`GET /search/products` answers with facets, and **the read model was thrown
+away and rebuilt from events alone with identical results** (2.41 s). The
+acceptance criterion is met (edit searchable in 1.21 s). Category fan-out and
 the storefront remain.
 
-**The next task is M12 step 5 — republish and recreate-index.** See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
+**The next task is M12 step 6 — category rename fan-out.** See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
 
 **Running it is now one command: `npm run dev`.** See §4 — the old
 `docker stop jobfit-redis` step is gone.
@@ -80,7 +80,7 @@ finished and must not be modified. See §9 — it has a live security problem.
 | **M9** | **Coupons — the concurrency milestone** | **done** |
 | **M10** | **Shipping: addresses, rates by weight/zone, shipment lifecycle** | **done** |
 | **M11** | **Multi-currency: exponents, FX rates frozen on the order** | **done** |
-| M12 | Search: OpenSearch index built from catalog events (CQRS) | **steps 1–4 of 7 done** |
+| M12 | Search: OpenSearch index built from catalog events (CQRS) | **steps 1–5 of 7 done** |
 | M13–M22 | Rest of R3, then R4–R5 | not started |
 
 **M6** was met on 2026-09-02 via **Cloudflare Tunnel**, not a managed platform —
@@ -113,14 +113,15 @@ creation is a saga step) and the ADR argues both.
 **M11** was built 2026-09-10/12 in eight steps. Design in
 **`docs/M11_CURRENCY_PLAN.md`**, decisions in **ADR-0010**.
 
-**M12** steps 1–4 landed 2026-09-17. Design in **`docs/M12_SEARCH_PLAN.md`**.
-Steps 5–7 remain. See §10. The acceptance criterion is already met.
+**M12** steps 1–5 landed 2026-09-17/18. Design in **`docs/M12_SEARCH_PLAN.md`**.
+Steps 6–7 remain. See §10. The acceptance criterion and the delete-and-rebuild
+proof are both done.
 
 Read ADR-0007 through ADR-0010 before touching pricing-service,
 `OrdersService.create()`, the saga's terminal transitions, or anything that
 formats or converts money.
 
-**Next task: M12 step 5.** See §10.
+**Next task: M12 step 6.** See §10.
 
 ### What M7 added, in one paragraph
 
@@ -239,6 +240,20 @@ click would give; `multi_match` on `name^3, description` with
 `fuzziness: AUTO:4,7`. **The acceptance test: an edit was searchable through
 the gateway in 1.21 s.** 39 unit tests.
 
+### What M12 step 5 added
+
+The reindex, in two halves on two sides. **Write side:**
+`POST /catalog/admin/republish` walks every category and product in one
+transaction and appends a `category.updated` / `product.updated` for each
+**at its current version** — the first caller of `announceCategory`, so the
+first `category.*` events ever on the bus. **Read side:**
+`POST /search/admin/recreate-index` drops the index and creates it empty
+with the mapping; the response says what to run next. Both JWT-guarded
+(M16 debt). **The milestone's proof:** five queries snapshotted → recreate
+(total 0) → republish → **12 documents back in 2.41 s, all five queries
+byte-identical**. Republish against the live index: 13 `stale`, nothing
+changed. 40 unit tests.
+
 ---
 
 ## 3. Architecture
@@ -252,14 +267,14 @@ search-service, which by design will have **none** (see `M12_SEARCH_PLAN.md`
 |---|---:|---|
 | api-gateway | 3000 | Routing, JWT, rate limiting, correlation ids, raw-body passthrough for Stripe |
 | users-service | 3001 | Auth, customers |
-| catalog-service | 3002 | Products, categories |
+| catalog-service | 3002 | Products, categories; `POST /catalog/admin/republish` (write-side replay) |
 | inventory-service | 3003 | Stock, reservations, expiry sweep |
 | orders-service | 3004 | Orders + **saga orchestrator** |
 | payments-service | 3005 | Stripe intents, webhooks, refunds |
 | cart-service | 3006 | Guest + signed-in carts, merge on login, abandonment sweep |
 | pricing-service | 3007 | Tax rules, promotions, coupons, **currencies and FX rates**, `POST /pricing/quote` (which now includes shipping) |
 | shipping-service | 3008 | Zones, weight-banded rates, shipments (created from `order.confirmed`) |
-| search-service | 3009 | OpenSearch read model fed by catalog events. **No Postgres.** `GET /search/products` with facets, range, sort. |
+| search-service | 3009 | OpenSearch read model fed by catalog events. **No Postgres.** `GET /search/products`; `POST /search/admin/recreate-index`. |
 | storefront | 3100 | Next.js UI |
 
 Supporting: RabbitMQ (5672 / 15672), Redis (**6380** on the host, 6379 inside
@@ -403,6 +418,10 @@ npm run seed --prefix apps/inventory-service
 # Tax rules, promotions, coupons, currencies and FX rates. Zones and rates.
 npm run seed:pricing
 npm run seed:shipping
+
+# The search index is empty until the write side republishes (M12). Needs the
+# stack up and any valid JWT.
+curl -X POST http://127.0.0.1:3000/api/v1/catalog/admin/republish -H "Authorization: Bearer $TOKEN"
 ```
 
 Run migrations **from the host**, not `docker compose exec`: Neon is reachable
@@ -832,6 +851,17 @@ All through the gateway, 12 products in the index (filled by one no-op
 | `sort=sideways`, `limit=1000` | 400, 400 |
 | Gateway `GET /search/products` before the route was public | **401** — `search` was only in the guarded `@All`; now in the public `@Get` list |
 
+### Added by M12 step 5 — also do not redo
+
+| Scenario | Result |
+|---|---|
+| `POST /search/admin/recreate-index` / `POST /catalog/admin/republish` without a token | 401, 401 |
+| Snapshot five queries (browse, `q=tee`, `category=drinkware`, `price_desc`, range) → recreate | `total` **0**; response `next: "POST /catalog/admin/republish"` |
+| Republish | `{ products: 13, categories: 3 }` — 13 because one inactive step-1 test product (`M12-TEST-1`) is a document too; 12 are active |
+| Poll until 12 active hits are back | **2.41 s**; all five queries **identical** to the snapshot — the read model was thrown away and came back from events alone |
+| Republish again, against the live index | 13 × `stale or already indexed`, results identical, 0 nacks |
+| `category.updated` × 3, twice | consumed and ignored (step 6 uses them); queue 0, 32 acks = 2 × (13 + 3) |
+
 
 ## 7. Deliberate decisions someone might otherwise "fix"
 
@@ -1030,6 +1060,25 @@ All through the gateway, 12 products in the index (filled by one no-op
   `POST /search/admin/recreate-index` lands behind the JWT guard by
   falling through to the `@All` block.
 
+### Added by M12 step 5
+
+- **The write side owns replay.** `POST /catalog/admin/republish` is on
+  catalog, not search: the read side must not read catalog's database, and
+  catalog's outbox is a delivery queue, not a retained log. Do not add a
+  "reindex from Postgres" path to search-service.
+- **Republish emits at the current version, never resets it.** That is what
+  makes it safe against a live index: a republished v7 is a 409 against a
+  stored v7 or v8. A "fresh" v1 republish would be *older* than what is
+  stored and refused.
+- **`recreate-index` deletes the index, not the documents** — the only
+  reset that clears version tombstones (§5). The response tells the caller
+  what to run next rather than doing it: the read side cannot reach catalog.
+- **Categories are republished before products**, so a cold index gets the
+  current category name on each product from the product events; the
+  fan-out (step 6) then has nothing stale to correct.
+- **One transaction for the whole republish.** Three categories, a dozen
+  products. Batching would be the change if a catalogue ever made it one.
+
 ## 8. Deployment — done, with a caveat
 
 M6 was finished with Cloudflare Tunnel (`bash scripts/tunnel-up.sh`), not a
@@ -1090,10 +1139,12 @@ per-customer coupon limit is enforced by a read and is therefore best-effort
 coupon), and `pricing-service` has an `outbox` table nothing publishes to yet.
 
 **No roles until M16, and the pile of staff-only endpoints grew.** M10 added
-`POST /shipping/shipments/:id/dispatch` and `/deliver`; M12 will add
-`POST /catalog/admin/republish` and `POST /search/admin/recreate-index`. All of
-them are protected by nothing but a valid JWT — anyone with an account can mark
-any parcel delivered. The M16 entry should list every one of these.
+`POST /shipping/shipments/:id/dispatch` and `/deliver`; M12 added
+`POST /catalog/admin/republish` and `POST /search/admin/recreate-index`
+(step 5) and will add `PATCH /catalog/categories/:id` (step 6). All of them
+are protected by nothing but a valid JWT — anyone with an account can mark any
+parcel delivered or empty the search index. The M16 entry should list every
+one of these.
 
 **One order sits between M10 step 5 and step 6** with a total that includes
 delivery and `shipping_minor = 0`, because the column did not exist yet. Not
@@ -1107,10 +1158,10 @@ nothing calls it — there is no category create/update API. M12 step 5's
 republish command will be the first caller. search-service receives
 `category.*` (bound since step 2) and ignores it until step 6.
 
-**Products that predate M12 step 1 are announced only when edited.** The seed
-ran long before catalog had an outbox. The index was filled in step 4 by one
-no-op `PATCH` per product; step 5's republish is the real answer and the way
-a fresh clone will fill it.
+**A fresh clone's search index is empty until republished.** The seed does
+not go through the outbox. After `npm run seed --prefix apps/catalog-service`,
+call `POST /catalog/admin/republish` (any valid JWT) once. Worth folding into
+the seed or `setup.sh` at M22.
 
 **The Stripe test key is still not rolled.** Five milestones have deferred it.
 
@@ -1171,50 +1222,60 @@ painful fast.
 
 ---
 
-## 10. The next task: M12 step 5 — republish and recreate-index
+## 10. The next task: M12 step 6 — category rename fan-out
 
-M12's plan is **`docs/M12_SEARCH_PLAN.md`**. Steps 1–4 are done, each its own
-commit. The acceptance criterion ("product edit appears in search within
-seconds, with no shared database") is met and recorded in §6: **1.21 s**.
+M12's plan is **`docs/M12_SEARCH_PLAN.md`**. Steps 1–5 are done, each its own
+commit. The milestone's two headline claims are recorded in §6: edit visible
+in **1.21 s**; delete-and-rebuild **identical** in 2.41 s.
 
-**Step 5, next**, from the plan's §11:
+**Step 6, next**, from the plan's §11:
 
-> Republish and recreate — the write-side replay, the read-side reset, and
-> the delete-and-rebuild proof.
+> Category fan-out — `_update_by_query`, version-guarded, with the
+> stale-rename test.
 
 Concretely:
 
-- **catalog:** `src/modules/admin/republish.controller.ts` + a service
-  method: `POST /catalog/admin/republish` walks every product (with its
-  category) and every category and appends a `product.updated` /
-  `category.updated` **at its current version** — `announceProduct` and
-  `announceCategory` already exist in `events/product-events.ts`;
-  `announceCategory` has never been called. One transaction per batch is
-  fine; the outbox relay drains it. Return `{ products, categories }`
-  counts. JWT-guarded only (M16 debt — add it to the §9 list).
-- **search:** `POST /search/admin/recreate-index` — `indices.delete` then
-  `ensureIndex()` (already there). Returns the mapping it created. Falls
-  through to the gateway's guarded `@All` automatically.
-- **The proof, in this order:** `GET /search/products` (record hits and
-  facets) → recreate-index (`total` is 0) → republish → poll until `total`
-  is 12 → the same query gives **identical** results. The read model was
-  thrown away and came back from events alone. Record it in §6.
-- **Republish against a live index is safe** — a republished v7 cannot
-  overwrite a v8 — and worth one line of proof: republish *without*
-  recreating and confirm nothing changed and the log shows only `stale`.
-- `gen:spec` + `gen:types` after both controllers land.
+- **There is no category write API.** Add `PATCH /catalog/categories/:id`
+  (name and/or description) with the same conditional-UPDATE version guard
+  `ProductsService.update()` uses, announcing `category.updated` in the
+  transaction. Without it the fan-out has no trigger except republish.
+- **search:** in `CatalogEventsListener`, on `category.updated` run
+  `updateByQuery` on `products` with
+  `query: { bool: { filter: [{ term: { categoryId } }, { range: { categoryVersion: { lt: version } } }] } }`
+  and a painless script setting `categorySlug`, `categoryName`,
+  `categoryVersion`. The `range` **is** the version guard: a stale rename
+  matches no documents. Use `conflicts: 'proceed'` and `refresh: true`.
+  Return counts; log `updated` vs `noop`.
+- **Note what `_update_by_query` does not do:** it does not touch the
+  document's external `version`. A product's `version` stays the product's;
+  `categoryVersion` is the category's. The next `product.updated` (at a
+  higher product version) carries the current category name anyway. Say
+  this in ADR-0011.
+- **The proofs, live:** rename Apparel → "Clothing"; every apparel product
+  shows the new name in `GET /search/products` and the facet reads
+  `clothing`/`Clothing`... — careful: a **slug** change would also change
+  the facet key; decide whether `PATCH` may change the slug (recommended:
+  name and description only, slug immutable, the way `sku` is). Then inject
+  a **stale** `category.updated` (older `version`) with the old name via the
+  scratch publisher pattern: nothing changes. Redeliver the current one:
+  `updated: 0`.
+- Add the two new admin endpoints (`republish`, `recreate-index`) and the
+  category PATCH to §9's M16 list. `gen:spec` + `gen:types`.
 
-What step 4 leaves you that matters here:
+Then step 7: storefront (search box, results page with facets, graceful 404
+on a stale hit), Playwright, **ADR-0005** (OpenSearch over Postgres FTS —
+reserved since M0) and **ADR-0011** (versioned projection, no read-side
+database, write-side replay), correction into `IMPLEMENTATION_PLAN.md` §4,
+and tick the §9 Definition of Done in the plan.
 
-- **The index is full (12/12)** but only because each product was PATCHed
-  once — versions are 2–8, not 1. Republish must emit the *current* version,
-  so that is fine; do not reset anything.
-- **Category events:** `announceCategory` will emit `category.updated` for
-  the first time. search-service's listener ignores `category.*` until step
-  6 — check the log shows them arriving and being ignored, not nacked.
-- **The tombstone gotcha (§5):** `recreate-index` deletes the *index*, not
-  documents, so versions reset. Anything that deletes documents one at a
-  time does not.
+What step 5 leaves you that matters here:
+
+- **`category.updated` already flows** (from republish) and the listener
+  ignores it. The step-6 handler replaces that `return`.
+- **Republish is the recovery for anything step 6 gets wrong**: recreate,
+  republish, and the index is right again.
+- **Docker Desktop died once more during step 5** — the restart recipe in
+  §5 (`Start-Process` … then `docker compose up -d`) worked in ~20 s.
 
 Money is integer minor units everywhere; the exponent is data (ADR-0010).
 

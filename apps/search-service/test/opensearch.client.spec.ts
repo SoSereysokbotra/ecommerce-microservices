@@ -95,6 +95,20 @@ describe('OpenSearchClient.ensureIndex', () => {
   });
 });
 
+describe('OpenSearchClient.recreateIndex', () => {
+  it('drops the index (tolerating its absence) and creates it with the mapping', async () => {
+    const del = jest.fn(async () => ({ body: { acknowledged: true } }));
+    const { client, create } = fakeClient({ exists: true });
+    (client.indices as unknown as { delete: jest.Mock }).delete = del;
+
+    await new OpenSearchClient(client).recreateIndex();
+
+    expect(del).toHaveBeenCalledWith({ index: PRODUCTS_INDEX }, { ignore: [404] });
+    expect(create).toHaveBeenCalledWith({ index: PRODUCTS_INDEX, body: PRODUCTS_INDEX_BODY });
+    expect(del.mock.invocationCallOrder[0]).toBeLessThan(create.mock.invocationCallOrder[0]);
+  });
+});
+
 describe('OpenSearchClient.clusterStatus', () => {
   it('returns the status the cluster reports', async () => {
     const { client } = fakeClient({ health: 'yellow' });

@@ -20,6 +20,28 @@
         ],
         "type": "object"
       },
+      "RecreateIndexResponseDto": {
+        "properties": {
+          "index": {
+            "example": "products",
+            "type": "string"
+          },
+          "mapping": {
+            "description": "The mapping the empty index was created with.",
+            "type": "object"
+          },
+          "next": {
+            "example": "POST /catalog/admin/republish",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "mapping",
+          "next"
+        ],
+        "type": "object"
+      },
       "SearchFacetsDto": {
         "properties": {
           "categories": {
@@ -169,6 +191,34 @@
         },
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/search/admin/recreate-index": {
+      "post": {
+        "description": "Every search returns nothing until the write side republishes. Run POST /catalog/admin/republish next.",
+        "operationId": "AdminController_recreateIndex",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecreateIndexResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Drop the products index and recreate it empty with the current mapping",
+        "tags": [
+          "search"
         ]
       }
     },

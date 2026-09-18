@@ -127,6 +127,23 @@
         ],
         "type": "object"
       },
+      "RepublishResponseDto": {
+        "properties": {
+          "categories": {
+            "description": "category.updated events appended, one per category.",
+            "type": "number"
+          },
+          "products": {
+            "description": "product.updated events appended, one per product.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "products",
+          "categories"
+        ],
+        "type": "object"
+      },
       "UpdateProductDto": {
         "properties": {
           "active": {
@@ -172,6 +189,38 @@
   },
   "openapi": "3.0.0",
   "paths": {
+    "/api/v1/catalog/admin/republish": {
+      "post": {
+        "description": "The write-side half of a search reindex. Safe against a live index: every consumer write is versioned, so nothing newer is overwritten.",
+        "operationId": "RepublishController_republishAll",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepublishResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Re-announce every product and category at its current version",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/api/v1/catalog/categories": {
       "get": {
         "operationId": "CategoriesController_list",

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Client } from '@opensearch-project/opensearch';
 import { OPENSEARCH, OpenSearchClient } from './opensearch.client';
 import { ProductsProjection } from './products.projection';
+import { AdminController } from './admin.controller';
 import { SearchController } from './search.controller';
 import { SearchService } from './search.service';
 
@@ -11,8 +12,8 @@ import { SearchService } from './search.service';
  *
  * The raw client is a separate provider so tests can hand `OpenSearchClient`
  * a fake without a cluster. `SearchController` reads; the consumer in
- * `events/` writes through `ProductsProjection`; nothing else touches the
- * index until the admin reset (step 5).
+ * `events/` writes through `ProductsProjection`; `AdminController` drops
+ * and recreates the index empty. Nothing else touches it.
  */
 @Module({
   providers: [
@@ -26,7 +27,7 @@ import { SearchService } from './search.service';
     ProductsProjection,
     SearchService,
   ],
-  controllers: [SearchController],
+  controllers: [SearchController, AdminController],
   exports: [OpenSearchClient, ProductsProjection],
 })
 export class SearchModule {}

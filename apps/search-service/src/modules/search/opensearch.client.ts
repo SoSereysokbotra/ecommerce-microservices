@@ -63,6 +63,25 @@ export class OpenSearchClient implements OnModuleInit {
   }
 
   /**
+   * Drop the index and create it empty with the current mapping.
+   *
+   * This is the **only** reset. Deleting documents one at a time does not
+   * work with external versioning — a deleted document's version survives
+   * as a tombstone for `index.gc_deletes` (60 s) and refuses anything not
+   * newer (HANDOFF §5). Dropping the index drops the tombstones with it.
+   *
+   * The index is empty when this returns. Nothing here refills it: that is
+   * the write side's job (`POST /catalog/admin/republish`), which is the
+   * point — the read side cannot rebuild itself without reading a database
+   * it must not read.
+   */
+  async recreateIndex(): Promise<void> {
+    await this.raw.indices.delete({ index: PRODUCTS_INDEX }, { ignore: [404] });
+    await this.raw.indices.create({ index: PRODUCTS_INDEX, body: PRODUCTS_INDEX_BODY });
+    this.logger.warn(`Index "${PRODUCTS_INDEX}" dropped and recreated empty`);
+  }
+
+  /**
    * The cluster's own verdict. Throws when the cluster cannot be reached at
    * all, which `/ready` turns into a 503.
    *

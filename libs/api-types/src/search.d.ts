@@ -36,6 +36,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/search/admin/recreate-index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Drop the products index and recreate it empty with the current mapping
+         * @description Every search returns nothing until the write side republishes. Run POST /catalog/admin/republish next.
+         */
+        post: operations["AdminController_recreateIndex"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search/products": {
         parameters: {
             query?: never;
@@ -61,6 +81,14 @@ export interface components {
             count: number;
             name: string;
             slug: string;
+        };
+        RecreateIndexResponseDto: {
+            /** @example products */
+            index: string;
+            /** @description The mapping the empty index was created with. */
+            mapping: Record<string, never>;
+            /** @example POST /catalog/admin/republish */
+            next: string;
         };
         SearchFacetsDto: {
             categories: components["schemas"]["CategoryFacetDto"][];
@@ -128,6 +156,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    AdminController_recreateIndex: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecreateIndexResponseDto"];
+                };
             };
         };
     };

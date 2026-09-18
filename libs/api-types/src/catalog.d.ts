@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/api/v1/catalog/admin/republish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-announce every product and category at its current version
+         * @description The write-side half of a search reindex. Safe against a live index: every consumer write is versioned, so nothing newer is overwritten.
+         */
+        post: operations["RepublishController_republishAll"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/catalog/categories": {
         parameters: {
             query?: never;
@@ -156,6 +176,12 @@ export interface components {
             /** @description Shipping weight in grams. Zero until someone weighs it. */
             weightGrams: number;
         };
+        RepublishResponseDto: {
+            /** @description category.updated events appended, one per category. */
+            categories: number;
+            /** @description product.updated events appended, one per product. */
+            products: number;
+        };
         UpdateProductDto: {
             active?: boolean;
             categoryId?: Record<string, never>;
@@ -176,6 +202,27 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    RepublishController_republishAll: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-correlation-id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepublishResponseDto"];
+                };
+            };
+        };
+    };
     CategoriesController_list: {
         parameters: {
             query?: never;
