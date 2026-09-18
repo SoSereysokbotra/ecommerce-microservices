@@ -1,6 +1,6 @@
 # Handoff — read this first
 
-**Written:** 2026-09-01. **Last updated:** 2026-09-17 (M10 and M11 complete; M12 steps 1–3 of 7 done).
+**Written:** 2026-09-01. **Last updated:** 2026-09-17 (M10 and M11 complete; M12 steps 1–4 of 7 done).
 **Repo:** https://github.com/SoSereysokbotra/ecommerce-microservices (public, `main`)
 **Local:** `d:\Year2\Microservices\Order‑Inventory‑Payment Microservices\ecommerce-microservices`
 
@@ -11,12 +11,14 @@ way and will cost hours to rediscover.
 **Where things stand (2026-09-17):** R1 is finished and deployed (via Cloudflare
 Tunnel, from this machine). **R2 is complete** — M7 (cart), M8 (tax and
 discounts), M9 (coupons), **M10 (shipping)** and **M11 (multi-currency)** are
-all done and pushed. R3 has started: **M12 (search) is three steps in** — catalog
+all done and pushed. R3 has started: **M12 (search) is four steps in** — catalog
 emits events, search-service projects them into OpenSearch with versioned
-writes, and the three no-op proofs (redelivery, republication, **reordering**)
-are done. Nothing queries the index yet.
+writes, the three no-op proofs are done, and `GET /search/products` answers
+with facets, a price range and sorts. **The acceptance criterion is met:
+an edit is searchable in 1.21 s.** Republish/recreate, category fan-out and
+the storefront remain.
 
-**The next task is M12 step 4 — `GET /search/products`.** See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
+**The next task is M12 step 5 — republish and recreate-index.** See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
 
 **Running it is now one command: `npm run dev`.** See §4 — the old
 `docker stop jobfit-redis` step is gone.
@@ -78,7 +80,7 @@ finished and must not be modified. See §9 — it has a live security problem.
 | **M9** | **Coupons — the concurrency milestone** | **done** |
 | **M10** | **Shipping: addresses, rates by weight/zone, shipment lifecycle** | **done** |
 | **M11** | **Multi-currency: exponents, FX rates frozen on the order** | **done** |
-| M12 | Search: OpenSearch index built from catalog events (CQRS) | **steps 1–3 of 7 done** |
+| M12 | Search: OpenSearch index built from catalog events (CQRS) | **steps 1–4 of 7 done** |
 | M13–M22 | Rest of R3, then R4–R5 | not started |
 
 **M6** was met on 2026-09-02 via **Cloudflare Tunnel**, not a managed platform —
@@ -111,14 +113,14 @@ creation is a saga step) and the ADR argues both.
 **M11** was built 2026-09-10/12 in eight steps. Design in
 **`docs/M11_CURRENCY_PLAN.md`**, decisions in **ADR-0010**.
 
-**M12** steps 1–3 landed 2026-09-17. Design in **`docs/M12_SEARCH_PLAN.md`**.
-Steps 4–7 remain. See §10. Step 3 is the CQRS content; the rest is finish.
+**M12** steps 1–4 landed 2026-09-17. Design in **`docs/M12_SEARCH_PLAN.md`**.
+Steps 5–7 remain. See §10. The acceptance criterion is already met.
 
 Read ADR-0007 through ADR-0010 before touching pricing-service,
 `OrdersService.create()`, the saga's terminal transitions, or anything that
 formats or converts money.
 
-**Next task: M12 step 4.** See §10.
+**Next task: M12 step 5.** See §10.
 
 ### What M7 added, in one paragraph
 
@@ -225,6 +227,18 @@ success** — logged at debug and acked; rethrowing would nack with
 in **0.85 s**; redelivery, republication and **v6-after-v7** all left the
 document untouched while a control v+1 landed. 27 unit tests.
 
+### What M12 step 4 added
+
+`GET /search/products` — `q`, `category`, `minPrice`, `maxPrice`,
+`sort=relevance|price_asc|price_desc`, `page`, `limit`; returns `{ hits,
+total, page, limit, facets.categories[{ slug, name, count }] }`. Public at
+the gateway, like the catalogue. `search-query.ts` is a pure DTO → body
+function: `active: true` is an unconditional `filter`; the category goes in
+**`post_filter`** so the facet keeps listing every category with the count a
+click would give; `multi_match` on `name^3, description` with
+`fuzziness: AUTO:4,7`. **The acceptance test: an edit was searchable through
+the gateway in 1.21 s.** 39 unit tests.
+
 ---
 
 ## 3. Architecture
@@ -245,7 +259,7 @@ search-service, which by design will have **none** (see `M12_SEARCH_PLAN.md`
 | cart-service | 3006 | Guest + signed-in carts, merge on login, abandonment sweep |
 | pricing-service | 3007 | Tax rules, promotions, coupons, **currencies and FX rates**, `POST /pricing/quote` (which now includes shipping) |
 | shipping-service | 3008 | Zones, weight-banded rates, shipments (created from `order.confirmed`) |
-| search-service | 3009 | OpenSearch read model fed by catalog events. **No Postgres.** Projects `product.*`; no query endpoint until step 4. |
+| search-service | 3009 | OpenSearch read model fed by catalog events. **No Postgres.** `GET /search/products` with facets, range, sort. |
 | storefront | 3100 | Next.js UI |
 
 Supporting: RabbitMQ (5672 / 15672), Redis (**6380** on the host, 6379 inside
@@ -799,6 +813,25 @@ scratch publisher on `commerce.events` where noted.
 | `PATCH active:false` → `active:true` | index shows `active=false` then `true`, versions in step, 0.26 s / 0.46 s |
 | Queue after all of it | 0 messages, 1 consumer, nothing nacked |
 
+### Added by M12 step 4 — also do not redo
+
+All through the gateway, 12 products in the index (filled by one no-op
+`PATCH` each — the seed predates catalog's outbox).
+
+| Scenario | Result |
+|---|---|
+| **Acceptance: rename a product, poll `GET /search/products?q=<new name>`** | **visible in 1.21 s** — the plan's criterion, met |
+| Browse (no `q`) | 12 hits, name order; facets apparel 6 / accessories 3 / drinkware 3 |
+| `q=tee` with plain `fuzziness: AUTO` | 4 hits — **"Ten vinyl stickers" matched "tee"** (1 edit on a 3-letter word) |
+| `q=tee` with `AUTO:4,7` | 3 hits, the three tees; `q=hoodei` (typo) still finds both hoodies |
+| `category=drinkware` | 3 hits; facets **still list all three categories** (`post_filter`) |
+| `minPrice=1000&maxPrice=2000` | 1250, 1250, 1400, 1800, 1999 ×3 — inclusive both ends |
+| `sort=price_asc` / `price_desc` | 600 first / 4950 first, ties broken by name |
+| `page=2&limit=5` | 5 hits, total 12 |
+| Deactivate a mug | gone from `q=mug` in 0.95 s; drinkware facet count drops with it |
+| `sort=sideways`, `limit=1000` | 400, 400 |
+| Gateway `GET /search/products` before the route was public | **401** — `search` was only in the guarded `@All`; now in the public `@Get` list |
+
 
 ## 7. Deliberate decisions someone might otherwise "fix"
 
@@ -983,6 +1016,20 @@ scratch publisher on `commerce.events` where noted.
 - **A product with no category is indexed**, with nulls — searchable by name,
   absent from the facet.
 
+### Added by M12 step 4
+
+- **The category filter is a `post_filter`.** In `query` it would collapse
+  the facet to the selected category the moment anyone clicked one. The
+  facet is computed over text + price + active; the hits are additionally
+  narrowed. Do not move it "for consistency".
+- **`fuzziness: AUTO:4,7`, not `AUTO`.** Measured: plain AUTO made "tee"
+  match "ten". Exact under four letters.
+- **Hits are the document minus `categoryId`, `active` and
+  `categoryVersion`** — bookkeeping, not API.
+- **Search GETs are public at the gateway; POSTs are not.** Step 5's
+  `POST /search/admin/recreate-index` lands behind the JWT guard by
+  falling through to the `@All` block.
+
 ## 8. Deployment — done, with a caveat
 
 M6 was finished with Cloudflare Tunnel (`bash scripts/tunnel-up.sh`), not a
@@ -1060,10 +1107,10 @@ nothing calls it — there is no category create/update API. M12 step 5's
 republish command will be the first caller. search-service receives
 `category.*` (bound since step 2) and ignores it until step 6.
 
-**Products that predate M12 step 1 are not in the index.** Catalog announces
-only on write, and the seed ran long before it had an outbox. Until step 5's
-republish exists the index holds only products edited since — one, as of
-step 3.
+**Products that predate M12 step 1 are announced only when edited.** The seed
+ran long before catalog had an outbox. The index was filled in step 4 by one
+no-op `PATCH` per product; step 5's republish is the real answer and the way
+a fresh clone will fill it.
 
 **The Stripe test key is still not rolled.** Five milestones have deferred it.
 
@@ -1124,55 +1171,50 @@ painful fast.
 
 ---
 
-## 10. The next task: M12 step 4 — querying
+## 10. The next task: M12 step 5 — republish and recreate-index
 
-M12's plan is **`docs/M12_SEARCH_PLAN.md`**. Steps 1–3 are done, each its own
-commit ("M12 step 1: catalog joins the event system", "M12 step 2:
-search-service scaffold and OpenSearch, no database", "M12 step 3: the
-projection — versioned upserts, three no-op proofs"). The CQRS content is in;
-4–7 are the finish.
+M12's plan is **`docs/M12_SEARCH_PLAN.md`**. Steps 1–4 are done, each its own
+commit. The acceptance criterion ("product edit appears in search within
+seconds, with no shared database") is met and recorded in §6: **1.21 s**.
 
-**Step 4, next**, from the plan's §11:
+**Step 5, next**, from the plan's §11:
 
-> Querying — `GET /search/products` with facets, range and sort. The
-> acceptance test: edit a product, time its appearance.
+> Republish and recreate — the write-side replay, the read-side reset, and
+> the delete-and-rebuild proof.
 
 Concretely:
 
-- `src/modules/search/search.service.ts` + `search.controller.ts` (`@Public()`
-  `GET /search/products`), a `SearchProductsQueryDto` with `q`, `category`,
-  `minPrice`, `maxPrice`, `sort=relevance|price_asc|price_desc`, `page`,
-  `limit`. Register the controller in `SearchModule`.
-- The query: `bool` with `filter: [{ term: { active: true } }]` always, plus
-  `term` on `categorySlug` and `range` on `priceMinor` when given;
-  `multi_match` on `name^3, description` for `q`, `match_all` without.
-  Sort by `_score` or `priceMinor`. A `terms` aggregation on `categorySlug`
-  computed over the **same filtered set** so the counts are the counts you
-  get on click; `categoryName` for display comes from a `top_hits` sub-agg
-  or a second `terms` on `categoryName` keyed alongside — pick the simpler.
-- Response `{ hits, total, page, limit, facets: { categories: [{ slug,
-  name, count }] } }`. Hits are the stored document minus nothing — the
-  price is base-currency and the storefront formats it (ADR-0010).
-- **The acceptance test**: edit a product's name, poll `GET
-  /search/products?q=<new name>` through the gateway until it appears, and
-  record the latency in §6. Step 3 measured 0.85 s to the raw document; the
-  number through the query is the one the plan asks for.
-- `gen:spec` + `gen:types` after the controller lands; the storefront (step
-  7) reads `libs/api-types/src/search.d.ts`.
-- Unit-test the query builder (a pure function from DTO to the OpenSearch
-  body) without a cluster, the way `rating.ts` is tested in shipping.
+- **catalog:** `src/modules/admin/republish.controller.ts` + a service
+  method: `POST /catalog/admin/republish` walks every product (with its
+  category) and every category and appends a `product.updated` /
+  `category.updated` **at its current version** — `announceProduct` and
+  `announceCategory` already exist in `events/product-events.ts`;
+  `announceCategory` has never been called. One transaction per batch is
+  fine; the outbox relay drains it. Return `{ products, categories }`
+  counts. JWT-guarded only (M16 debt — add it to the §9 list).
+- **search:** `POST /search/admin/recreate-index` — `indices.delete` then
+  `ensureIndex()` (already there). Returns the mapping it created. Falls
+  through to the gateway's guarded `@All` automatically.
+- **The proof, in this order:** `GET /search/products` (record hits and
+  facets) → recreate-index (`total` is 0) → republish → poll until `total`
+  is 12 → the same query gives **identical** results. The read model was
+  thrown away and came back from events alone. Record it in §6.
+- **Republish against a live index is safe** — a republished v7 cannot
+  overwrite a v8 — and worth one line of proof: republish *without*
+  recreating and confirm nothing changed and the log shows only `stale`.
+- `gen:spec` + `gen:types` after both controllers land.
 
-What step 3 leaves you that matters here:
+What step 4 leaves you that matters here:
 
-- **The index has exactly one document** — `CBL-USB-1`, the proof product.
-  Everything else in catalog predates the outbox and was never announced.
-  To fill the index before step 5's republish exists, `PATCH` each product
-  once (any no-op field), or write the republish command first — it is
-  small and step 4's testing is much nicer with a full index.
-- **`ProductsProjection.upsert()` is the only writer.** The query side must
-  not write; `refresh: true` is already on the write.
-- **Deleting documents by hand poisons the version** for 60 s — §5. Drop
-  the index instead.
+- **The index is full (12/12)** but only because each product was PATCHed
+  once — versions are 2–8, not 1. Republish must emit the *current* version,
+  so that is fine; do not reset anything.
+- **Category events:** `announceCategory` will emit `category.updated` for
+  the first time. search-service's listener ignores `category.*` until step
+  6 — check the log shows them arriving and being ignored, not nacked.
+- **The tombstone gotcha (§5):** `recreate-index` deletes the *index*, not
+  documents, so versions reset. Anything that deletes documents one at a
+  time does not.
 
 Money is integer minor units everywhere; the exponent is data (ADR-0010).
 

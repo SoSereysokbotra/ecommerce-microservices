@@ -34,12 +34,16 @@ export class ProxyController {
    * strange shop. Deliberately GET-only: creating or editing a product falls
    * through to the authenticated handler below.
    *
+   * Search (M12) is the same case as the catalogue it indexes: a shopper
+   * searches before signing in. Its only route is a GET; the admin reset that
+   * arrives in step 5 is a POST and stays behind the guard below.
+   *
    * Declaration order matters. Express matches routes in registration order and
    * Nest registers them in declaration order, so this must precede the `@All`
    * block or every GET would be caught by it and require a token.
    */
   @Public()
-  @Get(['catalog', 'catalog/*', 'inventory/stock', 'inventory/stock/*'])
+  @Get(['catalog', 'catalog/*', 'inventory/stock', 'inventory/stock/*', 'search', 'search/*'])
   async proxyPublicReads(@Req() request: Request, @Res() response: Response): Promise<void> {
     return this.sendProxy(request, response);
   }

@@ -1,6 +1,133 @@
 {
   "components": {
-    "schemas": {},
+    "schemas": {
+      "CategoryFacetDto": {
+        "properties": {
+          "count": {
+            "type": "number"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "count"
+        ],
+        "type": "object"
+      },
+      "SearchFacetsDto": {
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryFacetDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "categories"
+        ],
+        "type": "object"
+      },
+      "SearchHitDto": {
+        "properties": {
+          "categoryName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "categorySlug": {
+            "nullable": true,
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "description": {
+            "nullable": true,
+            "type": "string"
+          },
+          "exponent": {
+            "type": "number"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "priceMinor": {
+            "description": "Base-currency price, integer minor units. Not converted.",
+            "type": "number"
+          },
+          "sku": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "version": {
+            "type": "number"
+          },
+          "weightGrams": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "sku",
+          "slug",
+          "name",
+          "description",
+          "priceMinor",
+          "currency",
+          "exponent",
+          "categorySlug",
+          "categoryName",
+          "weightGrams",
+          "version",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "SearchProductsResponseDto": {
+        "properties": {
+          "facets": {
+            "$ref": "#/components/schemas/SearchFacetsDto"
+          },
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHitDto"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "hits",
+          "total",
+          "page",
+          "limit",
+          "facets"
+        ],
+        "type": "object"
+      }
+    },
     "securitySchemes": {
       "bearer": {
         "bearerFormat": "JWT",
@@ -42,6 +169,104 @@
         },
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/search/products": {
+      "get": {
+        "operationId": "SearchController_products",
+        "parameters": [
+          {
+            "description": "Free text over name and description.",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "example": "tee",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Category slug — the facet.",
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "example": "apparel",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive, integer minor units.",
+            "in": "query",
+            "name": "minPrice",
+            "required": false,
+            "schema": {
+              "example": 1000,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Inclusive, integer minor units.",
+            "in": "query",
+            "name": "maxPrice",
+            "required": false,
+            "schema": {
+              "example": 5000,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "relevance",
+              "enum": [
+                "relevance",
+                "price_asc",
+                "price_desc"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchProductsResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Search active products with a category facet, price range and sort",
+        "tags": [
+          "search"
         ]
       }
     }

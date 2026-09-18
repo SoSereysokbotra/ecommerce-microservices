@@ -36,10 +36,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/search/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search active products with a category facet, price range and sort */
+        get: operations["SearchController_products"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: never;
+    schemas: {
+        CategoryFacetDto: {
+            count: number;
+            name: string;
+            slug: string;
+        };
+        SearchFacetsDto: {
+            categories: components["schemas"]["CategoryFacetDto"][];
+        };
+        SearchHitDto: {
+            categoryName: string | null;
+            categorySlug: string | null;
+            currency: string;
+            description: string | null;
+            exponent: number;
+            id: string;
+            name: string;
+            /** @description Base-currency price, integer minor units. Not converted. */
+            priceMinor: number;
+            sku: string;
+            slug: string;
+            updatedAt: string;
+            version: number;
+            weightGrams: number;
+        };
+        SearchProductsResponseDto: {
+            facets: components["schemas"]["SearchFacetsDto"];
+            hits: components["schemas"]["SearchHitDto"][];
+            limit: number;
+            page: number;
+            total: number;
+        };
+    };
     responses: never;
     parameters: never;
     requestBodies: never;
@@ -79,6 +128,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    SearchController_products: {
+        parameters: {
+            query?: {
+                /** @description Free text over name and description. */
+                q?: string;
+                /** @description Category slug — the facet. */
+                category?: string;
+                /** @description Inclusive, integer minor units. */
+                minPrice?: number;
+                /** @description Inclusive, integer minor units. */
+                maxPrice?: number;
+                sort?: "relevance" | "price_asc" | "price_desc";
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchProductsResponseDto"];
+                };
             };
         };
     };
