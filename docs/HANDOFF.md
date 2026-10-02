@@ -14,9 +14,9 @@ discounts), M9 (coupons), **M10 (shipping)** and **M11 (multi-currency)** are
 all done and pushed. R3 has started: **M12 (search) is complete** — seven commits, ADR-0005 and
 ADR-0011 written, 32 Playwright tests green. Thirteen of 23 milestones done.
 
-**The next task is M13 step 2 — scaffold reviews-service.** The plan is
-reviewed (`docs/M13_REVIEWS_PLAN.md`: items on `order.confirmed`; scripted
-update for the second projection); step 1 is done. See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
+**The next task is M13 step 3 — reviews, moderation and the rollup.** The
+plan is reviewed (`docs/M13_REVIEWS_PLAN.md`: items on `order.confirmed`;
+scripted update for the second projection); steps 1–2 are done. See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
 
 **Running it is now one command: `npm run dev`.** See §4 — the old
 `docker stop jobfit-redis` step is gone.
@@ -1277,6 +1277,15 @@ lived in that table is gone. **Test a `down` against a throwaway Postgres**, the
 way M8 step 2 did for pricing-service, rather than against a database holding
 history.
 
+**Rotate the reviews-service Neon password.** The full connection string for
+the M13 database (`reviews_db`, `ep-broad-dew-b4o2o7eo`, us-east-2) was pasted
+into a chat transcript on 2026-10-02. Reset it in the Neon console, put the new
+string in `apps/reviews-service/.env`, then `docker compose up -d
+--force-recreate reviews-service`. Nothing is committed — that `.env` is
+gitignored — but the credential is readable in the transcript and that database
+is reachable from anywhere. **Same mistake as cart-service below; the answer is
+to paste the string into the `.env` directly, never into a chat.**
+
 **Rotate the cart-service Neon password.** The full connection string for the
 M7 database was pasted into a chat transcript on 2026-09-03. Reset it in the
 Neon console, put the new string in `apps/cart-service/.env`, then
@@ -1333,12 +1342,31 @@ commit fixed a **pre-existing** typecheck error in shipping-service
 (`rate()` erased the entity type, so `zone.id` did not typecheck) — CI has
 typechecked shipping since M12 step 2 and would have been red.
 
-**Step 2, next** (plan §11): scaffold `reviews-service` on 3010 — copy
-shipping-service (TypeORM + outbox + `processed_events`), Neon `reviews_db`
-(the user is creating it; put the string in `apps/reviews-service/.env`),
-migrations on a throwaway first, compose block, `/ready`, and the
-`order.confirmed` → `purchases` consumer with the replay proofs (same id;
-new id → one row). No review API yet.
+**M13 step 2 is done** (commit "M13 step 2: reviews-service scaffold and the
+purchases consumer"): `reviews-service` on **3010**, its own Neon database
+(`reviews_db`, `ep-broad-dew-b4o2o7eo`, **us-east-2** — not Singapore like
+most of the others; it is the second after shipping in that region). Tables
+`purchases`, `reviews`, `product_ratings` plus outbox and `processed_events`.
+`order.confirmed` → `purchases` with both guards. No review API yet.
+
+| Scenario | Result |
+|---|---|
+| Migrations up, then **both** reverted, on a **throwaway Postgres** | clean both ways; only `migrations` left behind |
+| `rating = 6`; `rating_sum = -1` | refused by `CHK_reviews_rating_range` / `CHK_product_ratings_nonneg` |
+| `order.confirmed` with 2 items | **2** purchase rows |
+| Same event id again | ignored — `processed_events` marker |
+| **New event id, same order** | ignored — `UQ_purchases_customer_product_order`; log says "already recorded" |
+| An order with **no** `items` (every order placed before step 1) | warned and skipped, not nacked |
+| `/ready` with the database up | 200; queue `reviews-service` bound to `order.confirmed`, 1 consumer, 0 messages |
+
+**Step 3, next** (plan §11): reviews and moderation — entities are already
+there, so this is `ReviewsService` (create with the eligibility 403, edit
+back to `pending`, the `approve`/`reject` status guards), `author_name` from
+users-service (503 when it is down), `product_ratings` updated **in the
+moderation transaction**, and `product.rating_changed` emitted. Unit-test
+`rating-rollup.ts` (BigInt, round-half-up) and every legal and illegal
+transition. This is the first acceptance claim: *only customers who bought
+can review*.
 
 **M13, from `IMPLEMENTATION_PLAN.md` §4:**
 

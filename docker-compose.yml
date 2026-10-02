@@ -29,14 +29,15 @@ services:
     image: redis:7-alpine
     container_name: commerce-redis
     restart: unless-stopped
-    ports:
-      # 6380 on the host, not 6379. Every service reaches Redis at
-      # `redis://redis:6379` on the Docker network, so nothing in this project
-      # needs the standard port published — and publishing it collided with
-      # another project's `jobfit-redis`, which made `docker compose up` fail
-      # with "Bind for 0.0.0.0:6379 failed" until that container was stopped by
-      # hand. A port nobody uses is not worth a manual step before every start.
-      - "6380:6379"
+    # No published port, by its own argument. Every service reaches Redis at
+    # `redis://redis:6379` on the Docker network, so nothing in this project
+    # connects from the host. 6379 collided with another project's
+    # `jobfit-redis`, so M9 moved the publish to 6380 — and on 2026-10-02 a
+    # third project (`angkoro-backend`) took 6380, failing `docker compose up`
+    # with "Bind for 0.0.0.0:6380 failed" and leaving nine containers Created
+    # but not started. Moving ports is a game of whack-a-mole; a port nobody
+    # uses should not be published at all. To inspect Redis by hand:
+    #   docker compose exec redis redis-cli
     volumes:
       - redis_data:/data
     healthcheck:
@@ -390,6 +391,40 @@ services:
       start_period: 90s
     networks: [commerce]
 
+  reviews-service:
+    build:
+      context: .
+      dockerfile: ./apps/reviews-service/Dockerfile
+      target: development
+    container_name: commerce-reviews-service
+    restart: unless-stopped
+    ports:
+      - "3010:3010"
+    env_file:
+      - ./apps/reviews-service/.env
+    volumes:
+      - .:/app
+      - reviews_service_node_modules:/app/apps/reviews-service/node_modules
+    depends_on:
+      # No redis, no opensearch: this service owns state, it does not project
+      # it. `order.confirmed` arrives over RabbitMQ and the rating rollup
+      # leaves the same way, so the broker is the only hard dependency besides
+      # its own Neon database. users-service is called synchronously for an
+      # author name, but only when a review is written — an outage there is a
+      # 503 from one endpoint, not a reason to refuse to start.
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3010/api/v1/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      # Same 90s as every Neon-backed service: a cold endpoint has taken ~50s
+      # to accept its first connection, long enough to mark the container
+      # unhealthy while it is still starting.
+      start_period: 90s
+    networks: [commerce]
+
   api-gateway:
     build:
       context: .
@@ -423,6 +458,8 @@ services:
         condition: service_healthy
       search-service:
         condition: service_healthy
+      reviews-service:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/v1/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 10s
@@ -445,6 +482,7 @@ volumes:
   pricing_service_node_modules:
   shipping_service_node_modules:
   search_service_node_modules:
+  reviews_service_node_modules:
 
 networks:
   commerce:

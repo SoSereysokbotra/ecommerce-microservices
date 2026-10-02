@@ -22,6 +22,7 @@ declare -A SERVICES=(
   [pricing]=3007
   [shipping]=3008
   [search]=3009
+  [reviews]=3010
 )
 
 failed=0
