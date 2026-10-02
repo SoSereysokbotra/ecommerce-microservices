@@ -14,8 +14,9 @@ discounts), M9 (coupons), **M10 (shipping)** and **M11 (multi-currency)** are
 all done and pushed. R3 has started: **M12 (search) is complete** — seven commits, ADR-0005 and
 ADR-0011 written, 32 Playwright tests green. Thirteen of 23 milestones done.
 
-**The next task is M13 — reviews.** The plan is written and awaits review:
-`docs/M13_REVIEWS_PLAN.md`. See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
+**The next task is M13 step 2 — scaffold reviews-service.** The plan is
+reviewed (`docs/M13_REVIEWS_PLAN.md`: items on `order.confirmed`; scripted
+update for the second projection); step 1 is done. See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
 
 **Running it is now one command: `npm run dev`.** See §4 — the old
 `docker stop jobfit-redis` step is gone.
@@ -1322,6 +1323,22 @@ painful fast.
 
 M12 is complete. `docs/M12_SEARCH_PLAN.md` §9 is fully ticked; ADR-0005 and
 ADR-0011 are written; every live figure is in §6.
+
+**M13 step 1 is done** (commit "M13 step 1: order.confirmed carries items"):
+`order.confirmed` now carries `items: [{ productId, sku, qty }]`. Live: the
+event published twice for a real confirmed order → shipping-service created
+**one** shipment (the `UQ_shipments_order` guard refused the second) and
+ignored the new field. Unit test in `order-saga.service.spec.ts`. The same
+commit fixed a **pre-existing** typecheck error in shipping-service
+(`rate()` erased the entity type, so `zone.id` did not typecheck) — CI has
+typechecked shipping since M12 step 2 and would have been red.
+
+**Step 2, next** (plan §11): scaffold `reviews-service` on 3010 — copy
+shipping-service (TypeORM + outbox + `processed_events`), Neon `reviews_db`
+(the user is creating it; put the string in `apps/reviews-service/.env`),
+migrations on a throwaway first, compose block, `/ready`, and the
+`order.confirmed` → `purchases` consumer with the replay proofs (same id;
+new id → one row). No review API yet.
 
 **M13, from `IMPLEMENTATION_PLAN.md` §4:**
 

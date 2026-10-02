@@ -170,6 +170,13 @@ export class OrderSagaService {
          * the value at the moment of confirmation. A frozen address on a frozen
          * event is the same address forever; a callback would read whatever the
          * order says whenever the consumer happens to run.
+         *
+         * M13 added `items` by the same rule, for reviews-service: "only
+         * customers who bought can review" needs to know *what* was bought,
+         * and this is the fact that says the purchase happened. Ids, skus and
+         * quantities only — no names or prices; reviews does not display an
+         * order. `items` is eager on the entity, so `findOne` in `transition`
+         * has already loaded them.
          */
         payload: {
           orderId: order.id,
@@ -179,6 +186,11 @@ export class OrderSagaService {
           shippingMinor: order.shippingMinor,
           shippingRateCode: order.shippingRateCode ?? null,
           shippingAddress: order.shippingAddress ?? null,
+          items: (order.items ?? []).map((item) => ({
+            productId: item.productId,
+            sku: item.sku,
+            qty: item.qty,
+          })),
         },
       });
 

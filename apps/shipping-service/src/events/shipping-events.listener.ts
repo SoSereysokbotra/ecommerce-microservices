@@ -15,6 +15,9 @@ interface OrderConfirmedPayload {
   shippingMinor?: number;
   shippingRateCode?: string | null;
   shippingAddress?: ShipmentAddress | null;
+  /** Since M13, for reviews-service. Shipping reads nothing from it — a
+   *  shipment's weight is not derived here (see `weightG: 0` below). */
+  items?: { productId: string; sku: string; qty: number }[];
 }
 
 /**

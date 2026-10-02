@@ -90,7 +90,10 @@ export interface RatingResult {
  * - Inactive zones are invisible. Deactivating a zone is how you stop shipping
  *   somewhere without deleting its price history.
  */
-export function selectZone(zones: readonly ZoneRule[], destination: Destination): ZoneRule | null {
+export function selectZone<Z extends ZoneRule>(
+  zones: readonly Z[],
+  destination: Destination,
+): Z | null {
   const country = destination.country.toUpperCase();
   const region = destination.region?.toUpperCase() ?? null;
 
@@ -200,9 +203,12 @@ export function rateOptions(rates: readonly RateRule[], input: RatingInput): Rat
  * an error. "We do not ship there" is a fact about the shop, not a fault in the
  * request, and a 404 here would tell a customer their address was invalid.
  */
-export function rate(
-  zones: readonly ZoneRule[],
-  ratesByZone: (zone: ZoneRule) => readonly RateRule[],
+// Generic over the zone so a caller passing entities gets entities back —
+// `ShippingService` needs `zone.id` to find the zone's rates, and a
+// `ZoneRule` has no id. Typechecks only; nothing at runtime changes.
+export function rate<Z extends ZoneRule>(
+  zones: readonly Z[],
+  ratesByZone: (zone: Z) => readonly RateRule[],
   input: RatingInput,
 ): RatingResult {
   const zone = selectZone(zones, input.destination);

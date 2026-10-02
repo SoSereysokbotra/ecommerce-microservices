@@ -1,7 +1,7 @@
 # M13 — Reviews: implementation plan
 
 **Written:** 2026-09-18
-**Status:** Draft, for review. Nothing built yet.
+**Status:** Reviewed 2026-09-18. §3 → items on `order.confirmed`; §5 → Option A (scripted update); a `reviews_db` Neon project will be created. Building.
 **Milestone:** M13, second of R3
 
 Read §3, §4 and §5 before agreeing to this. Each is a decision with a real

@@ -1,5 +1,6 @@
 import { OrderSagaService } from '../src/modules/orders/order-saga.service';
 import { OrderSagaEntity, SagaOutcome, SagaStep } from '../src/modules/orders/order-saga.entity';
+import { OrderItemEntity } from '../src/modules/orders/order-item.entity';
 import { OrderEntity, OrderStatus } from '../src/modules/orders/order.entity';
 
 /**
@@ -164,6 +165,28 @@ describe('OrderSagaService', () => {
           payload: expect.objectContaining({ orderId: 'order-1', totalMinor: 5000 }),
         }),
       );
+    });
+
+    // M13: reviews-service derives "who bought what" from this event, so it
+    // carries the lines — ids, skus and quantities, never names or prices.
+    it('order.confirmed carries the purchased items', async () => {
+      const { service, order, outbox } = setup(SagaStep.AWAITING_COMMIT);
+      order.items = [
+        Object.assign(new OrderItemEntity(), {
+          productId: 'prod-1',
+          sku: 'MUG-BLK-1',
+          name: 'Black Mug',
+          qty: 2,
+          unitPriceMinor: 1250,
+        }),
+      ];
+
+      await service.onInventoryCommitted('order-1', 'corr-1');
+
+      const call = (outbox.append as jest.Mock).mock.calls.find(
+        ([, input]) => input.eventType === 'order.confirmed',
+      );
+      expect(call?.[1].payload.items).toEqual([{ productId: 'prod-1', sku: 'MUG-BLK-1', qty: 2 }]);
     });
 
     it('announces order.cancelled when compensation completes, carrying the reason', async () => {
