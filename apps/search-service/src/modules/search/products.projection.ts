@@ -5,7 +5,7 @@ import { ProductDocument } from './product-document';
 import { PRODUCTS_INDEX } from './products.index';
 import { CategoryEventPayload, buildCategoryFanout } from './category-fanout';
 
-export type UpsertOutcome = 'written' | 'stale';
+export type UpsertOutcome = 'written' | 'noop';
 
 export interface FanoutOutcome {
   matched: number;
@@ -13,25 +13,107 @@ export interface FanoutOutcome {
 }
 
 /**
- * The versioned write — the whole of M12's idempotency, in one call.
+ * Payload for `product.rating_changed` emitted by reviews-service (M13).
+ */
+export interface RatingEventPayload {
+  productId: string;
+  ratingSum?: number;
+  ratingCount: number;
+  ratingAvgE2: number;
+  version: number;
+}
+
+/**
+ * True when the payload has what the rating rollup projection needs.
+ */
+export function isRatingEventPayload(value: unknown): value is RatingEventPayload {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const p = value as Record<string, unknown>;
+  return (
+    typeof p.productId === 'string' &&
+    p.productId.length > 0 &&
+    typeof p.version === 'number' &&
+    Number.isInteger(p.version) &&
+    p.version > 0 &&
+    typeof p.ratingAvgE2 === 'number' &&
+    Number.isInteger(p.ratingAvgE2) &&
+    typeof p.ratingCount === 'number' &&
+    Number.isInteger(p.ratingCount) &&
+    p.ratingCount >= 0
+  );
+}
+
+/**
+ * Product upsert script (docs/M13_REVIEWS_PLAN.md §5 Option A).
  *
- * `version_type: external` tells OpenSearch to accept the write only if the
- * given version is **greater** than the stored one. Three different failures
- * collapse into that single rule:
+ * Replaces the previous `index()` with `version_type: external` (ADR-0011)
+ * because a whole-document index replaces the document and wipes rating fields.
  *
- *   | Delivery                              | Stored | Incoming | Result   |
- *   |---------------------------------------|--------|----------|----------|
- *   | first time                            | —      | 7        | written  |
- *   | same event redelivered                | 7      | 7        | 409      |
- *   | republished under a new event id      | 7      | 7        | 409      |
- *   | **v6 arriving after v7**              | 7      | 6        | 409      |
+ * Painless script rules:
+ * 1. Checks its own clock (`version`). If `ctx._source.version >= params.version`,
+ *    sets `ctx.op = 'none'` (a no-op).
+ * 2. On upsert (absent document), `ctx._source` starts empty, so `ctx._source.version`
+ *    is null — guarded with `!= null`.
+ * 3. Sets every product field, leaving all rating* fields untouched.
+ * 4. Must NOT mention rating fields.
+ */
+export const PRODUCT_UPSERT_SCRIPT = `
+if (ctx._source.version != null && ctx._source.version >= params.version) {
+  ctx.op = 'none';
+} else {
+  ctx._source.id = params.id;
+  ctx._source.sku = params.sku;
+  ctx._source.slug = params.slug;
+  ctx._source.name = params.name;
+  ctx._source.description = params.description;
+  ctx._source.priceMinor = params.priceMinor;
+  ctx._source.currency = params.currency;
+  ctx._source.exponent = params.exponent;
+  ctx._source.categoryId = params.categoryId;
+  ctx._source.categorySlug = params.categorySlug;
+  ctx._source.categoryName = params.categoryName;
+  ctx._source.categoryVersion = params.categoryVersion;
+  ctx._source.active = params.active;
+  ctx._source.weightGrams = params.weightGrams;
+  ctx._source.version = params.version;
+  ctx._source.updatedAt = params.updatedAt;
+}
+`.trim();
+
+/**
+ * Rating upsert script (docs/M13_REVIEWS_PLAN.md §5 Option A).
  *
- * The last row is what a `processed_events` marker can never catch — it
- * knows "seen this event", not "seen a newer one" — and it is why this
- * service has no such table and no database. The store enforces the rule;
- * application code only has to not undo it, which means **treating 409 as
- * success**. A 409 that were rethrown would nack the message with
- * `requeue=false` and the bus would drop an event that was never wrong.
+ * Each write side owns disjoint fields of the read-model document with its
+ * own clock. Ratings are guarded by `ratingVersion`.
+ *
+ * Painless script rules:
+ * 1. Checks its own clock (`ratingVersion`). If `ctx._source.ratingVersion >= params.version`,
+ *    sets `ctx.op = 'none'` (a no-op).
+ * 2. On upsert, `ctx._source.ratingVersion` is null — guarded with `!= null`.
+ * 3. Sets ratingAvgE2, ratingCount, ratingVersion, leaving all product fields untouched.
+ * 4. Must NOT mention product fields.
+ */
+export const RATING_UPSERT_SCRIPT = `
+if (ctx._source.ratingVersion != null && ctx._source.ratingVersion >= params.version) {
+  ctx.op = 'none';
+} else {
+  ctx._source.ratingAvgE2 = params.ratingAvgE2;
+  ctx._source.ratingCount = params.ratingCount;
+  ctx._source.ratingVersion = params.version;
+}
+`.trim();
+
+/**
+ * The versioned projection — two write sides projecting onto one document (M13).
+ *
+ * Catalog owns product fields under `version`.
+ * Reviews owns rating fields under `ratingVersion`.
+ *
+ * Both use scripted `update()` with `scripted_upsert: true` and `retry_on_conflict: 3`.
+ * When a stale or duplicate event arrives, `ctx.op = 'none'` causes OpenSearch to
+ * return `{ result: 'noop' }`, which is treated as success (result: 'noop' is the new 'stale').
  */
 @Injectable()
 export class ProductsProjection {
@@ -41,23 +123,75 @@ export class ProductsProjection {
 
   async upsert(doc: ProductDocument): Promise<UpsertOutcome> {
     try {
-      await this.opensearch.raw.index({
+      const response = await this.opensearch.raw.update({
         index: PRODUCTS_INDEX,
         id: doc.id,
-        version: doc.version,
-        version_type: 'external',
-        body: doc,
-        // Make the write visible to the next search immediately. The
-        // acceptance test is "an edit appears within seconds"; the default
-        // 1 s refresh would be fine, but the no-op proofs read straight
-        // after writing and should not have to sleep.
+        retry_on_conflict: 3,
         refresh: true,
+        body: {
+          script: {
+            lang: 'painless',
+            source: PRODUCT_UPSERT_SCRIPT,
+            params: { ...doc },
+          },
+          upsert: {},
+          scripted_upsert: true,
+        },
       });
+      const result = (response.body as { result?: string })?.result;
+      if (result === 'noop') {
+        this.logger.debug(`Product ${doc.id} v${doc.version} is stale or already indexed; ignored`);
+        return 'noop';
+      }
       return 'written';
     } catch (error) {
       if (isVersionConflict(error)) {
         this.logger.debug(`Product ${doc.id} v${doc.version} is stale or already indexed; ignored`);
-        return 'stale';
+        return 'noop';
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Apply rating rollup fields from reviews-service (`product.rating_changed`).
+   * Guarded by `ratingVersion` — leaves all catalog product fields untouched.
+   */
+  async applyRating(payload: RatingEventPayload): Promise<UpsertOutcome> {
+    try {
+      const response = await this.opensearch.raw.update({
+        index: PRODUCTS_INDEX,
+        id: payload.productId,
+        retry_on_conflict: 3,
+        refresh: true,
+        body: {
+          script: {
+            lang: 'painless',
+            source: RATING_UPSERT_SCRIPT,
+            params: {
+              ratingAvgE2: payload.ratingAvgE2,
+              ratingCount: payload.ratingCount,
+              version: payload.version,
+            },
+          },
+          upsert: {},
+          scripted_upsert: true,
+        },
+      });
+      const result = (response.body as { result?: string })?.result;
+      if (result === 'noop') {
+        this.logger.debug(
+          `Product ${payload.productId} rating v${payload.version} is stale or already applied; ignored`,
+        );
+        return 'noop';
+      }
+      return 'written';
+    } catch (error) {
+      if (isVersionConflict(error)) {
+        this.logger.debug(
+          `Product ${payload.productId} rating v${payload.version} is stale or already applied; ignored`,
+        );
+        return 'noop';
       }
       throw error;
     }

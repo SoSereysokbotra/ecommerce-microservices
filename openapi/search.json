@@ -31,7 +31,8 @@
             "type": "object"
           },
           "next": {
-            "example": "POST /catalog/admin/republish",
+            "description": "The write-side replay commands needed to repopulate the index.",
+            "example": "POST /catalog/admin/republish and POST /reviews/admin/republish",
             "type": "string"
           }
         },
@@ -84,6 +85,16 @@
           },
           "priceMinor": {
             "description": "Base-currency price, integer minor units. Not converted.",
+            "type": "number"
+          },
+          "ratingAvgE2": {
+            "description": "Average rating * 100, e.g. 450 = 4.50. Null when unrated.",
+            "nullable": true,
+            "type": "number"
+          },
+          "ratingCount": {
+            "description": "Approved review count. Null or 0 when unrated.",
+            "nullable": true,
             "type": "number"
           },
           "sku": {
@@ -196,7 +207,7 @@
     },
     "/api/v1/search/admin/recreate-index": {
       "post": {
-        "description": "Every search returns nothing until the write side republishes. Run POST /catalog/admin/republish next.",
+        "description": "Every search returns nothing until both write sides republish. Run POST /catalog/admin/republish and POST /reviews/admin/republish next.",
         "operationId": "AdminController_recreateIndex",
         "parameters": [],
         "responses": {
@@ -275,7 +286,8 @@
               "enum": [
                 "relevance",
                 "price_asc",
-                "price_desc"
+                "price_desc",
+                "rating_desc"
               ],
               "type": "string"
             }

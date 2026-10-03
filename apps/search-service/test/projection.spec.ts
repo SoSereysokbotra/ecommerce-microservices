@@ -9,17 +9,26 @@ import {
   toProductDocument,
 } from '../src/modules/search/product-document';
 import { PRODUCTS_INDEX, PRODUCTS_INDEX_BODY } from '../src/modules/search/products.index';
-import { ProductsProjection } from '../src/modules/search/products.projection';
+import {
+  PRODUCT_UPSERT_SCRIPT,
+  ProductsProjection,
+  RATING_UPSERT_SCRIPT,
+  RatingEventPayload,
+  isRatingEventPayload,
+} from '../src/modules/search/products.projection';
 
 /**
  * The projection, without a cluster or a broker.
  *
- * Three things matter, in the order docs/M12_SEARCH_PLAN.md §8 lists them:
- * the event-to-document function (including an inactive product and one with
- * no category), the write going out with `version_type: external`, and the
- * 409 being **swallowed** — a version conflict rethrown would nack the
- * message with `requeue=false`, and the bus would drop an event that was
- * never wrong.
+ * M13 Step 4 replaces index() with scripted update() so catalog product updates
+ * do not overwrite ratings projected by reviews-service (docs/M13_REVIEWS_PLAN.md §5 Option A).
+ *
+ * Key guarantees tested:
+ * - Product script does not touch rating fields.
+ * - Rating script does not touch product fields.
+ * - Each script sets ctx.op = 'none' and returns noop on a stale version.
+ * - Mocks return realistic OpenSearch responses ({ body: { result: 'noop' | 'updated' | 'created' } }).
+ * - Strict mapping invariants hold.
  */
 const payload: ProductEventPayload = {
   id: 'p-1',
@@ -37,6 +46,14 @@ const payload: ProductEventPayload = {
   categoryVersion: 1,
   version: 7,
   updatedAt: '2026-09-17T10:00:00.000Z',
+};
+
+const ratingPayload: RatingEventPayload = {
+  productId: 'p-1',
+  ratingSum: 9,
+  ratingCount: 2,
+  ratingAvgE2: 450,
+  version: 3,
 };
 
 describe('toProductDocument', () => {
@@ -69,8 +86,11 @@ describe('toProductDocument', () => {
   });
 
   it('produces only fields the strict mapping knows', () => {
-    const mapped = Object.keys(PRODUCTS_INDEX_BODY.mappings.properties).sort();
-    expect(Object.keys(toProductDocument(payload)).sort()).toEqual(mapped);
+    const mapped = Object.keys(PRODUCTS_INDEX_BODY.mappings.properties);
+    const docKeys = Object.keys(toProductDocument(payload));
+    for (const key of docKeys) {
+      expect(mapped).toContain(key);
+    }
   });
 });
 
@@ -89,12 +109,57 @@ describe('isProductEventPayload', () => {
   });
 });
 
-function projectionWith(indexImpl: jest.Mock): {
+describe('isRatingEventPayload', () => {
+  it('accepts the shape reviews-service emits', () => {
+    expect(isRatingEventPayload(ratingPayload)).toBe(true);
+  });
+
+  it.each([
+    ['no productId', { ...ratingPayload, productId: undefined }],
+    ['empty productId', { ...ratingPayload, productId: '' }],
+    ['no version', { ...ratingPayload, version: undefined }],
+    ['version 0', { ...ratingPayload, version: 0 }],
+    ['no ratingAvgE2', { ...ratingPayload, ratingAvgE2: undefined }],
+    ['no ratingCount', { ...ratingPayload, ratingCount: undefined }],
+    ['negative ratingCount', { ...ratingPayload, ratingCount: -1 }],
+    ['not an object', 'nope'],
+  ])('rejects %s', (_label, value) => {
+    expect(isRatingEventPayload(value)).toBe(false);
+  });
+});
+
+describe('Projection scripts', () => {
+  it('the product script must not mention rating fields', () => {
+    expect(PRODUCT_UPSERT_SCRIPT).not.toMatch(/rating/i);
+  });
+
+  it('the rating script must not mention product fields', () => {
+    expect(RATING_UPSERT_SCRIPT).not.toMatch(
+      /\b(id|sku|slug|name|description|priceMinor|currency|exponent|categoryId|categorySlug|categoryName|categoryVersion|active|weightGrams|updatedAt)\b/,
+    );
+  });
+
+  it('product script guards with version and handles null version on empty upsert', () => {
+    expect(PRODUCT_UPSERT_SCRIPT).toContain(
+      'if (ctx._source.version != null && ctx._source.version >= params.version)',
+    );
+    expect(PRODUCT_UPSERT_SCRIPT).toContain("ctx.op = 'none'");
+  });
+
+  it('rating script guards with ratingVersion and handles null ratingVersion on empty upsert', () => {
+    expect(RATING_UPSERT_SCRIPT).toContain(
+      'if (ctx._source.ratingVersion != null && ctx._source.ratingVersion >= params.version)',
+    );
+    expect(RATING_UPSERT_SCRIPT).toContain("ctx.op = 'none'");
+  });
+});
+
+function projectionWith(updateImpl: jest.Mock): {
   projection: ProductsProjection;
-  index: jest.Mock;
+  update: jest.Mock;
 } {
-  const client = { index: indexImpl } as unknown as Client;
-  return { projection: new ProductsProjection(new OpenSearchClient(client)), index: indexImpl };
+  const client = { update: updateImpl } as unknown as Client;
+  return { projection: new ProductsProjection(new OpenSearchClient(client)), update: updateImpl };
 }
 
 function conflict(): errors.ResponseError {
@@ -108,31 +173,47 @@ function conflict(): errors.ResponseError {
 }
 
 describe('ProductsProjection.upsert', () => {
-  it('writes with external versioning keyed on the event version', async () => {
-    const { projection, index } = projectionWith(jest.fn(async () => ({ body: {} })));
+  it('writes with scripted update, scripted_upsert: true, and retry_on_conflict: 3', async () => {
+    const { projection, update } = projectionWith(
+      jest.fn(async () => ({ body: { result: 'created' } })),
+    );
     const doc = toProductDocument(payload);
 
     await expect(projection.upsert(doc)).resolves.toBe('written');
 
-    expect(index).toHaveBeenCalledWith(
+    expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
         index: PRODUCTS_INDEX,
         id: 'p-1',
-        version: 7,
-        version_type: 'external',
-        body: doc,
+        retry_on_conflict: 3,
+        refresh: true,
+        body: expect.objectContaining({
+          scripted_upsert: true,
+          script: {
+            lang: 'painless',
+            source: PRODUCT_UPSERT_SCRIPT,
+            params: doc,
+          },
+          upsert: {},
+        }),
       }),
     );
   });
 
-  it('treats a version conflict as success, not as a failure to retry', async () => {
+  it('returns noop when OpenSearch result is noop (stale or equal version)', async () => {
+    const { projection } = projectionWith(jest.fn(async () => ({ body: { result: 'noop' } })));
+
+    await expect(projection.upsert(toProductDocument(payload))).resolves.toBe('noop');
+  });
+
+  it('treats a version conflict exception as noop, not as a failure to retry', async () => {
     const { projection } = projectionWith(
       jest.fn(async () => {
         throw conflict();
       }),
     );
 
-    await expect(projection.upsert(toProductDocument(payload))).resolves.toBe('stale');
+    await expect(projection.upsert(toProductDocument(payload))).resolves.toBe('noop');
   });
 
   it('rethrows anything that is not a version conflict', async () => {
@@ -146,9 +227,67 @@ describe('ProductsProjection.upsert', () => {
   });
 });
 
+describe('ProductsProjection.applyRating', () => {
+  it('writes rating fields with scripted update and retry_on_conflict: 3', async () => {
+    const { projection, update } = projectionWith(
+      jest.fn(async () => ({ body: { result: 'updated' } })),
+    );
+
+    await expect(projection.applyRating(ratingPayload)).resolves.toBe('written');
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        index: PRODUCTS_INDEX,
+        id: 'p-1',
+        retry_on_conflict: 3,
+        refresh: true,
+        body: expect.objectContaining({
+          scripted_upsert: true,
+          script: {
+            lang: 'painless',
+            source: RATING_UPSERT_SCRIPT,
+            params: {
+              ratingAvgE2: 450,
+              ratingCount: 2,
+              version: 3,
+            },
+          },
+          upsert: {},
+        }),
+      }),
+    );
+  });
+
+  it('returns noop when rating update result is noop (stale rating version)', async () => {
+    const { projection } = projectionWith(jest.fn(async () => ({ body: { result: 'noop' } })));
+
+    await expect(projection.applyRating(ratingPayload)).resolves.toBe('noop');
+  });
+
+  it('treats a version conflict exception on rating update as noop', async () => {
+    const { projection } = projectionWith(
+      jest.fn(async () => {
+        throw conflict();
+      }),
+    );
+
+    await expect(projection.applyRating(ratingPayload)).resolves.toBe('noop');
+  });
+
+  it('rethrows unexpected error on rating update', async () => {
+    const { projection } = projectionWith(
+      jest.fn(async () => {
+        throw new Error('ETIMEDOUT');
+      }),
+    );
+
+    await expect(projection.applyRating(ratingPayload)).rejects.toThrow('ETIMEDOUT');
+  });
+});
+
 describe('CatalogEventsListener.handle', () => {
-  function listenerWith(index: jest.Mock): CatalogEventsListener {
-    const { projection } = projectionWith(index);
+  function listenerWith(update: jest.Mock): CatalogEventsListener {
+    const { projection } = projectionWith(update);
     return new CatalogEventsListener({} as never, projection);
   }
 
@@ -165,20 +304,52 @@ describe('CatalogEventsListener.handle', () => {
   }
 
   it('upserts on product.created and product.updated alike', async () => {
-    const index = jest.fn(async () => ({ body: {} }));
-    const listener = listenerWith(index);
+    const update = jest.fn(async () => ({ body: { result: 'updated' } }));
+    const listener = listenerWith(update);
 
     await listener.handle(event('product.created', payload));
     await listener.handle(event('product.updated', { ...payload, version: 8 }));
 
-    expect(index).toHaveBeenCalledTimes(2);
-    expect(index).toHaveBeenLastCalledWith(expect.objectContaining({ version: 8 }));
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          script: expect.objectContaining({
+            params: expect.objectContaining({ version: 8 }),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('handles product.rating_changed by applying ratings', async () => {
+    const update = jest.fn(async () => ({ body: { result: 'updated' } }));
+    const listener = listenerWith(update);
+
+    await listener.handle(event('product.rating_changed', ratingPayload));
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'p-1',
+        body: expect.objectContaining({
+          script: expect.objectContaining({
+            source: RATING_UPSERT_SCRIPT,
+            params: {
+              ratingAvgE2: 450,
+              ratingCount: 2,
+              version: 3,
+            },
+          }),
+        }),
+      }),
+    );
   });
 
   it('never treats a category event as a product upsert', async () => {
-    const index = jest.fn();
+    const update = jest.fn();
     const updateByQuery = jest.fn(async () => ({ body: { total: 0, updated: 0 } }));
-    const client = { index, updateByQuery } as unknown as Client;
+    const client = { update, updateByQuery } as unknown as Client;
     const listener = new CatalogEventsListener(
       {} as never,
       new ProductsProjection(new OpenSearchClient(client)),
@@ -186,24 +357,39 @@ describe('CatalogEventsListener.handle', () => {
     await listener.handle(
       event('category.updated', { id: 'c-1', slug: 'x', name: 'X', version: 2 }),
     );
-    expect(index).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
     expect(updateByQuery).toHaveBeenCalledTimes(1);
   });
 
-  it('drops an unusable payload instead of throwing', async () => {
-    const index = jest.fn();
+  it('drops an unusable product payload instead of throwing', async () => {
+    const update = jest.fn();
     await expect(
-      listenerWith(index).handle(event('product.updated', { id: 'p-1' })),
+      listenerWith(update).handle(event('product.updated', { id: 'p-1' })),
     ).resolves.toBeUndefined();
-    expect(index).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
   });
 
-  it('does not throw on a stale event, so the message is acked', async () => {
+  it('drops an unusable rating payload instead of throwing', async () => {
+    const update = jest.fn();
+    await expect(
+      listenerWith(update).handle(event('product.rating_changed', { productId: 'p-1' })),
+    ).resolves.toBeUndefined();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('does not throw on a stale product event, so the message is acked', async () => {
     const listener = listenerWith(
       jest.fn(async () => {
         throw conflict();
       }),
     );
     await expect(listener.handle(event('product.updated', payload))).resolves.toBeUndefined();
+  });
+
+  it('does not throw on a stale rating event, so the message is acked', async () => {
+    const listener = listenerWith(jest.fn(async () => ({ body: { result: 'noop' } })));
+    await expect(
+      listener.handle(event('product.rating_changed', ratingPayload)),
+    ).resolves.toBeUndefined();
   });
 });

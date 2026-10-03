@@ -2,20 +2,23 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { DomainEvent, RabbitMQService } from '@libs/rabbitmq';
 import { isProductEventPayload, toProductDocument } from '../modules/search/product-document';
 import { isCategoryEventPayload } from '../modules/search/category-fanout';
-import { ProductsProjection } from '../modules/search/products.projection';
+import { ProductsProjection, isRatingEventPayload } from '../modules/search/products.projection';
 
 /**
- * The read side of CQRS: catalog's events in, index documents out.
+ * The read side of CQRS: catalog's and reviews' events in, index documents out.
  *
  * Compare this with `ShippingEventsListener` in shipping-service, which is
  * the same shape minus two things: there is no `IdempotencyService` and no
- * transaction, because there is no database. The version on the event and
- * `version_type: external` in `ProductsProjection` do the whole job — see
- * that class for the table of what they refuse.
+ * transaction, because there is no database. The version on each event and
+ * scripted updates in `ProductsProjection` do the whole job (ADR-0011, M13 §5).
  *
  * `product.created` and `product.updated` are handled identically. Both carry
  * full state, so both are an upsert; the name records what happened on the
  * write side and is irrelevant here.
+ *
+ * `product.rating_changed` is reviews-service projecting its rollup onto the same
+ * document. Handled by applyRating(), guarded by its own clock (ratingVersion),
+ * leaving catalog's product fields alone (docs/M13_REVIEWS_PLAN.md §5 Option A).
  *
  * `category.updated` is the fan-out: the category's fields are denormalised
  * onto every product document, so a rename rewrites all of them in one
@@ -41,6 +44,10 @@ export class CatalogEventsListener implements OnModuleInit {
   }
 
   async handle(event: DomainEvent): Promise<void> {
+    if (event.eventType === 'product.rating_changed') {
+      return this.handleRating(event);
+    }
+
     if (event.eventType === 'category.created' || event.eventType === 'category.updated') {
       return this.handleCategory(event);
     }
@@ -61,6 +68,21 @@ export class CatalogEventsListener implements OnModuleInit {
 
     if (outcome === 'written') {
       this.logger.log(`Indexed product ${doc.id} v${doc.version} (${event.eventType})`);
+    }
+  }
+
+  private async handleRating(event: DomainEvent): Promise<void> {
+    if (!isRatingEventPayload(event.payload)) {
+      this.logger.warn(`${event.eventType} (${event.eventId}) has an unusable payload; dropping`);
+      return;
+    }
+
+    const outcome = await this.projection.applyRating(event.payload);
+    if (outcome === 'written') {
+      this.logger.log(
+        `Updated rating for product ${event.payload.productId} v${event.payload.version} ` +
+          `(${event.payload.ratingCount} reviews, avg ${(event.payload.ratingAvgE2 / 100).toFixed(2)})`,
+      );
     }
   }
 

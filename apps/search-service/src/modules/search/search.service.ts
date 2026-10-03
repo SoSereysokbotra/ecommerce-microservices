@@ -15,8 +15,14 @@ interface Bucket {
   [FACET_NAME_AGG]?: { buckets: { key: string }[] };
 }
 
+interface StoredProductDocument extends ProductDocument {
+  ratingAvgE2?: number | null;
+  ratingCount?: number | null;
+  ratingVersion?: number | null;
+}
+
 interface SearchResponseBody {
-  hits: { total: { value: number }; hits: { _source: ProductDocument }[] };
+  hits: { total: { value: number }; hits: { _source: StoredProductDocument }[] };
   aggregations?: { [FACET_AGG]?: { buckets: Bucket[] } };
 }
 
@@ -58,7 +64,7 @@ export class SearchService {
 }
 
 /** The document minus what only the projection cares about. */
-function toHit(doc: ProductDocument): SearchHitDto {
+function toHit(doc: StoredProductDocument): SearchHitDto {
   return {
     id: doc.id,
     sku: doc.sku,
@@ -73,6 +79,8 @@ function toHit(doc: ProductDocument): SearchHitDto {
     weightGrams: doc.weightGrams,
     version: doc.version,
     updatedAt: doc.updatedAt,
+    ratingAvgE2: doc.ratingAvgE2 ?? null,
+    ratingCount: doc.ratingCount ?? null,
   };
 }
 

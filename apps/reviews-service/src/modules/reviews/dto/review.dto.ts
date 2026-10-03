@@ -207,3 +207,11 @@ export class EligibilityResponseDto {
   })
   existing?: string | null;
 }
+
+export class RepublishRatingsResponseDto {
+  @ApiProperty({
+    example: 12,
+    description: 'Number of product_ratings rows republished to the outbox.',
+  })
+  ratings: number;
+}

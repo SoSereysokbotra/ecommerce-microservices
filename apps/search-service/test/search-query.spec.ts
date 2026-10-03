@@ -75,6 +75,13 @@ describe('buildSearchBody', () => {
     ]);
   });
 
+  it('sorts by rating_desc with a stable tiebreak', () => {
+    expect(buildSearchBody({ ...base, sort: 'rating_desc' }).sort).toEqual([
+      { ratingAvgE2: 'desc' },
+      { 'name.keyword': 'asc' },
+    ]);
+  });
+
   it('gives a browse (no q) a stable name order instead of index order', () => {
     expect(buildSearchBody(base).sort).toEqual([{ 'name.keyword': 'asc' }]);
   });
@@ -97,7 +104,7 @@ describe('SearchService.products', () => {
     return new SearchService(new OpenSearchClient(client));
   }
 
-  it('shapes hits, total and facets from the cluster response', async () => {
+  it('shapes hits, total and facets from the cluster response, including rating fields', async () => {
     const service = serviceWith(
       jest.fn(async () => ({
         body: {
@@ -122,6 +129,29 @@ describe('SearchService.products', () => {
                   weightGrams: 180,
                   version: 3,
                   updatedAt: '2026-09-17T10:00:00.000Z',
+                  ratingAvgE2: 450,
+                  ratingCount: 2,
+                  ratingVersion: 1,
+                },
+              },
+              {
+                _source: {
+                  id: 'p-2',
+                  sku: 'MUG',
+                  slug: 'mug',
+                  name: 'Mug',
+                  description: 'A mug',
+                  priceMinor: 999,
+                  currency: 'USD',
+                  exponent: 2,
+                  categoryId: null,
+                  categorySlug: null,
+                  categoryName: null,
+                  categoryVersion: null,
+                  active: true,
+                  weightGrams: 300,
+                  version: 1,
+                  updatedAt: '2026-09-17T10:00:00.000Z',
                 },
               },
             ],
@@ -141,11 +171,25 @@ describe('SearchService.products', () => {
     const result = await service.products({ ...base, q: 'tee' });
 
     expect(result.total).toBe(2);
-    expect(result.hits).toHaveLength(1);
+    expect(result.hits).toHaveLength(2);
     // The projection's bookkeeping fields stay out of the API.
     expect(result.hits[0]).not.toHaveProperty('categoryId');
     expect(result.hits[0]).not.toHaveProperty('active');
-    expect(result.hits[0]).toMatchObject({ id: 'p-1', priceMinor: 1999, exponent: 2 });
+    expect(result.hits[0]).toMatchObject({
+      id: 'p-1',
+      priceMinor: 1999,
+      exponent: 2,
+      ratingAvgE2: 450,
+      ratingCount: 2,
+    });
+    // Unrated product returns nulls for rating fields
+    expect(result.hits[1]).toMatchObject({
+      id: 'p-2',
+      priceMinor: 999,
+      exponent: 2,
+      ratingAvgE2: null,
+      ratingCount: null,
+    });
     expect(result.facets.categories).toEqual([
       { slug: 'apparel', name: 'Apparel', count: 2 },
       // No name bucket: fall back to the slug rather than crash or blank.

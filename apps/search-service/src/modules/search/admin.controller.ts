@@ -7,12 +7,20 @@ export class RecreateIndexResponseDto {
   @ApiProperty({ example: PRODUCTS_INDEX }) index: string;
   @ApiProperty({ description: 'The mapping the empty index was created with.' })
   mapping: Record<string, unknown>;
-  @ApiProperty({ example: 'POST /catalog/admin/republish' }) next: string;
+  @ApiProperty({
+    example: 'POST /catalog/admin/republish and POST /reviews/admin/republish',
+    description: 'The write-side replay commands needed to repopulate the index.',
+  })
+  next: string;
 }
 
 /**
  * The read side's reset — half of a reindex. The other half is on the write
  * side, and the response says so.
+ *
+ * M13 Step 5: Search now projects from two write sides (catalog for product
+ * fields, reviews for rating fields). Rebuilding the index now requires both
+ * write sides to republish (docs/M13_REVIEWS_PLAN.md §5, §6).
  *
  * Not `@Public()`: it falls through to the gateway's guarded `@All`, so a
  * valid JWT is required. Staff-only in M16 (HANDOFF §9).
@@ -28,8 +36,8 @@ export class AdminController {
   @ApiOperation({
     summary: 'Drop the products index and recreate it empty with the current mapping',
     description:
-      'Every search returns nothing until the write side republishes. ' +
-      'Run POST /catalog/admin/republish next.',
+      'Every search returns nothing until both write sides republish. ' +
+      'Run POST /catalog/admin/republish and POST /reviews/admin/republish next.',
   })
   @ApiOkResponse({ type: RecreateIndexResponseDto })
   async recreateIndex(): Promise<RecreateIndexResponseDto> {
@@ -37,7 +45,7 @@ export class AdminController {
     return {
       index: PRODUCTS_INDEX,
       mapping: PRODUCTS_INDEX_BODY.mappings,
-      next: 'POST /catalog/admin/republish',
+      next: 'POST /catalog/admin/republish and POST /reviews/admin/republish',
     };
   }
 }

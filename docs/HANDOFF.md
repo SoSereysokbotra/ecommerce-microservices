@@ -14,8 +14,8 @@ discounts), M9 (coupons), **M10 (shipping)** and **M11 (multi-currency)** are
 all done and pushed. R3 has started: **M12 (search) is complete** — seven commits, ADR-0005 and
 ADR-0011 written, 32 Playwright tests green. Thirteen of 23 milestones done.
 
-**The next task is M13 step 4 — the second projection.** Steps 1–3 are done;
-the first acceptance claim (*only customers who bought can review*) is proved.
+**The next task is M13 step 6 — querying and the storefront.** Steps 1–5 are
+done; both acceptance claims and the delete-and-rebuild proof are recorded.
 See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
 
 **Running it is now one command: `npm run dev`.** See §4 — the old
@@ -1392,12 +1392,64 @@ of them invisible to its unit tests:
 3. **The public list leaked `customerId` and `orderId`** on an endpoint that
    needs no token. It now maps through `PublicReviewDto`.
 
-**Step 4, next** (plan §11): the second projection — add `ratingAvgE2`,
-`ratingCount`, `ratingVersion` to `products.index.ts` (a mapping change is a
-reindex), replace `ProductsProjection.upsert()`'s `index()` with a scripted
-`_update` so a product edit cannot wipe the rating, add `applyRating()`
-guarded by its own clock, then **re-run M12's three no-op proofs** and the
-collision proofs both ways. This is M13's CQRS content.
+**M13 step 4 is done** (commit "M13 step 4: the second projection — two
+clocks on one document"). The `products` mapping gained `ratingAvgE2`,
+`ratingCount` and `ratingVersion`. `ProductsProjection.upsert()` no longer
+uses `index()` with `version_type: external` — that replaces the whole
+document and would wipe the rating on every product edit. Both writes are now
+scripted `_update`s with `scripted_upsert: true`, `upsert: {}` and
+`retry_on_conflict: 3`, each guarding **its own clock** in painless and
+touching only its own fields. `result: 'noop'` is the new `'stale'`.
+`search-query.ts` gained `sort=rating_desc`; hits carry the rating.
+
+**A mapping change is a reindex**, so the live run began with
+`recreate-index` + `republish` (12 active products back).
+
+| Scenario | Result |
+|---|---|
+| `product.rating_changed` v1 (sum 9, count 2) | document shows `ratingAvgE2 450, ratingCount 2, ratingVersion 1` |
+| **M12 proof 1** — same `product.updated` redelivered | unchanged |
+| **M12 proof 2** — republished under a new event id | unchanged |
+| **M12 proof 3** — v−1 delivered after v | unchanged |
+| **Collision A** — `PATCH` the product's price | price 1400 → **1407**, `ratingAvgE2` still **450** |
+| **Collision B** — rating v2 (avg 467) | avg → **467**, price still **1407** |
+| Rating redelivered at the same version | unchanged |
+| Stale rating v1 after v2 | unchanged |
+| `sort=rating_desc` | the rated product first, unrated after |
+
+The guard moved from `version_type: external` into painless; the guarantee
+did not. **ADR-0011 needs an amendment saying so** — that is step 7's job and
+it must not be skipped, because the ADR currently describes a mechanism the
+code no longer uses.
+
+**M13 step 5 is done** (commit "M13 step 5: replay from both write sides").
+`POST /reviews/admin/republish` re-emits `product.rating_changed` for every
+`product_ratings` row **at that row's stored version** — the write side owns
+replay, for *every* write side. `recreate-index`'s response now names both
+commands.
+
+| Scenario | Result |
+|---|---|
+| `POST /reviews/admin/republish` with no token | 401 |
+| `recreate-index` | 0 products; `next` names **both** republishes |
+| Republish **catalog only** | 12 products, **0 rated** — the other side's fields are simply absent |
+| Then republish **reviews** | 12 products, 1 rated, in **0.32 s**; the snapshot is **identical** to before the index was dropped |
+| Both republishes again, against the live index | identical; nothing moved |
+
+**One finding worth keeping.** The first run of this proof reported *not*
+identical: the index had shown `ratingAvgE2 467, count 3` and came back
+`400, 1`. The rebuild was right and the index had been wrong — step 4's live
+test injected `product.rating_changed` events straight onto the bus that no
+`product_ratings` row ever backed, and the index had been faithfully
+projecting a fiction ever since. A rebuild from the write side discarded it.
+That is the read model doing its job, and a reminder that **hand-published
+events leave a read model saying things the write side never said**; the
+repair is always recreate + republish.
+
+**Step 6, next** (plan §11): querying and the storefront — stars on hits and
+on the product page, "Top rated" in the sort select, the eligibility-driven
+review form, and `e2e/reviews.spec.ts`. `sort=rating_desc` already works
+(step 4).
 
 **M13, from `IMPLEMENTATION_PLAN.md` §4:**
 

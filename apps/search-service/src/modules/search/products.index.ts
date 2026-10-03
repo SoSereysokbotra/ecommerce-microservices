@@ -50,6 +50,12 @@ export const PRODUCTS_INDEX_BODY = {
       // what rejects a stale write.
       version: { type: 'long' },
       updatedAt: { type: 'date' },
+      // Rollup fields owned by reviews-service (M13). Written by applyRating()
+      // under their own clock (ratingVersion) via scripted update so product.updated
+      // cannot wipe them (docs/M13_REVIEWS_PLAN.md §5 Option A).
+      ratingAvgE2: { type: 'integer' },
+      ratingCount: { type: 'integer' },
+      ratingVersion: { type: 'long' },
     },
   },
 } as const;

@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
-export const SORTS = ['relevance', 'price_asc', 'price_desc'] as const;
+export const SORTS = ['relevance', 'price_asc', 'price_desc', 'rating_desc'] as const;
 export type Sort = (typeof SORTS)[number];
 
 export class SearchProductsQueryDto {
@@ -68,6 +68,18 @@ export class SearchHitDto {
   @ApiProperty() weightGrams: number;
   @ApiProperty() version: number;
   @ApiProperty() updatedAt: string;
+  @ApiPropertyOptional({
+    nullable: true,
+    type: Number,
+    description: 'Average rating * 100, e.g. 450 = 4.50. Null when unrated.',
+  })
+  ratingAvgE2?: number | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    type: Number,
+    description: 'Approved review count. Null or 0 when unrated.',
+  })
+  ratingCount?: number | null;
 }
 
 export class CategoryFacetDto {

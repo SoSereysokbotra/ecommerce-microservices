@@ -87,6 +87,8 @@ export function buildSearchBody(input: SearchQueryInput): Record<string, unknown
     body.sort = [{ priceMinor: 'asc' }, { 'name.keyword': 'asc' }];
   } else if (input.sort === 'price_desc') {
     body.sort = [{ priceMinor: 'desc' }, { 'name.keyword': 'asc' }];
+  } else if (input.sort === 'rating_desc') {
+    body.sort = [{ ratingAvgE2: 'desc' }, { 'name.keyword': 'asc' }];
   } else if (!text) {
     // Relevance with nothing to be relevant to is a constant score; give the
     // browse page a stable order instead of index order.

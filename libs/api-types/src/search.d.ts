@@ -47,7 +47,7 @@ export interface paths {
         put?: never;
         /**
          * Drop the products index and recreate it empty with the current mapping
-         * @description Every search returns nothing until the write side republishes. Run POST /catalog/admin/republish next.
+         * @description Every search returns nothing until both write sides republish. Run POST /catalog/admin/republish and POST /reviews/admin/republish next.
          */
         post: operations["AdminController_recreateIndex"];
         delete?: never;
@@ -87,7 +87,10 @@ export interface components {
             index: string;
             /** @description The mapping the empty index was created with. */
             mapping: Record<string, never>;
-            /** @example POST /catalog/admin/republish */
+            /**
+             * @description The write-side replay commands needed to repopulate the index.
+             * @example POST /catalog/admin/republish and POST /reviews/admin/republish
+             */
             next: string;
         };
         SearchFacetsDto: {
@@ -103,6 +106,10 @@ export interface components {
             name: string;
             /** @description Base-currency price, integer minor units. Not converted. */
             priceMinor: number;
+            /** @description Average rating * 100, e.g. 450 = 4.50. Null when unrated. */
+            ratingAvgE2?: number | null;
+            /** @description Approved review count. Null or 0 when unrated. */
+            ratingCount?: number | null;
             sku: string;
             slug: string;
             updatedAt: string;
@@ -189,7 +196,7 @@ export interface operations {
                 minPrice?: number;
                 /** @description Inclusive, integer minor units. */
                 maxPrice?: number;
-                sort?: "relevance" | "price_asc" | "price_desc";
+                sort?: "relevance" | "price_asc" | "price_desc" | "rating_desc";
                 page?: number;
                 limit?: number;
             };
