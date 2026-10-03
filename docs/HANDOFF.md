@@ -14,9 +14,9 @@ discounts), M9 (coupons), **M10 (shipping)** and **M11 (multi-currency)** are
 all done and pushed. R3 has started: **M12 (search) is complete** — seven commits, ADR-0005 and
 ADR-0011 written, 32 Playwright tests green. Thirteen of 23 milestones done.
 
-**The next task is M13 step 3 — reviews, moderation and the rollup.** The
-plan is reviewed (`docs/M13_REVIEWS_PLAN.md`: items on `order.confirmed`;
-scripted update for the second projection); steps 1–2 are done. See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
+**The next task is M13 step 4 — the second projection.** Steps 1–3 are done;
+the first acceptance claim (*only customers who bought can review*) is proved.
+See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
 
 **Running it is now one command: `npm run dev`.** See §4 — the old
 `docker stop jobfit-redis` step is gone.
@@ -1359,14 +1359,45 @@ most of the others; it is the second after shipping in that region). Tables
 | An order with **no** `items` (every order placed before step 1) | warned and skipped, not nacked |
 | `/ready` with the database up | 200; queue `reviews-service` bound to `order.confirmed`, 1 consumer, 0 messages |
 
-**Step 3, next** (plan §11): reviews and moderation — entities are already
-there, so this is `ReviewsService` (create with the eligibility 403, edit
-back to `pending`, the `approve`/`reject` status guards), `author_name` from
-users-service (503 when it is down), `product_ratings` updated **in the
-moderation transaction**, and `product.rating_changed` emitted. Unit-test
-`rating-rollup.ts` (BigInt, round-half-up) and every legal and illegal
-transition. This is the first acceptance claim: *only customers who bought
-can review*.
+**M13 step 3 is done** (commit "M13 step 3: reviews, moderation and the
+rating rollup"). `ReviewsService` with the eligibility rule, the moderation
+state machine, `product_ratings` moved **in the moderation transaction**, and
+`product.rating_changed` emitted. `rating-rollup.ts` is BigInt round-half-up
+to an integer hundredth. **The first acceptance claim is proved.**
+
+| Scenario | Result |
+|---|---|
+| Review a product the customer did **not** buy | **403** |
+| Review a product they did buy | **201**, status `pending`, `authorName` snapshotted |
+| A second review of the same product | **409** (use PATCH) |
+| No token | 401 |
+| Public list while the review is pending | 0 items, and readable **with no token** |
+| `POST /reviews/:id/approve` | 201; `product_ratings` = sum 4, count 1, version 1; `product.rating_changed` published with `ratingAvgE2: 400` |
+| Approve again | **409** — the status guard |
+| Public list after approval | 1 item |
+
+**Three defects were found and fixed in the first version of this step**, all
+of them invisible to its unit tests:
+
+1. **Raw SQL returns snake_case.** `manager.query(... RETURNING *)` hands back
+   `rating_sum`, not `ratingSum`; the type parameter is a claim, not a
+   conversion. Reading `row.ratingSum` gave `undefined`, which reached
+   `ratingAvgE2` as `NaN` and threw inside `BigInt()` — **every approval
+   would have 500'd**. The tests passed because the mock spread entities. The
+   mock now returns snake_case, which is the only reason it is worth having.
+   Same family as the INSERT-vs-UPDATE shape trap already in §5.
+2. **`GET /users/:id` is JWT-guarded**, and reviews-service has no token to
+   present. Added `GET /users/me` on the **M10 pattern** — `@Public()`, keyed
+   on the gateway-set `x-user-id` — the same way `AddressesController` works.
+3. **The public list leaked `customerId` and `orderId`** on an endpoint that
+   needs no token. It now maps through `PublicReviewDto`.
+
+**Step 4, next** (plan §11): the second projection — add `ratingAvgE2`,
+`ratingCount`, `ratingVersion` to `products.index.ts` (a mapping change is a
+reindex), replace `ProductsProjection.upsert()`'s `index()` with a scripted
+`_update` so a product edit cannot wipe the rating, add `applyRating()`
+guarded by its own clock, then **re-run M12's three no-op proofs** and the
+collision proofs both ways. This is M13's CQRS content.
 
 **M13, from `IMPLEMENTATION_PLAN.md` §4:**
 

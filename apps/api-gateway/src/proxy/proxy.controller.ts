@@ -49,6 +49,25 @@ export class ProxyController {
   }
 
   /**
+   * Reading reviews works signed out; writing one does not.
+   *
+   * `@OptionalAuth()` rather than `@Public()`, and GET-only. A shopper reads a
+   * product's reviews with no account, but `GET /reviews/products/:id/eligibility`
+   * is also a GET and needs to know *who* is asking — `@Public()` would strip
+   * the identity even when a token was sent, and the answer would always be
+   * "you cannot review this". Everything else (`POST` a review, `PATCH` it,
+   * the moderation routes) falls through to the guarded `@All` below.
+   *
+   * Declaration order matters: Nest registers in declaration order, so this
+   * must precede the `@All` block.
+   */
+  @OptionalAuth()
+  @Get(['reviews/products', 'reviews/products/*'])
+  async proxyReviewReads(@Req() request: Request, @Res() response: Response): Promise<void> {
+    return this.sendProxy(request, response);
+  }
+
+  /**
    * Carts work signed in or not, so this must precede the guarded `@All` below
    * — Nest registers routes in declaration order. Without it a guest gets 401
    * and can never build a cart at all.

@@ -339,6 +339,36 @@
         ]
       }
     },
+    "/api/v1/users/me": {
+      "get": {
+        "operationId": "UsersController_getMe",
+        "parameters": [
+          {
+            "description": "Set by the gateway from the verified JWT.",
+            "in": "header",
+            "name": "x-user-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The calling user, identified by the gateway",
+        "tags": [
+          "users"
+        ]
+      }
+    },
     "/api/v1/users/me/addresses": {
       "get": {
         "operationId": "AddressesController_list",
