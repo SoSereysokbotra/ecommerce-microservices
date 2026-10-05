@@ -329,6 +329,13 @@ export interface SearchHit {
   categorySlug: string | null;
   categoryName: string | null;
   weightGrams: number;
+  /**
+   * Average rating * 100, e.g. 450 = 4.50. Null when unrated.
+   * Projected from reviews-service (docs/M13_REVIEWS_PLAN.md §4, §5).
+   */
+  ratingAvgE2?: number | null;
+  /** Approved review count. Null or 0 when unrated. */
+  ratingCount?: number | null;
   version: number;
   updatedAt: string;
 }
@@ -348,4 +355,57 @@ export interface SearchResponse {
   facets: { categories: CategoryFacet[] };
 }
 
-export type SearchSort = 'relevance' | 'price_asc' | 'price_desc';
+export type SearchSort = 'relevance' | 'rating_desc' | 'price_asc' | 'price_desc';
+
+// --- Reviews -------------------------------------------------------------
+
+/**
+ * An approved customer review displayed on the product page.
+ *
+ * Narrow view model matching `PublicReviewDto` from libs/api-types
+ * (docs/M13_REVIEWS_PLAN.md §6).
+ */
+export interface Review {
+  id: string;
+  productId: string;
+  /** Star rating strictly integer 1–5 (docs/M13_REVIEWS_PLAN.md §2). */
+  rating: number;
+  title: string;
+  body: string;
+  authorName: string;
+  createdAt: string;
+}
+
+/**
+ * The product's rating as reviews-service holds it — **not** derived from
+ * `items`. A page carries ten reviews and the product may have ninety, so
+ * averaging what arrived gives a different number on every page. One owner
+ * per figure; the browser only formats it (ADR-0007, and ADR-0010 for why no
+ * float is ever stored).
+ */
+export interface ProductRating {
+  /** Average × 100. 437 = 4.37 stars. */
+  avgE2: number;
+  count: number;
+}
+
+export interface ReviewsPage {
+  items: Review[];
+  /** Null when the product has no approved review. Zero would be a rating. */
+  rating: ProductRating | null;
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/**
+ * Result of checking whether the signed-in customer can review a product.
+ * Derived from order events (`order.confirmed` -> `purchases`)
+ * (docs/M13_REVIEWS_PLAN.md §1, §6).
+ */
+export interface Eligibility {
+  canReview: boolean;
+  reason: string;
+  existingReviewId?: string | null;
+  existing?: string | null;
+}

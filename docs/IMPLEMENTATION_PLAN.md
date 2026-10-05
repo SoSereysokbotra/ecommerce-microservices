@@ -592,8 +592,41 @@ used is frozen onto the order at purchase time**; storefront currency switcher.
   >
   > **Acceptance:** a product edit was searchable through the gateway in
   > **1.21 s**.
-- **M13 Reviews** — reviews-service; verified-purchase flag derived from order
-  events; moderation queue; rating rollup projected onto the search index.
+- **M13 Reviews** — **done (2026-10-05)**. reviews-service; verified-purchase
+  flag derived from order events; moderation queue; rating rollup projected
+  onto the search index.
+
+  > **Corrections, from building it.** Full reasoning in ADR-0012, the M13
+  > amendment to ADR-0011, and `docs/M13_REVIEWS_PLAN.md`.
+  >
+  > **`order.confirmed` had to carry the items.** "Verified purchase from
+  > order events" needs to know *which* products; the event said who and how
+  > much. One field, added for a consumer that genuinely needed it — the same
+  > rule M10 applied to the shipping address.
+  >
+  > **The right to review is a row written only by the event consumer.**
+  > There is no endpoint that grants eligibility and no flag an admin can
+  > set. `POST /reviews` reads `purchases`; no row, 403.
+  >
+  > **M12's projection had to change shape.** `index()` with
+  > `version_type: external` replaces the whole document, so a product edit
+  > would have wiped the rating. Both write sides now use scripted `_update`s,
+  > each guarding its own clock and writing only its own fields — three
+  > clocks on one document (product, category, rating). M12's three no-op
+  > proofs were re-run against the new mechanism.
+  >
+  > **Replay is owned by every write side.** A rebuilt index needs *two*
+  > republishes now, one per owner; catalog alone brings back 12 products with
+  > 0 rated.
+  >
+  > **The average has exactly one owner.** The storefront's first version
+  > derived it from the page of reviews on screen while showing the product's
+  > full count — wrong past page 1, and a second implementation of a figure
+  > reviews-service already holds. The same defect ADR-0007 removed from
+  > pricing.
+  >
+  > **Acceptance:** a customer who did not buy gets 403; approving a review
+  > moved the rollup and published `ratingAvgE2: 400` in one transaction.
 - **M14 Recommendations** — co-purchase pairs computed from `order.paid` events.
 - **M15 Notifications** — notifications-service consuming domain events; order
   confirmation, shipment, refund emails; idempotent so no duplicate sends.
@@ -691,3 +724,4 @@ Write one whenever a choice has a defensible alternative. Keep them short.
 | 0009 | Shipping through the quote; addresses in users; a shipment is not a saga step | M10 |
 | 0010 | Convert prices not totals; exponent is data; append-only rates, never inverted | M11 |
 | 0011 | Versioned projection, no read-side database, replay owned by the write side | M12 |
+| 0012 | Verified purchase as event-derived authorisation; the rating rollup as a third clock on one document; replay owned by every write side | M13 |

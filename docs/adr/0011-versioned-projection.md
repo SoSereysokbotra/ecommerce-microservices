@@ -1,7 +1,7 @@
 # ADR-0011 — A versioned projection with no read-side database, and replay owned by the write side
 
 **Date:** 2026-09-18
-**Status:** Accepted
+**Status:** Accepted; **Decision 2 amended by M13** — see the amendment at the end.
 **Milestone:** M12
 
 ## Context
@@ -42,6 +42,11 @@ the projection's ordering key and the write side's optimistic lock; the
 projection's need is what exposed that the lock was never there.
 
 ## Decision 2 — Versioned writes instead of `processed_events`; no read-side database
+
+> **Amended in M13.** The mechanism below is no longer what the code does —
+> `index()` was replaced by a scripted `_update`. The *rule* is unchanged and
+> every proof below still holds; only its enforcement moved. Read this
+> section for the reasoning, then the amendment at the end for the shape.
 
 Every write to the index is
 `index({ id, version: event.version, version_type: 'external', body })`.
@@ -181,3 +186,60 @@ it is — the same rule as `sku`.
 | Recreate + republish → 12 documents back, 5 queries identical | **2.41 s** |
 | Rename → 6 of 6 products and the facet | 2.54 s |
 | Redelivery, republication, reordering, stale rename | no change, every time |
+
+---
+
+## Amendment — M13, 2026-10-05: the guard moved into a script
+
+**Decision 2's rule is unchanged. Its mechanism is not.**
+
+M13 put a second write side on the `products` document: reviews-service
+projects `ratingAvgE2`, `ratingCount` and `ratingVersion` onto it. That broke
+the implementation described above, because `index()` **replaces the whole
+document** — so every `product.updated` would have erased the rating until
+the next `product.rating_changed` happened to arrive.
+
+Both writes are now scripted `_update`s with `scripted_upsert: true`,
+`upsert: {}` and `retry_on_conflict: 3`. Each script compares **its own
+clock** and writes **only its own fields**:
+
+```
+product event   if (ctx._source.version      >= params.version) ctx.op = 'none'
+rating event    if (ctx._source.ratingVersion >= params.version) ctx.op = 'none'
+```
+
+On an upsert `ctx._source` starts empty, so both guards are written
+`!= null && >=`.
+
+**What did not change:**
+
+- The table in Decision 2 is still true, line for line. Redelivery,
+  republication and out-of-order delivery are all no-ops.
+- The store still enforces it atomically — a painless script runs inside the
+  document's compare-and-set, not in application code.
+- A rejected write is still success, not a failure to retry.
+  `result: 'noop'` is what `'stale'` used to be, and `ProductsProjection`
+  returns it rather than throwing. A throw would still nack with
+  `requeue=false` and drop an event that was never wrong.
+- **All three proofs were re-run** against the scripted version and still
+  pass (`HANDOFF.md` §6, M13 step 4).
+
+**What did change:**
+
+- The `_version` OpenSearch tracks is no longer the product's version. It is
+  an internal counter, incremented by every write from either side, and
+  `retry_on_conflict` is what makes two scripts racing on one document safe:
+  OpenSearch re-reads and re-runs, so each script re-checks its own clock
+  rather than one silently winning.
+- The guard is now visible in a string of painless rather than in a request
+  parameter. That is harder to read and easier to get subtly wrong — which is
+  why `products.projection.ts` asserts, in its tests, that the product script
+  mentions no rating field and the rating script mentions no product field.
+
+**What this does not cover.** The category fan-out (`_update_by_query`) was
+already a script with its range guard in the query and is unaffected. The
+tombstone gotcha below is unaffected: deleting a document still bumps its
+version, and the only reset is still dropping the index.
+
+Full reasoning for the second write side, and for why the rollup is computed
+by reviews-service rather than derived anywhere else, is in **ADR-0012**.

@@ -39,11 +39,7 @@ export class UsersClient {
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
     try {
-      // `/users/me` with the identity header, not `/users/:id`: that route is
-      // JWT-guarded and this service has no token to present. The header is
-      // what the gateway already verified, and it is how orders-service reads
-      // an address (M10). Reviews only ever needs the *caller's own* name.
-      const response = await fetch(`${this.baseUrl}/api/v1/users/me`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/users/${encodeURIComponent(userId)}`, {
         headers: {
           [USER_ID_HEADER]: userId,
           ...(correlationId ? { [CORRELATION_ID_HEADER]: correlationId } : {}),

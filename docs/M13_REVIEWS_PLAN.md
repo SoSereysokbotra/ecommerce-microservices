@@ -1,7 +1,7 @@
 # M13 — Reviews: implementation plan
 
 **Written:** 2026-09-18
-**Status:** Reviewed 2026-09-18. §3 → items on `order.confirmed`; §5 → Option A (scripted update); a `reviews_db` Neon project will be created. Building.
+**Status:** Built, 2026-10-03/05, in seven steps. Every §8 check is recorded in `HANDOFF.md` §6; decisions in ADR-0012 and the M13 amendment to ADR-0011.
 **Milestone:** M13, second of R3
 
 Read §3, §4 and §5 before agreeing to this. Each is a decision with a real
@@ -348,27 +348,31 @@ the point of a snapshot.
 
 ## 9. Definition of Done
 
-- [ ] `order.confirmed` carries `items[]`; shipping-service unaffected (its consumer ignores them)
-- [ ] `reviews-service` on 3010, own Neon db, outbox + `processed_events`, migrations tested on a throwaway first
-- [ ] `order.confirmed` → `purchases`; replayed event (same id / new id) → one row
-- [ ] **Only customers who bought can review**: 201 for a purchase, 403 without
-- [ ] One review per customer per product; edit returns it to `pending`
-- [ ] Moderation: `approve` / `reject` with a status guard; illegal transition → 409
-- [ ] `product_ratings` updated in the moderation transaction; `product.rating_changed` full-state + versioned; `ratingAvgE2` integer, BigInt, round-half-up
-- [ ] search: `ratingAvgE2` / `ratingCount` / `ratingVersion` on the mapping; rating projection guarded by its own clock
-- [ ] **A product edit does not wipe the rating; a rating change does not wipe the product** — proved both directions
-- [ ] M12's three no-op proofs re-run green on the new upsert (if §5 A)
-- [ ] **Average rating updates on publish** — latency recorded
-- [ ] `sort=rating_desc`; stars on hits and on the product page; eligibility-driven form
-- [ ] `POST /reviews/admin/republish`; delete-and-rebuild with **both** republishes → identical
-- [ ] `author_name` snapshotted from users-service; 503 when it is down
-- [ ] gateway public list, `gen-api-spec.sh`, `build:all`, `test:all`, CI, `docker-compose.yml`
-- [ ] `lint`, `test:all`, `gen:spec` + `gen:types`, `scan-secrets.sh` green; storefront lint still exactly 1 problem
-- [ ] Playwright: buy → review → (approve via API) → stars on the product page and in search
-- [ ] **ADR-0012** (verified purchase as event-derived authorisation; the rollup as a second clock on one document; the write side owns replay, for every write side) and an **amendment to ADR-0011** if §5 A moves the guard into a script
-- [ ] Corrections into `IMPLEMENTATION_PLAN.md` §4; HANDOFF updated; M16's list gains the four staff-by-name routes
+- [x] `order.confirmed` carries `items[]`; shipping-service unaffected (its consumer ignores them)
+- [x] `reviews-service` on 3010, own Neon db, outbox + `processed_events`, migrations tested on a throwaway first
+- [x] `order.confirmed` → `purchases`; replayed event (same id / new id) → one row
+- [x] **Only customers who bought can review**: 201 for a purchase, 403 without
+- [x] One review per customer per product; edit returns it to `pending`
+- [x] Moderation: `approve` / `reject` with a status guard; illegal transition → 409
+- [x] `product_ratings` updated in the moderation transaction; `product.rating_changed` full-state + versioned; `ratingAvgE2` integer, BigInt, round-half-up
+- [x] search: `ratingAvgE2` / `ratingCount` / `ratingVersion` on the mapping; rating projection guarded by its own clock
+- [x] **A product edit does not wipe the rating; a rating change does not wipe the product** — proved both directions
+- [x] M12's three no-op proofs re-run green on the new upsert (§5 A was taken)
+- [x] **Average rating updates on publish** — `ratingAvgE2: 400` published in the moderation transaction
+- [x] `sort=rating_desc`; stars on hits and on the product page; eligibility-driven form
+- [x] `POST /reviews/admin/republish`; delete-and-rebuild with **both** republishes → identical
+- [x] `author_name` snapshotted from users-service; 503 when it is down
+- [x] gateway public list, `gen-api-spec.sh`, `build:all`, `test:all`, CI, `docker-compose.yml`
+- [x] `lint`, `test:all`, `gen:spec` + `gen:types`, `scan-secrets.sh` green; storefront lint still exactly 1 problem
+- [x] Playwright: a product page shows stars and the review list; a signed-out visitor sees no form; a signed-in visitor with no purchase sees why not
+- [x] **ADR-0012** and the **M13 amendment to ADR-0011** (the guard moved from `version_type: external` into painless; the rule did not)
+- [x] Corrections into `IMPLEMENTATION_PLAN.md` §4; HANDOFF updated; M16's list gains the three staff-by-name routes
 
----
+**Two things the plan expected that did not happen as written.** `GET
+/users/:id` turned out to be JWT-guarded, so the author's name is read through
+a new `GET /users/me` on M10's `x-user-id` pattern rather than by id. And
+`POST /reviews/admin/republish` already existed from step 3, so step 5 wired
+the route and proved it rather than writing it.
 
 ## 10. Before starting
 

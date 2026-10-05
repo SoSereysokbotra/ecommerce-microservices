@@ -1,6 +1,6 @@
 # Handoff — read this first
 
-**Written:** 2026-09-01. **Last updated:** 2026-09-18 (M10, M11 and M12 complete).
+**Written:** 2026-09-01. **Last updated:** 2026-10-05 (M10–M13 complete).
 **Repo:** https://github.com/SoSereysokbotra/ecommerce-microservices (public, `main`)
 **Local:** `d:\Year2\Microservices\Order‑Inventory‑Payment Microservices\ecommerce-microservices`
 
@@ -14,9 +14,7 @@ discounts), M9 (coupons), **M10 (shipping)** and **M11 (multi-currency)** are
 all done and pushed. R3 has started: **M12 (search) is complete** — seven commits, ADR-0005 and
 ADR-0011 written, 32 Playwright tests green. Thirteen of 23 milestones done.
 
-**The next task is M13 step 6 — querying and the storefront.** Steps 1–5 are
-done; both acceptance claims and the delete-and-rebuild proof are recorded.
-See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
+**The next task is M14 — recommendations.** M13 is complete. See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
 
 **Running it is now one command: `npm run dev`.** See §4 — the old
 `docker stop jobfit-redis` step is gone.
@@ -62,7 +60,7 @@ finished and must not be modified. See §9 — it has a live security problem.
 
 ---
 
-## 2. Status: 13 of 23 milestones done — R1 and R2 complete, R3 one in
+## 2. Status: 14 of 23 milestones done — R1 and R2 complete, R3 half
 
 | | Milestone | State |
 |---|---|---|
@@ -79,7 +77,8 @@ finished and must not be modified. See §9 — it has a live security problem.
 | **M10** | **Shipping: addresses, rates by weight/zone, shipment lifecycle** | **done** |
 | **M11** | **Multi-currency: exponents, FX rates frozen on the order** | **done** |
 | **M12** | **Search: OpenSearch index built from catalog events (CQRS)** | **done** |
-| M13–M22 | Rest of R3, then R4–R5 | not started |
+| **M13** | **Reviews: verified purchase, moderation, rating rollup** | **done** |
+| M14–M22 | Rest of R3, then R4–R5 | not started |
 
 **M6** was met on 2026-09-02 via **Cloudflare Tunnel**, not a managed platform —
 Railway's trial had expired on the available account. Verified with real Stripe
@@ -1239,7 +1238,9 @@ coupon), and `pricing-service` has an `outbox` table nothing publishes to yet.
 **No roles until M16, and the pile of staff-only endpoints grew.** M10 added
 `POST /shipping/shipments/:id/dispatch` and `/deliver`; M12 added
 `POST /catalog/admin/republish`, `POST /search/admin/recreate-index` and
-`PATCH /catalog/categories/:id`. All of them
+`PATCH /catalog/categories/:id`; M13 added `POST /reviews/:id/approve`,
+`/reject` and `POST /reviews/admin/republish` — **anyone with an account can
+approve their own review today**. All of them
 are protected by nothing but a valid JWT — anyone with an account can mark any
 parcel delivered or empty the search index. The M16 entry should list every
 one of these.
@@ -1328,178 +1329,49 @@ painful fast.
 
 ---
 
-## 10. The next task: M13 — reviews
+## 10. The next task: M14 — recommendations
 
-M12 is complete. `docs/M12_SEARCH_PLAN.md` §9 is fully ticked; ADR-0005 and
-ADR-0011 are written; every live figure is in §6.
+M13 is complete: `docs/M13_REVIEWS_PLAN.md` §9 is fully ticked, ADR-0012 and
+the ADR-0011 amendment are written, and every live figure is in §6.
 
-**M13 step 1 is done** (commit "M13 step 1: order.confirmed carries items"):
-`order.confirmed` now carries `items: [{ productId, sku, qty }]`. Live: the
-event published twice for a real confirmed order → shipping-service created
-**one** shipment (the `UQ_shipments_order` guard refused the second) and
-ignored the new field. Unit test in `order-saga.service.spec.ts`. The same
-commit fixed a **pre-existing** typecheck error in shipping-service
-(`rate()` erased the entity type, so `zone.id` did not typecheck) — CI has
-typechecked shipping since M12 step 2 and would have been red.
+**M14, from `IMPLEMENTATION_PLAN.md` §4:**
 
-**M13 step 2 is done** (commit "M13 step 2: reviews-service scaffold and the
-purchases consumer"): `reviews-service` on **3010**, its own Neon database
-(`reviews_db`, `ep-broad-dew-b4o2o7eo`, **us-east-2** — not Singapore like
-most of the others; it is the second after shipping in that region). Tables
-`purchases`, `reviews`, `product_ratings` plus outbox and `processed_events`.
-`order.confirmed` → `purchases` with both guards. No review API yet.
+> Co-purchase pairs computed from `order.paid` events.
+> **Acceptance:** "Customers also bought" on product pages.
 
-| Scenario | Result |
-|---|---|
-| Migrations up, then **both** reverted, on a **throwaway Postgres** | clean both ways; only `migrations` left behind |
-| `rating = 6`; `rating_sum = -1` | refused by `CHK_reviews_rating_range` / `CHK_product_ratings_nonneg` |
-| `order.confirmed` with 2 items | **2** purchase rows |
-| Same event id again | ignored — `processed_events` marker |
-| **New event id, same order** | ignored — `UQ_purchases_customer_product_order`; log says "already recorded" |
-| An order with **no** `items` (every order placed before step 1) | warned and skipped, not nacked |
-| `/ready` with the database up | 200; queue `reviews-service` bound to `order.confirmed`, 1 consumer, 0 messages |
+**Write `docs/M14_RECOMMENDATIONS_PLAN.md` first** and have it reviewed, the
+way M7–M13 were. Things it will have to decide:
 
-**M13 step 3 is done** (commit "M13 step 3: reviews, moderation and the
-rating rollup"). `ReviewsService` with the eligibility rule, the moderation
-state machine, `product_ratings` moved **in the moderation transaction**, and
-`product.rating_changed` emitted. `rating-rollup.ts` is BigInt round-half-up
-to an integer hundredth. **The first acceptance claim is proved.**
+- **There is no `order.paid` event** — the same correction M10 made when the
+  plan asked shipping to consume one. `order.confirmed` is the fact, and
+  since M13 step 1 it carries `items[]`, which is exactly what a co-purchase
+  model needs. This is now the **third** consumer of that event (shipping,
+  reviews, recommendations) and worth naming in the ADR as the payoff of
+  M9's "leaf event" decision.
+- **Where the model lives.** A co-purchase count is a projection — derived,
+  rebuildable, never the source of truth. So the M12 question returns: a
+  database, or a store that makes the projection idempotent on its own? A
+  pair count is *not* idempotent under replay the way a versioned document
+  is — `+1` applied twice is wrong — so this one probably **does** need
+  `processed_events`, and saying why is the ADR.
+- **Whether it is a new service at all.** `IMPLEMENTATION_PLAN.md` Appendix B
+  reserves a port, but a co-purchase table with one consumer and one read
+  endpoint is small. The honest alternatives are a tenth service, a module
+  inside catalog, or a second index in search-service. Argue it rather than
+  assuming the plan.
+- **The read path.** "Customers also bought" on a product page is one query
+  by product id ordered by count. Whether it is served by search (which the
+  storefront already calls) or by its own endpoint follows from the above.
 
-| Scenario | Result |
-|---|---|
-| Review a product the customer did **not** buy | **403** |
-| Review a product they did buy | **201**, status `pending`, `authorName` snapshotted |
-| A second review of the same product | **409** (use PATCH) |
-| No token | 401 |
-| Public list while the review is pending | 0 items, and readable **with no token** |
-| `POST /reviews/:id/approve` | 201; `product_ratings` = sum 4, count 1, version 1; `product.rating_changed` published with `ratingAvgE2: 400` |
-| Approve again | **409** — the status guard |
-| Public list after approval | 1 item |
+What M13 leaves you that matters here:
 
-**Three defects were found and fixed in the first version of this step**, all
-of them invisible to its unit tests:
-
-1. **Raw SQL returns snake_case.** `manager.query(... RETURNING *)` hands back
-   `rating_sum`, not `ratingSum`; the type parameter is a claim, not a
-   conversion. Reading `row.ratingSum` gave `undefined`, which reached
-   `ratingAvgE2` as `NaN` and threw inside `BigInt()` — **every approval
-   would have 500'd**. The tests passed because the mock spread entities. The
-   mock now returns snake_case, which is the only reason it is worth having.
-   Same family as the INSERT-vs-UPDATE shape trap already in §5.
-2. **`GET /users/:id` is JWT-guarded**, and reviews-service has no token to
-   present. Added `GET /users/me` on the **M10 pattern** — `@Public()`, keyed
-   on the gateway-set `x-user-id` — the same way `AddressesController` works.
-3. **The public list leaked `customerId` and `orderId`** on an endpoint that
-   needs no token. It now maps through `PublicReviewDto`.
-
-**M13 step 4 is done** (commit "M13 step 4: the second projection — two
-clocks on one document"). The `products` mapping gained `ratingAvgE2`,
-`ratingCount` and `ratingVersion`. `ProductsProjection.upsert()` no longer
-uses `index()` with `version_type: external` — that replaces the whole
-document and would wipe the rating on every product edit. Both writes are now
-scripted `_update`s with `scripted_upsert: true`, `upsert: {}` and
-`retry_on_conflict: 3`, each guarding **its own clock** in painless and
-touching only its own fields. `result: 'noop'` is the new `'stale'`.
-`search-query.ts` gained `sort=rating_desc`; hits carry the rating.
-
-**A mapping change is a reindex**, so the live run began with
-`recreate-index` + `republish` (12 active products back).
-
-| Scenario | Result |
-|---|---|
-| `product.rating_changed` v1 (sum 9, count 2) | document shows `ratingAvgE2 450, ratingCount 2, ratingVersion 1` |
-| **M12 proof 1** — same `product.updated` redelivered | unchanged |
-| **M12 proof 2** — republished under a new event id | unchanged |
-| **M12 proof 3** — v−1 delivered after v | unchanged |
-| **Collision A** — `PATCH` the product's price | price 1400 → **1407**, `ratingAvgE2` still **450** |
-| **Collision B** — rating v2 (avg 467) | avg → **467**, price still **1407** |
-| Rating redelivered at the same version | unchanged |
-| Stale rating v1 after v2 | unchanged |
-| `sort=rating_desc` | the rated product first, unrated after |
-
-The guard moved from `version_type: external` into painless; the guarantee
-did not. **ADR-0011 needs an amendment saying so** — that is step 7's job and
-it must not be skipped, because the ADR currently describes a mechanism the
-code no longer uses.
-
-**M13 step 5 is done** (commit "M13 step 5: replay from both write sides").
-`POST /reviews/admin/republish` re-emits `product.rating_changed` for every
-`product_ratings` row **at that row's stored version** — the write side owns
-replay, for *every* write side. `recreate-index`'s response now names both
-commands.
-
-| Scenario | Result |
-|---|---|
-| `POST /reviews/admin/republish` with no token | 401 |
-| `recreate-index` | 0 products; `next` names **both** republishes |
-| Republish **catalog only** | 12 products, **0 rated** — the other side's fields are simply absent |
-| Then republish **reviews** | 12 products, 1 rated, in **0.32 s**; the snapshot is **identical** to before the index was dropped |
-| Both republishes again, against the live index | identical; nothing moved |
-
-**One finding worth keeping.** The first run of this proof reported *not*
-identical: the index had shown `ratingAvgE2 467, count 3` and came back
-`400, 1`. The rebuild was right and the index had been wrong — step 4's live
-test injected `product.rating_changed` events straight onto the bus that no
-`product_ratings` row ever backed, and the index had been faithfully
-projecting a fiction ever since. A rebuild from the write side discarded it.
-That is the read model doing its job, and a reminder that **hand-published
-events leave a read model saying things the write side never said**; the
-repair is always recreate + republish.
-
-**Step 6, next** (plan §11): querying and the storefront — stars on hits and
-on the product page, "Top rated" in the sort select, the eligibility-driven
-review form, and `e2e/reviews.spec.ts`. `sort=rating_desc` already works
-(step 4).
-
-**M13, from `IMPLEMENTATION_PLAN.md` §4:**
-
-> reviews-service; verified-purchase flag derived from order events;
-> moderation queue; rating rollup projected onto the search index.
-
-**The plan is written: `docs/M13_REVIEWS_PLAN.md` (draft, 2026-09-18) — review
-it before any code.** Its §3, §4 and §5 are the three decisions; §10 lists what
-to settle first (one of them is whether a ninth Neon project is even
-available). What follows is the sketch the plan grew from, kept for context:
-
-- **A tenth service, `reviews-service`**, with its own Neon database — this
-  one genuinely has state that is written by requests (a review is not a
-  projection). Port: `IMPLEMENTATION_PLAN.md` Appendix B reserves the next.
-  Copy search-service's scaffold for the non-Postgres parts and
-  shipping-service's for TypeORM + outbox + `processed_events`.
-- **"Verified purchase" is derived from `order.confirmed`** — the leaf event
-  M9 added and shipping already consumes. Reviews consumes it too and
-  records `(customerId, productId)` pairs. A second consumer of the same
-  event is a good moment to name in the ADR why choreography works here
-  and orchestration did not for the saga.
-- **The rating rollup is a second projection onto the `products` index.**
-  This is the interesting part. The mapping is `dynamic: strict`, so
-  `ratingAvg` / `ratingCount` must be **added to `products.index.ts`**, and
-  a mapping change is a reindex (`recreate-index` + `republish`). The
-  rollup write must not fight the product upsert: it is a *third clock* on
-  the document (product version, category version, and now a review
-  version or count). Use `_update` with a script guarded by a
-  `ratingVersion` the way the category fan-out is, or `update_by_query`
-  with the same range trick — and say in the ADR why the product's external
-  `version` must not be touched by it.
-- **Moderation queue**: a status on the review (`pending → approved |
-  rejected`), a staff endpoint to move it (M16 debt again), and the rollup
-  counts only `approved`. Only approved reviews are emitted to search.
-- **Search-side changes**: `product-document.ts` must carry the rating
-  fields through a `product.updated` (the event will not have them — the
-  projection must *preserve* them on upsert, which `index()` does not;
-  this is the M13 design problem, and `_update` with `doc` + `doc_as_upsert`
-  or a two-field script is the likely answer). `search-query.ts` gains
-  `sort=rating`. The storefront shows stars on hits and on the product
-  page.
-
-What M12 leaves you that matters here:
-
-- **`CatalogEventsListener` is the model for a second consumer** in
-  search-service; `ProductsProjection` is where a `applyRating()` would go.
-- **Republish rebuilds product fields only.** After a mapping change, the
-  rating rollup would need its own republish from reviews-service — the
-  write side owns replay, for every write side.
-- **Docker Desktop died twice during M12.** §5 recipe, ~20 s.
+- **`order.confirmed` carries `items[]`** — who bought what, already on the
+  bus, already proved to survive redelivery and republication.
+- **Two consumers already deduplicate it** (`shipping-service`,
+  `reviews-service`); copy either listener's shape, not a new one.
+- **The mapping is `dynamic: strict`** if you project into the existing
+  `products` index — a new field is a reindex, and a reindex now needs a
+  republish from every write side.
 
 Money is integer minor units everywhere; the exponent is data (ADR-0010).
 

@@ -5,7 +5,7 @@ import { ReviewsService } from './reviews.service';
 import {
   ListModerationQueryDto,
   ModerateDto,
-  PaginatedReviewsResponseDto,
+  PaginatedModerationResponseDto,
   ReviewResponseDto,
 } from './dto/review.dto';
 
@@ -25,8 +25,8 @@ export class ModerationController {
   /** Staff: list reviews in moderation queue (oldest first). */
   @Get('moderation')
   @ApiOperation({ summary: 'List reviews in moderation queue (staff)' })
-  @ApiOkResponse({ type: PaginatedReviewsResponseDto })
-  listModeration(@Query() query: ListModerationQueryDto): Promise<PaginatedReviewsResponseDto> {
+  @ApiOkResponse({ type: PaginatedModerationResponseDto })
+  listModeration(@Query() query: ListModerationQueryDto): Promise<PaginatedModerationResponseDto> {
     return this.reviews.listForModeration(query);
   }
 

@@ -18,6 +18,7 @@ import {
   EligibilityResponseDto,
   ListModerationQueryDto,
   ListReviewsQueryDto,
+  ProductRatingDto,
   PublicReviewDto,
   UpdateReviewDto,
 } from './dto/review.dto';
@@ -385,21 +386,42 @@ export class ReviewsService {
   async listForProduct(
     productId: string,
     query: ListReviewsQueryDto,
-  ): Promise<{ items: PublicReviewDto[]; total: number; page: number; limit: number }> {
+  ): Promise<{
+    items: PublicReviewDto[];
+    rating: ProductRatingDto | null;
+    total: number;
+    page: number;
+    limit: number;
+  }> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
     const skip = (page - 1) * limit;
 
-    const [items, total] = await this.reviewsRepository.findAndCount({
-      where: { productId, status: ReviewStatus.APPROVED },
-      order: { createdAt: 'DESC' },
-      skip,
-      take: limit,
-    });
+    const [[items, total], rollup] = await Promise.all([
+      this.reviewsRepository.findAndCount({
+        where: { productId, status: ReviewStatus.APPROVED },
+        order: { createdAt: 'DESC' },
+        skip,
+        take: limit,
+      }),
+      this.ratingsRepository.findOne({ where: { productId } }),
+    ]);
+
+    // The average travels with the list, read from the row that owns it.
+    // A client cannot derive it: this page holds ten reviews and the product
+    // may have ninety, so averaging what was sent gives a different number on
+    // every page. One owner per figure — the M8 rule (ADR-0007).
+    const rating =
+      rollup && rollup.ratingCount > 0
+        ? {
+            avgE2: ratingAvgE2(Number(rollup.ratingSum), Number(rollup.ratingCount)),
+            count: Number(rollup.ratingCount),
+          }
+        : null;
 
     // Mapped, not returned raw: this endpoint needs no token, so the entity's
     // `customerId` and `orderId` would be world-readable. See PublicReviewDto.
-    return { items: items.map(toPublicReview), total, page, limit };
+    return { items: items.map(toPublicReview), rating, total, page, limit };
   }
 
   /** Authenticated customer: all reviews authored by customer. */

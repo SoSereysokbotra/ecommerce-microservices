@@ -67,16 +67,16 @@
         },
         "type": "object"
       },
-      "PaginatedReviewsResponseDto": {
+      "PaginatedModerationResponseDto": {
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/PublicReviewDto"
+              "$ref": "#/components/schemas/ReviewResponseDto"
             },
             "type": "array"
           },
           "limit": {
-            "example": 10,
+            "example": 20,
             "type": "number"
           },
           "page": {
@@ -93,6 +93,64 @@
           "total",
           "page",
           "limit"
+        ],
+        "type": "object"
+      },
+      "PaginatedReviewsResponseDto": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PublicReviewDto"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "example": 10,
+            "type": "number"
+          },
+          "page": {
+            "example": 1,
+            "type": "number"
+          },
+          "rating": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProductRatingDto"
+              }
+            ],
+            "description": "The whole product's rating, not this page's. Null when unrated.",
+            "nullable": true
+          },
+          "total": {
+            "example": 42,
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "rating",
+          "total",
+          "page",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "ProductRatingDto": {
+        "properties": {
+          "avgE2": {
+            "description": "Average × 100. 437 = 4.37.",
+            "example": 437,
+            "type": "number"
+          },
+          "count": {
+            "description": "Approved reviews counted.",
+            "example": 12,
+            "type": "number"
+          }
+        },
+        "required": [
+          "avgE2",
+          "count"
         ],
         "type": "object"
       },
@@ -399,7 +457,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PaginatedReviewsResponseDto"
+                  "$ref": "#/components/schemas/PaginatedModerationResponseDto"
                 }
               }
             },

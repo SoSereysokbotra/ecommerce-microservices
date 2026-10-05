@@ -113,6 +113,11 @@ export class ListModerationQueryDto {
  * `status` is absent for the same reason — the list is approved-only, so the
  * field would always read "approved" and only ever leak that other states
  * exist.
+ *
+ * **This was lost once already.** It was added in M13 step 3 and silently
+ * reverted by step 5 when this file was rewritten; the public endpoint leaked
+ * both ids again until step 6 caught it. If you are regenerating this file,
+ * keep this type.
  */
 export class PublicReviewDto {
   @ApiProperty() id: string;
@@ -122,6 +127,25 @@ export class PublicReviewDto {
   @ApiProperty() body: string;
   @ApiProperty({ example: 'Alex M.' }) authorName: string;
   @ApiProperty() createdAt: Date;
+}
+
+/**
+ * The product's rating, as its owner holds it.
+ *
+ * reviews-service keeps `product_ratings` and is the only thing entitled to
+ * say what a product's average is. It travels on the list response so a
+ * client never has to derive it — a storefront averaging the page it happens
+ * to be showing gets a different number on page 2, and two implementations of
+ * one figure is the defect M8 removed from pricing (ADR-0007).
+ *
+ * Null when the product has no approved review. Zero would be a rating.
+ */
+export class ProductRatingDto {
+  @ApiProperty({ example: 437, description: 'Average × 100. 437 = 4.37.' })
+  avgE2: number;
+
+  @ApiProperty({ example: 12, description: 'Approved reviews counted.' })
+  count: number;
 }
 
 export class ReviewResponseDto {
@@ -172,6 +196,13 @@ export class PaginatedReviewsResponseDto {
   @ApiProperty({ type: [PublicReviewDto] })
   items: PublicReviewDto[];
 
+  @ApiProperty({
+    type: ProductRatingDto,
+    nullable: true,
+    description: "The whole product's rating, not this page's. Null when unrated.",
+  })
+  rating: ProductRatingDto | null;
+
   @ApiProperty({ example: 42 })
   total: number;
 
@@ -179,6 +210,28 @@ export class PaginatedReviewsResponseDto {
   page: number;
 
   @ApiProperty({ example: 10 })
+  limit: number;
+}
+
+/**
+ * The moderation queue's page.
+ *
+ * Separate from `PaginatedReviewsResponseDto` on purpose. This one is behind
+ * a token and a moderator needs the whole review — including `customerId`,
+ * which the public list must never carry — and has no use for the product's
+ * average.
+ */
+export class PaginatedModerationResponseDto {
+  @ApiProperty({ type: [ReviewResponseDto] })
+  items: ReviewResponseDto[];
+
+  @ApiProperty({ example: 42 })
+  total: number;
+
+  @ApiProperty({ example: 1 })
+  page: number;
+
+  @ApiProperty({ example: 20 })
   limit: number;
 }
 
@@ -206,12 +259,4 @@ export class EligibilityResponseDto {
     description: 'Alias for existingReviewId.',
   })
   existing?: string | null;
-}
-
-export class RepublishRatingsResponseDto {
-  @ApiProperty({
-    example: 12,
-    description: 'Number of product_ratings rows republished to the outbox.',
-  })
-  ratings: number;
 }

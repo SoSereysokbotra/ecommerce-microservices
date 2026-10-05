@@ -214,14 +214,37 @@ export interface components {
              */
             moderationNote?: string;
         };
+        PaginatedModerationResponseDto: {
+            items: components["schemas"]["ReviewResponseDto"][];
+            /** @example 20 */
+            limit: number;
+            /** @example 1 */
+            page: number;
+            /** @example 42 */
+            total: number;
+        };
         PaginatedReviewsResponseDto: {
             items: components["schemas"]["PublicReviewDto"][];
             /** @example 10 */
             limit: number;
             /** @example 1 */
             page: number;
+            /** @description The whole product's rating, not this page's. Null when unrated. */
+            rating: components["schemas"]["ProductRatingDto"] | null;
             /** @example 42 */
             total: number;
+        };
+        ProductRatingDto: {
+            /**
+             * @description Average × 100. 437 = 4.37.
+             * @example 437
+             */
+            avgE2: number;
+            /**
+             * @description Approved reviews counted.
+             * @example 12
+             */
+            count: number;
         };
         PublicReviewDto: {
             /** @example Alex M. */
@@ -380,7 +403,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedReviewsResponseDto"];
+                    "application/json": components["schemas"]["PaginatedModerationResponseDto"];
                 };
             };
         };
