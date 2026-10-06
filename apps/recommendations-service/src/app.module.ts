@@ -8,13 +8,14 @@ import { AppController } from './app.controller';
 import { databaseConfig } from './config/database.config';
 import { typeOrmConfig } from './database/typeorm.config';
 import { RecommendationsModule } from './modules/recommendations/recommendations.module';
+import { EventsModule } from './events/events.module';
 
 /**
  * recommendations-service — the eleventh service, per M14 plan §5 (Option A).
  *
  * Accumulating read model derived from `order.confirmed` facts.
  * Postgres stores the symmetric co-purchase graph and `processed_events`
- * for transactional deduplication.
+ * for transactional deduplication (M14 plan §4).
  */
 @Module({
   imports: [
@@ -28,10 +29,11 @@ import { RecommendationsModule } from './modules/recommendations/recommendations
       url: process.env.RABBITMQ_URL ?? 'amqp://rabbitmq:5672',
       exchange: process.env.RABBITMQ_EXCHANGE ?? 'commerce.events',
       queue: process.env.RABBITMQ_QUEUE ?? 'recommendations-service',
-      bindingKeys: [],
+      bindingKeys: ['order.confirmed'],
     }),
     OutboxModule.forRoot({ pollIntervalMs: 1000 }),
     RecommendationsModule,
+    EventsModule,
   ],
   controllers: [AppController],
 })

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProductRecommendationEntity } from './product-recommendation.entity';
+import { RecommendationsService } from './recommendations.service';
 
 /**
  * Recommendations module: co-purchase graph derived from order facts.
@@ -8,6 +9,7 @@ import { ProductRecommendationEntity } from './product-recommendation.entity';
  */
 @Module({
   imports: [TypeOrmModule.forFeature([ProductRecommendationEntity])],
-  exports: [TypeOrmModule],
+  providers: [RecommendationsService],
+  exports: [TypeOrmModule, RecommendationsService],
 })
 export class RecommendationsModule {}

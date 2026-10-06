@@ -14,8 +14,8 @@ discounts), M9 (coupons), **M10 (shipping)** and **M11 (multi-currency)** are
 all done and pushed. R3 has started: **M12 (search) is complete** — seven commits, ADR-0005 and
 ADR-0011 written, 32 Playwright tests green. Thirteen of 23 milestones done.
 
-**The next task is M14 step 2 — the idempotent consumer.** Step 1 is done;
-the plan is reviewed. See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
+**The next task is M14 step 3 — the read API.** Steps 1–2 are done; the
+idempotency proof is recorded. See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
 
 **Running it is now one command: `npm run dev`.** See §4 — the old
 `docker stop jobfit-redis` step is gone.
@@ -1386,6 +1386,28 @@ Two bits of speculative generality were removed on review: three exported
 aliases for one function, and a `{ productId } | string` union for an input
 that only ever arrives one way. Both are the "imagined future" this project's
 §7 keeps rejecting.
+
+**M14 step 2 is done** (commit "M14 step 2: the idempotent consumer"), and it
+is the milestone's content. `order.confirmed` → pairs → one atomic
+`INSERT … ON CONFLICT … DO UPDATE SET count = count + 1` per pair, with the
+`processed_events` marker written **in the same transaction** by
+`handleOnce`. Never read-then-write: two concurrent orders cannot both read 5
+and both write 6 — the M9 coupon pattern applied to a counter.
+
+| Scenario | Result |
+|---|---|
+| One order of A, B, C | **6 rows**, every count 1 |
+| **The same event redelivered** | **nothing moved** — had it counted twice, every row would read 2 |
+| A second, different order of A, B | A↔B → **2**; A↔C and B↔C stay **1** |
+| An order of A, A, A (one distinct product) | no rows, no marker — skipped before the transaction |
+| `processed_events` | 2 markers, one per event that did work |
+
+**Why this differs from M12/M13, which is the point of M14:** a versioned
+document tolerates replay because it stores a *value* — writing "version 10,
+price 1407" twice gives the same answer. A counter stores an *accumulation*,
+and `+1` applied twice is permanently wrong and undetectable. That is why
+this service has a database and `processed_events` while search-service has
+neither.
 
 What the plan had to work out, for context:
 
