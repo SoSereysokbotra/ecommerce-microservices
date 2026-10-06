@@ -14,8 +14,7 @@ discounts), M9 (coupons), **M10 (shipping)** and **M11 (multi-currency)** are
 all done and pushed. R3 has started: **M12 (search) is complete** — seven commits, ADR-0005 and
 ADR-0011 written, 32 Playwright tests green. Thirteen of 23 milestones done.
 
-**The next task is M14 step 3 — the read API.** Steps 1–2 are done; the
-idempotency proof is recorded. See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
+**The next task is M14 step 4 — replay.** Steps 1–3 are done. See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
 
 **Running it is now one command: `npm run dev`.** See §4 — the old
 `docker stop jobfit-redis` step is gone.
@@ -1408,6 +1407,29 @@ price 1407" twice gives the same answer. A counter stores an *accumulation*,
 and `+1` applied twice is permanently wrong and undetectable. That is why
 this service has a database and `processed_events` while search-service has
 neither.
+
+**M14 step 3 is done** (commit "M14 step 3: the read API, enriched from
+catalog"). `GET /recommendations/products/:id?limit=4`, public at the
+gateway. The plan's one open question is settled: **recommendations-service
+enriches the hits itself** by reading catalog, which is the pattern pricing
+and orders already use; returning bare ids would have put four extra browser
+requests and the orchestration into the storefront. catalog gained an `ids=`
+filter on its list endpoint, the shape `GET /inventory/stock?productIds=`
+already had.
+
+| Scenario | Result |
+|---|---|
+| A product whose pairs exist but whose partners catalog does not know | `{ items: [], total: 0 }` — dropped, not a broken card |
+| `CBL-USB-1` after two orders with `STK-PCK-1` and one with `BAG-CVS-1` | STK-PCK-1 (count 2) **before** BAG-CVS-1 (count 1), enriched with sku, name and price |
+| `limit=1` / `limit=999` | 1 item / **400** |
+| An unknown product id | **200** and empty — not a 404 |
+| Deactivating a recommended product | gone from the list on the next read |
+| catalog genuinely down (it was, mid-restart) | **503**, not 400 and not a wrong answer — the error path proved itself by accident |
+
+**`CATALOG_SERVICE_URL` was missing from `apps/recommendations-service/.env`**
+when it was first written. The client defaults to the right Docker hostname so
+nothing broke, but it is now set explicitly, as pricing and orders set theirs.
+A new `.env` on another machine needs it.
 
 What the plan had to work out, for context:
 

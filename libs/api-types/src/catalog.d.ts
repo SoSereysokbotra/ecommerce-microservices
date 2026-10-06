@@ -306,6 +306,8 @@ export interface operations {
     ProductsController_list: {
         parameters: {
             query?: {
+                /** @description Comma-separated product UUIDs (up to 50). When provided, returns only matching products and ignores category, cursor and pagination. */
+                ids?: string;
                 /** @description Category slug or id. */
                 category?: string;
                 /** @description Omit to see only active products. */

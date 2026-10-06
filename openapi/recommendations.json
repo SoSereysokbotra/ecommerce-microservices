@@ -1,0 +1,169 @@
+{
+  "components": {
+    "schemas": {
+      "RecommendationsResponseDto": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecommendedProductDto"
+            },
+            "type": "array"
+          },
+          "total": {
+            "description": "Total enriched items returned.",
+            "example": 4,
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "type": "object"
+      },
+      "RecommendedProductDto": {
+        "properties": {
+          "coPurchaseCount": {
+            "description": "Co-purchase count in confirmed orders.",
+            "example": 3,
+            "type": "number"
+          },
+          "currency": {
+            "example": "USD",
+            "type": "string"
+          },
+          "name": {
+            "example": "Black T-Shirt (M)",
+            "type": "string"
+          },
+          "priceMinor": {
+            "description": "Integer minor units. 1999 = $19.99.",
+            "example": 1999,
+            "type": "number"
+          },
+          "productId": {
+            "description": "Catalog product UUID.",
+            "type": "string"
+          },
+          "sku": {
+            "example": "TSH-BLK-M",
+            "type": "string"
+          },
+          "slug": {
+            "example": "black-t-shirt-medium",
+            "type": "string"
+          }
+        },
+        "required": [
+          "productId",
+          "sku",
+          "slug",
+          "name",
+          "priceMinor",
+          "currency",
+          "coPurchaseCount"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "bearerFormat": "JWT",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "contact": {},
+    "description": "Co-purchase graph and product recommendations",
+    "title": "Recommendations Service",
+    "version": "1.0"
+  },
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "operationId": "AppController_health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/ready": {
+      "get": {
+        "operationId": "AppController_ready",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/recommendations/products/{productId}": {
+      "get": {
+        "description": "Returns products frequently bought together with the requested product.",
+        "operationId": "RecommendationsController_getRecommendations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "productId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum number of recommendation cards to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 4,
+              "maximum": 20,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationsResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Get enriched co-purchase product recommendations",
+        "tags": [
+          "recommendations"
+        ]
+      }
+    }
+  },
+  "servers": [],
+  "tags": []
+}

@@ -9,7 +9,38 @@ import {
   Length,
   Min,
   MinLength,
+  ValidationArguments,
+  ValidationOptions,
+  isUUID,
+  registerDecorator,
 } from 'class-validator';
+
+export function IsCommaSeparatedUUIDs(maxCount = 50, validationOptions?: ValidationOptions) {
+  return function (object: object, propertyName: string) {
+    registerDecorator({
+      name: 'isCommaSeparatedUUIDs',
+      target: object.constructor,
+      propertyName,
+      options: validationOptions,
+      validator: {
+        validate(value: unknown) {
+          if (typeof value !== 'string') return false;
+          const trimmed = value.trim();
+          if (!trimmed) return false;
+          const parts = trimmed
+            .split(',')
+            .map((p) => p.trim())
+            .filter(Boolean);
+          if (parts.length === 0 || parts.length > maxCount) return false;
+          return parts.every((id) => isUUID(id));
+        },
+        defaultMessage(args: ValidationArguments) {
+          return `${args.property} must be a comma-separated list of up to ${maxCount} valid UUIDs`;
+        },
+      },
+    });
+  };
+}
 
 export class CreateProductDto {
   @ApiProperty({ example: 'TSH-BLK-M' })
@@ -109,6 +140,16 @@ export class UpdateProductDto {
 }
 
 export class ListProductsQueryDto {
+  @ApiPropertyOptional({
+    description:
+      'Comma-separated product UUIDs (up to 50). When provided, returns only matching products and ignores category, cursor and pagination.',
+    example: '3fa85f64-5717-4562-b3fc-2c963f66afa6,c3d4e5f6-a7b8-1234-5678-9abcdef01234',
+  })
+  @IsOptional()
+  @IsString()
+  @IsCommaSeparatedUUIDs(50)
+  ids?: string;
+
   @ApiPropertyOptional({ description: 'Category slug or id.' })
   @IsOptional()
   @IsString()

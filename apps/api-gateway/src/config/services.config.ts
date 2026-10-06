@@ -24,4 +24,6 @@ export default () => ({
   shippingServiceUrl: process.env.SHIPPING_SERVICE_URL ?? 'http://shipping-service:3008',
   searchServiceUrl: process.env.SEARCH_SERVICE_URL ?? 'http://search-service:3009',
   reviewsServiceUrl: process.env.REVIEWS_SERVICE_URL ?? 'http://reviews-service:3010',
+  recommendationsServiceUrl:
+    process.env.RECOMMENDATIONS_SERVICE_URL ?? 'http://recommendations-service:3012',
 });

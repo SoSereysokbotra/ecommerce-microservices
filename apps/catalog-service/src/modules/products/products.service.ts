@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, QueryFailedError, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, QueryFailedError, Repository } from 'typeorm';
 import { OutboxService } from '@libs/outbox';
 import { announceProduct } from '../../events/product-events';
 import { ProductEntity } from './product.entity';
@@ -31,6 +31,27 @@ export class ProductsService {
     data: ProductEntity[];
     nextCursor: string | null;
   }> {
+    if (query.ids) {
+      const ids = [
+        ...new Set(
+          query.ids
+            .split(',')
+            .map((id) => id.trim())
+            .filter(Boolean),
+        ),
+      ];
+      if (ids.length === 0) {
+        return { data: [], nextCursor: null };
+      }
+
+      // When ids is present, other filters and cursor do not apply.
+      const rows = await this.products.find({
+        where: { id: In(ids) },
+      });
+
+      return { data: rows, nextCursor: null };
+    }
+
     const limit = Math.min(query.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
 
     const qb = this.products.createQueryBuilder('p');

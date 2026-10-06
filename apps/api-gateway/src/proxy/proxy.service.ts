@@ -25,6 +25,7 @@ const ROUTE_TABLE: ReadonlyArray<[RegExp, string]> = [
   [/^\/api\/v1\/shipping(\/|$)/, 'shippingServiceUrl'],
   [/^\/api\/v1\/search(\/|$)/, 'searchServiceUrl'],
   [/^\/api\/v1\/reviews(\/|$)/, 'reviewsServiceUrl'],
+  [/^\/api\/v1\/recommendations(\/|$)/, 'recommendationsServiceUrl'],
 ];
 
 /** Retrying a non-idempotent verb risks duplicating the write. */

@@ -43,7 +43,16 @@ export class ProxyController {
    * block or every GET would be caught by it and require a token.
    */
   @Public()
-  @Get(['catalog', 'catalog/*', 'inventory/stock', 'inventory/stock/*', 'search', 'search/*'])
+  @Get([
+    'catalog',
+    'catalog/*',
+    'inventory/stock',
+    'inventory/stock/*',
+    'search',
+    'search/*',
+    'recommendations/products',
+    'recommendations/products/*',
+  ])
   async proxyPublicReads(@Req() request: Request, @Res() response: Response): Promise<void> {
     return this.sendProxy(request, response);
   }
@@ -114,6 +123,8 @@ export class ProxyController {
     'search/*',
     'reviews',
     'reviews/*',
+    'recommendations',
+    'recommendations/*',
   ])
   async proxyProtected(@Req() request: Request, @Res() response: Response): Promise<void> {
     return this.sendProxy(request, response);
