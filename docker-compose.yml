@@ -425,6 +425,31 @@ services:
       start_period: 90s
     networks: [commerce]
 
+  recommendations-service:
+    build:
+      context: .
+      dockerfile: ./apps/recommendations-service/Dockerfile
+      target: development
+    container_name: commerce-recommendations-service
+    restart: unless-stopped
+    ports:
+      - "3012:3012"
+    env_file:
+      - ./apps/recommendations-service/.env
+    volumes:
+      - .:/app
+      - recommendations_service_node_modules:/app/apps/recommendations-service/node_modules
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3012/api/v1/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 90s
+    networks: [commerce]
+
   api-gateway:
     build:
       context: .
@@ -483,6 +508,7 @@ volumes:
   shipping_service_node_modules:
   search_service_node_modules:
   reviews_service_node_modules:
+  recommendations_service_node_modules:
 
 networks:
   commerce:

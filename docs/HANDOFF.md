@@ -14,7 +14,8 @@ discounts), M9 (coupons), **M10 (shipping)** and **M11 (multi-currency)** are
 all done and pushed. R3 has started: **M12 (search) is complete** — seven commits, ADR-0005 and
 ADR-0011 written, 32 Playwright tests green. Thirteen of 23 milestones done.
 
-**The next task is M14 — recommendations.** M13 is complete. See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
+**The next task is M14 step 2 — the idempotent consumer.** Step 1 is done;
+the plan is reviewed. See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
 
 **Running it is now one command: `npm run dev`.** See §4 — the old
 `docker stop jobfit-redis` step is gone.
@@ -1369,6 +1370,22 @@ the ADR-0011 amendment are written, and every live figure is in §6.
 One thing is still open on purpose: whether the read endpoint enriches hits
 with product details or returns ids for the storefront to fetch. Decide it at
 step 3 with the code in front of you.
+
+**M14 step 1 is done** (commit "M14 step 1: recommendations-service scaffold
+and the pair arithmetic"): `recommendations-service` on **3012**, its own Neon
+database (`recommendations_db`, `ep-snowy-union-b3z863cn`, **ap-southeast-1** —
+matching most of the others for once), `product_recommendations` with a
+composite primary key on the pair, `CHECK (product_id <> recommended_product_id)`,
+`CHECK (co_purchase_count >= 0)` and an index on
+`(product_id, co_purchase_count DESC)` for the read. Migrations proved **up and
+down on a throwaway** before touching Neon. `co-purchase-pairs.ts` is a pure
+function: dedupe the basket, `[]` below two distinct products, both directions
+per pair. 7 unit tests. **No consumer yet** — step 2.
+
+Two bits of speculative generality were removed on review: three exported
+aliases for one function, and a `{ productId } | string` union for an input
+that only ever arrives one way. Both are the "imagined future" this project's
+§7 keeps rejecting.
 
 What the plan had to work out, for context:
 
