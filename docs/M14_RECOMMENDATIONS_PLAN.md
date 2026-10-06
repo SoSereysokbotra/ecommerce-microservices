@@ -1,7 +1,7 @@
 # M14 — Recommendations: implementation plan
 
 **Written:** 2026-10-06
-**Status:** Draft for review.
+**Status:** Reviewed 2026-10-06. The three §14 questions are settled — **Option A** (a separate `recommendations-service`), a **dedicated replay event**, and **no minimum count**. See §5, §7 and §14.
 **Milestone:** M14, third of R3
 
 Read §3, §4 and §5 before agreeing to this. Each represents a significant architectural decision with real trade-offs and alternatives:
@@ -169,15 +169,43 @@ Option C is disqualified by §4. OpenSearch has no multi-document transactions. 
 3. **Event symmetry:**
    - Catalog was made publish-only in M12 step 1. Giving catalog an active queue (`catalog-service.order-confirmed.recommendations`) makes catalog a consumer. However, catalog already has `RabbitMQModule` and TypeORM wired.
 
-### Recommendation: **Option B (Module inside `catalog-service`)**
+### Decision: **Option A — a separate `recommendations-service` on port 3012**
 
-**Recommended:** Implement recommendations as an isolated module within `catalog-service`, sharing `catalog_db`.
-- Avoids provisioning a 10th Neon database.
-- Conserves container memory on the development host.
-- Keeps product discovery reads co-located.
-- Uses catalog's existing TypeORM `DataSource` for the `processed_events` transaction.
+The draft of this plan recommended Option B. That was reversed on review, for
+three reasons.
 
-**Fallback:** If architectural purism demands a hard boundary (Option A), scaffold `recommendations-service` on port **3012** with its own Neon database, identical to the `reviews-service` scaffolding from M13 step 2.
+**1. Option B reverses a decision that is written down.** M12 step 1 made
+catalog deliberately publish-only: `RabbitMQModule.forRoot` with no `queue`,
+and a class comment explaining that a queue there would receive events nobody
+handles. Option B gives catalog a queue and an order-event consumer. Undoing
+a recorded decision needs a stronger reason than convenience, and if it were
+done it would need its own ADR arguing against M12's.
+
+**2. It inverts the dependency direction.** catalog is the most upstream
+service in the system: everything reads from it and it depends on nothing but
+RabbitMQ. Its compose block lists no service dependency at all. Today the flow
+is orders → pricing → catalog. Option B adds orders → catalog, making the
+cleanest service in the project downstream of the most entangled one. That is
+a worse shape than one extra container.
+
+**3. The infrastructure argument rests on a stale fact.** The "5 Neon
+projects" figure in `HANDOFF.md` §4 was written at M0. The account currently
+holds nine and a tenth (`reviews_db`) was provisioned during M13 without
+hitting a limit. On memory: an eleventh Nest container costs roughly 100 MB
+against OpenSearch's measured 970 MB. Neither is a reason to compromise the
+boundary — **but confirm the Neon limit in the console before step 2**, and if
+it genuinely blocks, see the fallback below.
+
+**Fallback, if a tenth Neon project is impossible.** Not catalog. Either
+**defer M14** — `PROJECT_PLAN.md` lists it fourth on the cut list, "minor;
+search and reviews carry R3" — or put the table in **`orders_db`**, where the
+data originates and where consuming `order.confirmed` is not a reversal of
+anything. Both are more honest than making catalog a consumer.
+
+**What Option A costs, stated plainly:** a tenth Neon project, an eleventh
+container, ~90 s more cold-start, and one more `.env` to recreate on a new
+machine. The scaffold is a copy of reviews-service's (M13 step 2), which is
+itself a copy of shipping's.
 
 ---
 
@@ -303,17 +331,42 @@ Orders-service emits a specific event only bound to recommendations:
 Acknowledge the honest reality of operational microservices:
 *A co-purchase graph is a warm-start accumulator, not critical ledger state.* If the recommendations database is lost, counts start fresh from subsequent orders, or are reseeded from a static snapshot.
 
-### Recommendation: **Alternative 1 with strict event ID reuse, or Alternative 2**
+### Decision: **Alternative 2 — a dedicated replay event**
 
-If we follow ADR-0012 strictly, `orders-service` should own the replay endpoint:
-`POST /orders/admin/republish-confirmed`.
+`POST /orders/admin/replay-co-purchases` walks confirmed orders and emits
+`order.co_purchase_replay { orderId, items: [{ productId }] }`, bound **only**
+to recommendations-service's queue.
 
-To prevent collateral damage to shipping, reviews, and notifications:
-1. Replayed events must carry the **original `orderId`** as an idempotency key.
-2. In `shipping-service` and `reviews-service`, the unique constraints (`UQ_purchases_customer_product_order`) already protect against duplicate rows.
-3. However, because replaying all historical orders through the active event bus is hazardous to M15 (notifications), **orders-service should publish with a dedicated routing key or header** (e.g. `order.confirmed.replayed`), or recommendations should provide an admin endpoint that re-aggregates pairs from orders.
+Alternative 1 — re-emitting `order.confirmed` on the shared bus — is rejected,
+and not on grounds of taste. Three services consume that event and M15 adds a
+fourth whose job is **sending email**. A backfill that mails every customer
+about an order they placed months ago is not a duplicate row to be cleaned up;
+it is a visible failure that cannot be withdrawn. "The other consumers have
+idempotency keys" is an argument that the blast radius is *probably* contained,
+and probably is not good enough when the cost of being wrong is that high.
+Relying on every present and future consumer of a broadcast event to be
+perfectly idempotent is exactly the coupling events are supposed to remove.
 
-*This is flagged as an Open Question in §14.*
+The cost of Alternative 2 is honest and small: one event type that exists only
+for replay, bound to one queue. It is the same shape as the existing
+`<target>.<verb>_requested` naming — a message aimed at one consumer rather
+than a fact announced to everyone — and `HANDOFF.md` §3 already draws that
+distinction.
+
+**Idempotency still applies to the replay.** The replayed event carries the
+original `orderId`, and the consumer's `processed_events` marker is keyed on
+the event id — so a replay must **clear the markers for replayed orders, or
+truncate and rebuild**, not simply re-send. The step-4 proof is therefore:
+truncate `product_recommendations` **and** the matching `processed_events`
+rows → replay → counts identical. State that explicitly in the step, because
+a replay that silently no-ops is the easiest way to think this works when it
+does not.
+
+Alternative 4 (accept the model as ephemeral) is worth recording as the
+pragmatic real-world answer, and is what a production system might well
+choose. It is rejected here only because rebuilding a read model is the thing
+R3 exists to teach, and a projection that cannot be rebuilt would be the one
+exception in a set of three.
 
 ---
 
@@ -434,9 +487,9 @@ Latency is expected to be under 2 seconds from Stripe confirmation to the recomm
 - [ ] Single-item orders acknowledge cleanly without creating pairs.
 - [ ] Duplicate item lines in an order are deduplicated prior to pair generation.
 - [ ] **Increment is strictly idempotent**: redelivered event ID leaves pair counters unchanged (proved with live redelivery test).
-- [ ] `GET /catalog/products/:productId/recommendations` public through the gateway, returning top co-purchased products ordered by count DESC.
+- [ ] `GET /recommendations/products/:productId` public through the gateway, returning top co-purchased products ordered by count DESC.
 - [ ] Storefront: "Customers also bought" section on product page; renders cards with stars and price; renders nothing when unranked/empty.
-- [ ] Replay strategy implemented and documented.
+- [ ] `POST /orders/admin/replay-co-purchases` emitting `order.co_purchase_replay`; **truncate + clear markers → replay → counts identical**, and no other consumer sees the replay.
 - [ ] E2E Playwright test: purchase multi-item basket $\implies$ recommendation visible on product page.
 - [ ] `npm run lint` in storefront reports exactly 1 problem (pre-existing `poll` error); TypeScript clean across repo.
 - [ ] **ADR-0013** written: accumulators vs versioned projections; why delta projections require transactional event markers; pair topology choice; infrastructure location.
@@ -446,9 +499,15 @@ Latency is expected to be under 2 seconds from Stripe confirmation to the recomm
 
 ## 12. Before starting
 
-1. **Confirm service location (§5):** Decide whether recommendations lives inside `catalog-service` (Option B, 0 new Neon databases) or as a separate `recommendations-service` (Option A, port 3012, requiring Neon database provisioning and container addition).
-2. **Verify Neon database limits:** If Option A is chosen, check if a 10th Neon project can be created or if existing test projects must be consolidated.
-3. **Confirm replay approach (§7):** Agree on whether orders-service exposes an admin replay endpoint and how it isolates other `order.confirmed` consumers.
+1. **Settled (§5):** Option A — a separate `recommendations-service` on port
+   3012 with its own Neon database.
+2. **Provision `recommendations_db` in Neon** and put the string in
+   `apps/recommendations-service/.env` **directly** — never into a chat
+   transcript; two credentials have been rotated for that already
+   (`HANDOFF.md` §9). Confirm the project limit first; if it blocks, take
+   §5's fallback rather than Option B.
+3. **Settled (§7):** a dedicated `order.co_purchase_replay` event bound only
+   to recommendations.
 4. **Ensure Docker stack health:** Run `docker compose ps` to ensure PostgreSQL, RabbitMQ, and OpenSearch are healthy before testing.
 
 ---
@@ -461,16 +520,20 @@ One commit per step. Steps 1–4 are backend and CQRS correctness; steps 5–6 a
    - Migration for `product_recommendations` and `processed_events`.
    - Pure unit tests for the pair generator (0 items, 1 item, duplicates, $N$ items).
 2. **The idempotent consumer**
-   - Bind `order.confirmed` queue in catalog (or recommendations-service).
+   - Bind the `order.confirmed` queue in recommendations-service.
    - Implement `handleOnce` with atomic `INSERT ... ON CONFLICT DO UPDATE SET count = count + 1`.
    - Proof: redelivering the same event leaves counts unchanged.
 3. **The public read API**
-   - `GET /catalog/products/:productId/recommendations?limit=4`.
+   - `GET /recommendations/products/:productId?limit=4`.
    - Join/fetch product details, prices, and ratings.
    - Gateway routing and swagger documentation.
-4. **Replay verification**
-   - Implement replay mechanism.
-   - Proof: truncate `product_recommendations` $\implies$ replay $\implies$ counts match pre-truncation state.
+4. **Replay**
+   - `POST /orders/admin/replay-co-purchases` emitting `order.co_purchase_replay`,
+     bound only to recommendations.
+   - Proof: snapshot the counts, truncate `product_recommendations` **and the
+     `processed_events` rows for those orders**, replay, counts identical.
+   - Proof: shipping and reviews see nothing — no new shipment, no new
+     purchase row.
 5. **Storefront integration**
    - `types.ts` updates.
    - "Customers also bought" section on `/products/[slug]`.
@@ -481,8 +544,34 @@ One commit per step. Steps 1–4 are backend and CQRS correctness; steps 5–6 a
 
 ---
 
-## 14. Open questions
+## 14. Questions, settled on review (2026-10-06)
 
-1. **Service boundaries (Option A vs Option B):** Does the team prefer keeping `catalog-service` strictly publish-only (requiring a new microservice on port 3012 with a 10th Neon database), or is co-locating the read model in `catalog-service` acceptable to respect container memory and Neon project limits?
-2. **Replay safety across consumers:** When replaying historical orders to rebuild recommendations, should `orders-service` publish with a specialized event type (e.g. `order.co_purchase_replayed`) to completely shield shipping and notifications, or should it rely on existing idempotency keys?
-3. **Minimum co-purchase threshold:** Should a pair be displayed immediately after a single purchase ($\text{count} \ge 1$), or should the API enforce a minimum threshold (e.g. $\text{count} \ge 2$) to prevent noisy one-off associations in production? (For local testing and Playwright, $\text{count} \ge 1$ is required).
+1. **Service boundaries — settled: Option A.** A separate
+   `recommendations-service` on port 3012 with its own Neon database. Option B
+   would have reversed M12's publish-only decision for catalog and inverted the
+   dependency direction, for an infrastructure saving that rests on a stale
+   figure. §5 has the full argument and the fallback if Neon blocks it.
+
+2. **Replay safety — settled: a dedicated event.**
+   `order.co_purchase_replay`, bound only to recommendations. Re-emitting
+   `order.confirmed` would reach shipping, reviews and M15's email sender; an
+   email cannot be un-sent, and "the other consumers are probably idempotent"
+   is not a good enough guarantee for that. §7 has the argument.
+
+3. **Minimum co-purchase threshold — settled: no threshold; show at count ≥ 1.**
+   A threshold is a product decision dressed as an engineering one, and with
+   twelve seeded products and a handful of orders a `count >= 2` rule would
+   render the feature permanently empty — including in Playwright, which would
+   then be testing nothing. The read endpoint takes `limit` and orders by count
+   descending; if a real catalogue ever made one-off pairs noisy, a threshold
+   is one `WHERE` clause and belongs in the commit that has the evidence for
+   it. Record it as a known simplification rather than a decision avoided.
+
+### Still genuinely open
+
+- **Whether the read endpoint should enrich hits.** A recommendation is a
+  product id and a count; the storefront needs a name, price and image to draw
+  a card. Either recommendations-service calls catalog (another synchronous
+  read, the M8/M10 pattern), or it returns ids and the storefront fetches them,
+  or it projects a minimal product snapshot the way search does. Decide this at
+  step 3 with the code in front of you; the plan does not need to guess.

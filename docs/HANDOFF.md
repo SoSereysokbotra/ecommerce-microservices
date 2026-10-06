@@ -1278,6 +1278,13 @@ lived in that table is gone. **Test a `down` against a throwaway Postgres**, the
 way M8 step 2 did for pricing-service, rather than against a database holding
 history.
 
+**Rotate the recommendations-service Neon password.** The connection string
+for `recommendations_db` (`ep-snowy-union-b3z863cn`, ap-southeast-1) was
+pasted into a chat transcript on 2026-10-06 — the **third** time. Reset it in
+the Neon console and put the new string in
+`apps/recommendations-service/.env`. **The fix is to paste the string into the
+`.env` file directly; chat is a transcript that is kept.**
+
 **Rotate the reviews-service Neon password.** The full connection string for
 the M13 database (`reviews_db`, `ep-broad-dew-b4o2o7eo`, us-east-2) was pasted
 into a chat transcript on 2026-10-02. Reset it in the Neon console, put the new
@@ -1339,8 +1346,31 @@ the ADR-0011 amendment are written, and every live figure is in §6.
 > Co-purchase pairs computed from `order.paid` events.
 > **Acceptance:** "Customers also bought" on product pages.
 
-**Write `docs/M14_RECOMMENDATIONS_PLAN.md` first** and have it reviewed, the
-way M7–M13 were. Things it will have to decide:
+**The plan is written and reviewed: `docs/M14_RECOMMENDATIONS_PLAN.md`**
+(2026-10-06). Its three open questions are settled:
+
+- **§5 — a separate `recommendations-service` on port 3012**, with its own
+  Neon database. The draft recommended putting it inside catalog-service to
+  save a database; that was reversed. It would have reversed M12's
+  publish-only decision for catalog and made the most upstream service in the
+  system a consumer of order events, and the "Neon free tier allows 5
+  projects" figure it leaned on is stale — the account holds nine and took a
+  tenth during M13. **Provision `recommendations_db` before step 2**, and put
+  the string straight into the `.env`.
+- **§7 — a dedicated `order.co_purchase_replay` event**, bound only to
+  recommendations. Re-emitting `order.confirmed` to rebuild the model would
+  reach shipping, reviews and M15's **email sender**; an email cannot be
+  withdrawn, and "the other consumers are probably idempotent" is not a good
+  enough guarantee at that cost.
+- **§14 — no minimum co-purchase count.** With twelve seeded products a
+  `count >= 2` rule would render the feature permanently empty, Playwright
+  included. Recorded as a known simplification.
+
+One thing is still open on purpose: whether the read endpoint enriches hits
+with product details or returns ids for the storefront to fetch. Decide it at
+step 3 with the code in front of you.
+
+What the plan had to work out, for context:
 
 - **There is no `order.paid` event** — the same correction M10 made when the
   plan asked shipping to consume one. `order.confirmed` is the fact, and
