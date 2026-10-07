@@ -29,7 +29,7 @@ import { EventsModule } from './events/events.module';
       url: process.env.RABBITMQ_URL ?? 'amqp://rabbitmq:5672',
       exchange: process.env.RABBITMQ_EXCHANGE ?? 'commerce.events',
       queue: process.env.RABBITMQ_QUEUE ?? 'recommendations-service',
-      bindingKeys: ['order.confirmed'],
+      bindingKeys: ['order.confirmed', 'order.co_purchase_replay'],
     }),
     OutboxModule.forRoot({ pollIntervalMs: 1000 }),
     RecommendationsModule,

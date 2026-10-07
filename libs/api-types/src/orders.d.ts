@@ -38,6 +38,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/admin/replay-co-purchases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-announce co-purchase pairs for all confirmed orders
+         * @description Appends one order.co_purchase_replay event per confirmed order to the outbox. Bound only to recommendations-service. Truncate product_recommendations before replaying, or counts double.
+         */
+        post: operations["ReplayController_replayCoPurchases"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orders/{id}": {
         parameters: {
             query?: never;
@@ -167,6 +187,15 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        ReplayCoPurchasesResponseDto: {
+            /**
+             * @description Guidance on resetting recommendations read model before replay.
+             * @example Truncate product_recommendations before replaying, or counts double.
+             */
+            next: string;
+            /** @description Number of confirmed orders replayed into outbox. */
+            orders: number;
+        };
     };
     responses: never;
     parameters: never;
@@ -236,6 +265,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderResponseDto"];
+                };
+            };
+        };
+    };
+    ReplayController_replayCoPurchases: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-correlation-id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplayCoPurchasesResponseDto"];
                 };
             };
         };

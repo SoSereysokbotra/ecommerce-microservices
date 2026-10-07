@@ -4,6 +4,7 @@ import { ProductRecommendationEntity } from './product-recommendation.entity';
 import { RecommendationsService } from './recommendations.service';
 import { CatalogClient } from './catalog.client';
 import { RecommendationsController } from './recommendations.controller';
+import { AdminController } from './admin.controller';
 
 /**
  * Recommendations module: co-purchase graph derived from order facts,
@@ -11,7 +12,7 @@ import { RecommendationsController } from './recommendations.controller';
  */
 @Module({
   imports: [TypeOrmModule.forFeature([ProductRecommendationEntity])],
-  controllers: [RecommendationsController],
+  controllers: [RecommendationsController, AdminController],
   providers: [RecommendationsService, CatalogClient],
   exports: [TypeOrmModule, RecommendationsService, CatalogClient],
 })

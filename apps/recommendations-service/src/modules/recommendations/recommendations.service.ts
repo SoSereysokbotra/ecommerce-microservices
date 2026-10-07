@@ -130,4 +130,22 @@ export class RecommendationsService {
       total: items.length,
     };
   }
+
+  /**
+   * Reset the recommendations read model and idempotency tracking.
+   *
+   * Pairs with POST /orders/admin/replay-co-purchases (M14 plan §7, §13).
+   * Truncating product_recommendations wipes accumulated counts so a replay
+   * does not double them. Deleting recommendations-service markers from
+   * processed_events ensures a replay can re-process cleanly if needed.
+   */
+  async reset(): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      await manager.query('TRUNCATE TABLE product_recommendations');
+      await manager.query(
+        "DELETE FROM processed_events WHERE consumer = 'recommendations-service'",
+      );
+    });
+    this.logger.log('Reset product_recommendations and idempotency markers');
+  }
 }

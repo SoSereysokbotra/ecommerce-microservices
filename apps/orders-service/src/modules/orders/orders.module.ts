@@ -7,6 +7,8 @@ import { OrderSagaEntity } from './order-saga.entity';
 import { OrderSagaService } from './order-saga.service';
 import { OrdersService } from './orders.service';
 import { OrdersController } from './orders.controller';
+import { ReplayController } from './replay.controller';
+import { ReplayService } from './replay.service';
 import { PricingClient } from './pricing.client';
 import { UsersClient } from './users.client';
 
@@ -15,8 +17,8 @@ import { UsersClient } from './users.client';
     TypeOrmModule.forFeature([OrderEntity, OrderItemEntity, OrderSagaEntity]),
     HttpModule.register({ timeout: 5000 }),
   ],
-  controllers: [OrdersController],
-  providers: [OrdersService, OrderSagaService, PricingClient, UsersClient],
-  exports: [OrdersService, OrderSagaService],
+  controllers: [OrdersController, ReplayController],
+  providers: [OrdersService, OrderSagaService, PricingClient, UsersClient, ReplayService],
+  exports: [OrdersService, OrderSagaService, ReplayService],
 })
 export class OrdersModule {}

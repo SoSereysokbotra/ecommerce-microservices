@@ -49,7 +49,7 @@ export class OrderEventsListener implements OnModuleInit {
   }
 
   async handle(event: DomainEvent<OrderConfirmedPayload>): Promise<void> {
-    if (event.eventType !== 'order.confirmed') {
+    if (event.eventType !== 'order.confirmed' && event.eventType !== 'order.co_purchase_replay') {
       return;
     }
 
@@ -58,7 +58,7 @@ export class OrderEventsListener implements OnModuleInit {
 
     // An order with no items carries nothing to pair. Acknowledged and skipped.
     if (items.length === 0) {
-      this.logger.warn(`order.confirmed (${event.eventId}) carries no items; skipping`);
+      this.logger.warn(`${event.eventType} (${event.eventId}) carries no items; skipping`);
       return;
     }
 
@@ -67,7 +67,7 @@ export class OrderEventsListener implements OnModuleInit {
     const distinctProductIds = new Set(items.map((i) => i.productId));
     if (distinctProductIds.size < 2) {
       this.logger.log(
-        `order.confirmed (${event.eventId}) has fewer than 2 distinct products; skipping`,
+        `${event.eventType} (${event.eventId}) has fewer than 2 distinct products; skipping`,
       );
       return;
     }
@@ -80,7 +80,7 @@ export class OrderEventsListener implements OnModuleInit {
     });
 
     if (!ran) {
-      this.logger.debug(`Duplicate order.confirmed (${event.eventId}) ignored`);
+      this.logger.debug(`Duplicate ${event.eventType} (${event.eventId}) ignored`);
     }
   }
 }

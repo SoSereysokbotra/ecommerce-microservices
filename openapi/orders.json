@@ -272,6 +272,24 @@
           "updatedAt"
         ],
         "type": "object"
+      },
+      "ReplayCoPurchasesResponseDto": {
+        "properties": {
+          "next": {
+            "description": "Guidance on resetting recommendations read model before replay.",
+            "example": "Truncate product_recommendations before replaying, or counts double.",
+            "type": "string"
+          },
+          "orders": {
+            "description": "Number of confirmed orders replayed into outbox.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "orders",
+          "next"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -396,6 +414,43 @@
           }
         },
         "summary": "Place an order",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/v1/orders/admin/replay-co-purchases": {
+      "post": {
+        "description": "Appends one order.co_purchase_replay event per confirmed order to the outbox. Bound only to recommendations-service. Truncate product_recommendations before replaying, or counts double.",
+        "operationId": "ReplayController_replayCoPurchases",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayCoPurchasesResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Re-announce co-purchase pairs for all confirmed orders",
         "tags": [
           "orders"
         ]

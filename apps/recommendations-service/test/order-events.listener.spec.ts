@@ -126,7 +126,7 @@ describe('OrderEventsListener', () => {
     expect(recommendationsMock.recordCoPurchases).toHaveBeenCalledWith(managerMock, items);
   });
 
-  it('ignores events that are not order.confirmed', async () => {
+  it('ignores events that are neither order.confirmed nor order.co_purchase_replay', async () => {
     const event = createDomainEvent('order.cancelled', 'evt-other', {
       orderId: 'ord-other',
       items: [{ productId: 'prod-a' }, { productId: 'prod-b' }],
@@ -136,5 +136,71 @@ describe('OrderEventsListener', () => {
 
     expect(idempotencyMock.handleOnce).not.toHaveBeenCalled();
     expect(recommendationsMock.recordCoPurchases).not.toHaveBeenCalled();
+  });
+
+  describe('order.co_purchase_replay handling', () => {
+    it('processes order.co_purchase_replay through the same handleOnce and recordCoPurchases path', async () => {
+      idempotencyMock.handleOnce.mockImplementation(async (_eventId, _consumer, fn) => {
+        await fn(managerMock);
+        return true;
+      });
+
+      const items = [{ productId: 'prod-x' }, { productId: 'prod-y' }];
+      const event = createDomainEvent('order.co_purchase_replay', 'evt-replay-1', {
+        orderId: 'ord-replay-1',
+        items,
+      });
+
+      await listener.handle(event);
+
+      expect(idempotencyMock.handleOnce).toHaveBeenCalledWith(
+        'evt-replay-1',
+        'recommendations-service',
+        expect.any(Function),
+      );
+      expect(recommendationsMock.recordCoPurchases).toHaveBeenCalledWith(managerMock, items);
+    });
+
+    it('skips order.co_purchase_replay with fewer than 2 distinct products', async () => {
+      const event = createDomainEvent('order.co_purchase_replay', 'evt-replay-single', {
+        orderId: 'ord-replay-single',
+        items: [{ productId: 'prod-solo' }],
+      });
+
+      await listener.handle(event);
+
+      expect(idempotencyMock.handleOnce).not.toHaveBeenCalled();
+      expect(recommendationsMock.recordCoPurchases).not.toHaveBeenCalled();
+    });
+
+    it('skips order.co_purchase_replay with no items', async () => {
+      const event = createDomainEvent('order.co_purchase_replay', 'evt-replay-empty', {
+        orderId: 'ord-replay-empty',
+        items: [],
+      });
+
+      await listener.handle(event);
+
+      expect(idempotencyMock.handleOnce).not.toHaveBeenCalled();
+      expect(recommendationsMock.recordCoPurchases).not.toHaveBeenCalled();
+    });
+
+    it('ignores duplicate order.co_purchase_replay via idempotency marker', async () => {
+      idempotencyMock.handleOnce.mockResolvedValue(false);
+
+      const event = createDomainEvent('order.co_purchase_replay', 'evt-replay-dup', {
+        orderId: 'ord-replay-dup',
+        items: [{ productId: 'prod-1' }, { productId: 'prod-2' }],
+      });
+
+      await listener.handle(event);
+
+      expect(idempotencyMock.handleOnce).toHaveBeenCalledWith(
+        'evt-replay-dup',
+        'recommendations-service',
+        expect.any(Function),
+      );
+      expect(recommendationsMock.recordCoPurchases).not.toHaveBeenCalled();
+    });
   });
 });

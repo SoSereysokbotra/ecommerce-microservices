@@ -36,6 +36,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/recommendations/admin/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Truncate product recommendations and reset idempotency markers
+         * @description The read side reset — half of a co-purchase rebuild. The other half is on the write side (POST /orders/admin/replay-co-purchases). Truncates product_recommendations and clears processed_events so replay starts clean.
+         */
+        post: operations["AdminController_reset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/recommendations/products/{productId}": {
         parameters: {
             query?: never;
@@ -90,6 +110,18 @@ export interface components {
             /** @example black-t-shirt-medium */
             slug: string;
         };
+        ResetRecommendationsResponseDto: {
+            /**
+             * @description Whether the recommendations read table and markers were cleared.
+             * @example true
+             */
+            cleared: boolean;
+            /**
+             * @description The write-side replay command to repopulate the graph.
+             * @example POST /orders/admin/replay-co-purchases
+             */
+            next: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -130,6 +162,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    AdminController_reset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResetRecommendationsResponseDto"];
+                };
             };
         };
     };

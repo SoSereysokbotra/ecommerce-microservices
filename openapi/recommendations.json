@@ -64,6 +64,25 @@
           "coPurchaseCount"
         ],
         "type": "object"
+      },
+      "ResetRecommendationsResponseDto": {
+        "properties": {
+          "cleared": {
+            "description": "Whether the recommendations read table and markers were cleared.",
+            "example": true,
+            "type": "boolean"
+          },
+          "next": {
+            "description": "The write-side replay command to repopulate the graph.",
+            "example": "POST /orders/admin/replay-co-purchases",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cleared",
+          "next"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -107,6 +126,34 @@
         },
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/recommendations/admin/reset": {
+      "post": {
+        "description": "The read side reset — half of a co-purchase rebuild. The other half is on the write side (POST /orders/admin/replay-co-purchases). Truncates product_recommendations and clears processed_events so replay starts clean.",
+        "operationId": "AdminController_reset",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResetRecommendationsResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Truncate product recommendations and reset idempotency markers",
+        "tags": [
+          "recommendations"
         ]
       }
     },

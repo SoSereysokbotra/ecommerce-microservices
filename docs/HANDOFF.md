@@ -14,7 +14,7 @@ discounts), M9 (coupons), **M10 (shipping)** and **M11 (multi-currency)** are
 all done and pushed. R3 has started: **M12 (search) is complete** — seven commits, ADR-0005 and
 ADR-0011 written, 32 Playwright tests green. Thirteen of 23 milestones done.
 
-**The next task is M14 step 4 — replay.** Steps 1–3 are done. See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
+**The next task is M14 step 5 — the storefront.** Steps 1–4 are done. See §10. The plan is `docs/M12_SEARCH_PLAN.md`, already reviewed and committed.
 
 **Running it is now one command: `npm run dev`.** See §4 — the old
 `docker stop jobfit-redis` step is gone.
@@ -1430,6 +1430,36 @@ already had.
 when it was first written. The client defaults to the right Docker hostname so
 nothing broke, but it is now set explicitly, as pricing and orders set theirs.
 A new `.env` on another machine needs it.
+
+**M14 step 4 is done** (commit "M14 step 4: replay from a dedicated event").
+`POST /orders/admin/replay-co-purchases` walks confirmed orders and emits
+**`order.co_purchase_replay`**, bound *only* to recommendations-service.
+`POST /recommendations/admin/reset` truncates the table and clears this
+consumer's `processed_events` rows — the two pair the way M12's
+`recreate-index` + `republish` do, which is better than the warning string the
+plan first suggested.
+
+| Scenario | Result |
+|---|---|
+| Either admin route with no token | 401 |
+| `reset` | `{ cleared: true, next: "POST /orders/admin/replay-co-purchases" }`; the graph reads **0** |
+| `replay` | 24 confirmed orders → **6 pair rows**, e.g. `CBL-USB-1 -> MUG-BLK-1 = 5` |
+| **reset + replay a second time** | **identical graph** — the rebuild is deterministic |
+| **replay WITHOUT reset** | `5 → 10` — **doubled**, exactly as documented |
+| Queue bindings at the broker | only `recommendations-service` binds `order.co_purchase_replay`; shipping and reviews bind `order.confirmed` alone |
+| shipping and reviews during three replays | **nothing logged** — no shipment, no purchase row |
+
+**Why the replay cannot reuse `order.confirmed`:** three services consume it
+and M15 adds a fourth whose job is sending email. A backfill that mails every
+past customer is not a duplicate row to clean up. The dedicated event makes
+the blast radius a property of the binding rather than a hope about every
+consumer's idempotency.
+
+**Why replay doubles without a reset, and why that is correct:**
+`handleOnce` keys on `eventId`, and a replay mints new ids — which is exactly
+what lets it rebuild at all. The price is that it must run against an empty
+table. Hence `reset` existing as a paired command rather than a sentence in a
+response body.
 
 What the plan had to work out, for context:
 
