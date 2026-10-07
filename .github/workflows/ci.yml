@@ -9,11 +9,84 @@ on:
 env:
   NODE_VERSION: '20'
 
-jobs:
-  build-and-test:
-    name: Lint · Build · Test
-    runs-on: ubuntu-latest
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Change Detection (Path Filtering)
+  # ---------------------------------------------------------------------------
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.filter.outputs.core }}
+      storefront: ${{ steps.filter.outputs.storefront }}
+      gateway: ${{ steps.filter.outputs.gateway }}
+      users: ${{ steps.filter.outputs.users }}
+      catalog: ${{ steps.filter.outputs.catalog }}
+      inventory: ${{ steps.filter.outputs.inventory }}
+      orders: ${{ steps.filter.outputs.orders }}
+      payments: ${{ steps.filter.outputs.payments }}
+      cart: ${{ steps.filter.outputs.cart }}
+      pricing: ${{ steps.filter.outputs.pricing }}
+      shipping: ${{ steps.filter.outputs.shipping }}
+      search: ${{ steps.filter.outputs.search }}
+      reviews: ${{ steps.filter.outputs.reviews }}
+      recommendations: ${{ steps.filter.outputs.recommendations }}
+      any_backend: ${{ steps.filter.outputs.any_backend }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            core:
+              - 'libs/**'
+              - 'package*.json'
+              - 'tsconfig*.json'
+              - '.eslintrc.js'
+              - '.github/workflows/**'
+            storefront:
+              - 'storefront/**'
+            gateway:
+              - 'apps/api-gateway/**'
+            users:
+              - 'apps/users-service/**'
+            catalog:
+              - 'apps/catalog-service/**'
+            inventory:
+              - 'apps/inventory-service/**'
+            orders:
+              - 'apps/orders-service/**'
+            payments:
+              - 'apps/payments-service/**'
+            cart:
+              - 'apps/cart-service/**'
+            pricing:
+              - 'apps/pricing-service/**'
+            shipping:
+              - 'apps/shipping-service/**'
+            search:
+              - 'apps/search-service/**'
+            reviews:
+              - 'apps/reviews-service/**'
+            recommendations:
+              - 'apps/recommendations-service/**'
+            any_backend:
+              - 'apps/**'
+              - 'libs/**'
+              - 'package*.json'
+
+  # ---------------------------------------------------------------------------
+  # 2. Lint & Typecheck
+  # ---------------------------------------------------------------------------
+  lint-and-typecheck:
+    name: Lint & Typecheck
+    needs: [changes]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -22,7 +95,19 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Install
+      - name: Cache Node Modules
+        id: cache-deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            libs/*/node_modules
+            apps/*/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json', '**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
         run: |
           npm install
           npm install --prefix libs/common
@@ -40,10 +125,12 @@ jobs:
           npm install --prefix apps/reviews-service
           npm install --prefix apps/recommendations-service
 
-      - name: Lint
+      - name: Lint Backend & Libs
+        if: needs.changes.outputs.any_backend == 'true' || needs.changes.outputs.core == 'true'
         run: npm run lint
 
-      - name: Typecheck
+      - name: Typecheck Backend Services
+        if: needs.changes.outputs.any_backend == 'true' || needs.changes.outputs.core == 'true'
         run: |
           npx tsc --noEmit -p apps/api-gateway/tsconfig.json
           npx tsc --noEmit -p apps/users-service/tsconfig.json
@@ -58,15 +145,20 @@ jobs:
           npx tsc --noEmit -p apps/reviews-service/tsconfig.json
           npx tsc --noEmit -p apps/recommendations-service/tsconfig.json
 
-      # --passWithNoTests keeps the pipeline honest for services that do not
-      # have specs yet, instead of failing on Jest's "no tests found" exit 1.
-      - name: Test
-        run: npm run test:all
+      - name: Typecheck Storefront
+        if: needs.changes.outputs.storefront == 'true' || needs.changes.outputs.core == 'true'
+        run: |
+          npm install --prefix storefront
+          npx tsc --noEmit -p storefront/tsconfig.json
 
-  api-types:
-    name: API types are current
+  # ---------------------------------------------------------------------------
+  # 3. Unit Tests
+  # ---------------------------------------------------------------------------
+  unit-tests:
+    name: Backend Unit Tests
+    needs: [changes]
+    if: needs.changes.outputs.any_backend == 'true' || needs.changes.outputs.core == 'true'
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -75,12 +167,86 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      # Regenerates types from the committed OpenAPI documents. Needs no
-      # database and no running service, so it can gate every pull request.
-      #
-      # This job is why the previous project's bug cannot happen here: the
-      # frontend's types came from a hand-maintained copy that silently drifted
-      # from the backend, and a call to a route that did not exist shipped.
+      - name: Install dependencies
+        run: |
+          npm install
+          npm install --prefix libs/common
+          npm install --prefix libs/rabbitmq
+          npm install --prefix apps/users-service
+          npm install --prefix apps/catalog-service
+          npm install --prefix apps/inventory-service
+          npm install --prefix apps/orders-service
+          npm install --prefix apps/payments-service
+          npm install --prefix apps/cart-service
+          npm install --prefix apps/pricing-service
+          npm install --prefix apps/shipping-service
+          npm install --prefix apps/search-service
+          npm install --prefix apps/reviews-service
+          npm install --prefix apps/recommendations-service
+
+      - name: Run Jest Test Suites
+        run: npm run test:all
+
+  # ---------------------------------------------------------------------------
+  # 4. Docker BuildKit Verification (Multi-Stage Validation)
+  # ---------------------------------------------------------------------------
+  docker-build:
+    name: Docker Build (${{ matrix.service }})
+    needs: [changes]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: api-gateway
+            dir: apps/api-gateway
+            key: gateway
+          - service: catalog-service
+            dir: apps/catalog-service
+            key: catalog
+          - service: orders-service
+            dir: apps/orders-service
+            key: orders
+          - service: recommendations-service
+            dir: apps/recommendations-service
+            key: recommendations
+    # Only run matrix jobs for services whose code changed or if core changed
+    if: |
+      needs.changes.outputs.core == 'true' ||
+      (matrix.key == 'gateway' && needs.changes.outputs.gateway == 'true') ||
+      (matrix.key == 'catalog' && needs.changes.outputs.catalog == 'true') ||
+      (matrix.key == 'orders' && needs.changes.outputs.orders == 'true') ||
+      (matrix.key == 'recommendations' && needs.changes.outputs.recommendations == 'true')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate Dockerfile Build (${{ matrix.service }})
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./${{ matrix.dir }}/Dockerfile
+          target: production
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---------------------------------------------------------------------------
+  # 5. Contract Verification (OpenAPI Types)
+  # ---------------------------------------------------------------------------
+  api-types:
+    name: API Types Contract Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
       - name: Regenerate types from committed specs
         run: bash scripts/gen-api-types.sh
 
@@ -92,10 +258,12 @@ jobs:
           fi
           echo "API types match the committed specs."
 
+  # ---------------------------------------------------------------------------
+  # 6. Security & Secret Scanning
+  # ---------------------------------------------------------------------------
   secret-scan:
-    name: Secret scan
+    name: Secret Scan
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
         with:
