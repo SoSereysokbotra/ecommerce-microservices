@@ -1,0 +1,133 @@
+{{- if .Values.networkPolicy.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ecommerce-platform.fullname" . }}-default-deny-all
+  labels:
+    {{- include "ecommerce-platform.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ecommerce-platform.fullname" . }}-allow-coredns
+  labels:
+    {{- include "ecommerce-platform.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ecommerce-platform.fullname" . }}-allow-edge-ingress
+  labels:
+    {{- include "ecommerce-platform.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - api-gateway
+          - storefront
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 3000
+        - protocol: TCP
+          port: 3100
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ecommerce-platform.fullname" . }}-allow-gateway-to-services
+  labels:
+    {{- include "ecommerce-platform.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - users-service
+          - catalog-service
+          - cart-service
+          - orders-service
+          - payments-service
+          - inventory-service
+          - shipping-service
+          - reviews-service
+          - pricing-service
+          - search-service
+          - recommendations-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: api-gateway
+      ports:
+        - protocol: TCP
+          port: 3001
+        - protocol: TCP
+          port: 3002
+        - protocol: TCP
+          port: 3003
+        - protocol: TCP
+          port: 3004
+        - protocol: TCP
+          port: 3005
+        - protocol: TCP
+          port: 3006
+        - protocol: TCP
+          port: 3007
+        - protocol: TCP
+          port: 3008
+        - protocol: TCP
+          port: 3009
+        - protocol: TCP
+          port: 3010
+        - protocol: TCP
+          port: 3011
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ecommerce-platform.fullname" . }}-allow-payments-stripe
+  labels:
+    {{- include "ecommerce-platform.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: payments-service
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+{{- end }}

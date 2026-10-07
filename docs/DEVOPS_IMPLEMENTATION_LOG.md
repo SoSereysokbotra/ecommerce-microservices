@@ -375,18 +375,85 @@ Phase 4 provides complete, enterprise-grade cloud-native deployment primitives a
 
 ---
 
-## 7. Quick Commands & Verification
+## 7. Phase 5: Zero-Trust Security & Secrets Management
+
+### Architecture & Overview
+Phase 5 implements zero-trust isolation and automated secrets management across all microservices:
+1. **External Secrets Operator (ESO):** Replaces plaintext `.env` and committed secrets by fetching credentials dynamically from AWS Secrets Manager or HashiCorp Vault.
+2. **Kubernetes Network Policies (`NetworkPolicy`):** Enforces default-deny ingress and egress, isolates namespace traffic, and explicitly locks down `payments-service` to only reach the external Stripe API (port 443) and internal database/messaging.
+3. **Automated Vulnerability & CVE Scanning:** GitHub Actions CI job with Aqua Security Trivy scanning container configurations, manifests, and dependencies for High/Critical CVEs.
+4. **Developer Security Audit Suite:** `npm run security:audit` (`scripts/security-audit.sh`) auditing committed secrets, non-root Dockerfiles, and NetworkPolicies.
+
+```
+                                ┌──────────────────────────────────────┐
+                                │ AWS Secrets Manager / Vault          │
+                                └──────────────────┬───────────────────┘
+                                                   │
+                                      IRSA / Token │ ESO Sync (Hourly)
+                                                   ▼
+                                ┌──────────────────────────────────────┐
+                                │ ExternalSecret Operator              │
+                                │ (deploy/k8s/base/security/ext-sec)   │
+                                └──────────────────┬───────────────────┘
+                                                   │ Creates in-memory
+                                                   ▼
+                                ┌──────────────────────────────────────┐
+                                │ Kubernetes Secret (commerce-secrets) │
+                                └──────────────────┬───────────────────┘
+                                                   │
+                         ┌─────────────────────────┴─────────────────────────┐
+                         ▼                                                   ▼
+            ┌───────────────────────────┐                       ┌───────────────────────────┐
+            │ Pod: api-gateway          │                       │ Pod: payments-service     │
+            │ SecurityContext: Non-Root │                       │ SecurityContext: Non-Root │
+            └────────────┬──────────────┘                       └─────────────┬─────────────┘
+                         │                                                    │
+     NetworkPolicy Ingress allowed only                   NetworkPolicy Egress strictly locked:
+     from ingress-controller                              - Internal DB (5432) & RabbitMQ (5672)
+     NetworkPolicy Egress allowed only                    - External Stripe API only (Port 443)
+     to internal services (3001-3011)                     - All other internet access blocked!
+```
+
+### Components Implemented
+
+#### 1. External Secrets Operator Manifests (`deploy/k8s/base/security/`)
+* [`secret-store.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/security/secret-store.yaml): Configures `SecretStore` providers for AWS Secrets Manager and HashiCorp Vault using IRSA (`external-secrets-sa`).
+* [`external-secrets.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/security/external-secrets.yaml): `ExternalSecret` manifest mapping remote secret keys (`jwt_secret`, `stripe_secret_key`, database connection URLs, RabbitMQ passwords) into `commerce-secrets`.
+
+#### 2. Zero-Trust Kubernetes Network Policies (`deploy/k8s/base/security/network-policies.yaml`)
+* `default-deny-all`: Denies all ingress and egress across the `commerce` namespace by default.
+* `allow-coredns-egress`: Allows UDP/TCP port 53 to `kube-system` CoreDNS.
+* `allow-ingress-to-edge`: Permits external ingress only to `api-gateway` (port 3000) and `storefront` (port 3100).
+* `allow-gateway-to-services`: Allows `api-gateway` to communicate downstream with microservices on ports 3001–3011.
+* `allow-gateway-egress`: Restricts gateway outbound traffic to downstream microservice ports, Redis, and observability.
+* `allow-services-to-infrastructure`: Allows microservices egress only to internal infrastructure (Postgres 5432, Redis 6379, RabbitMQ 5672, OpenSearch 9200, OTel 4318, Loki 3100).
+* `allow-inter-service-communication`: Permits authorized East-West HTTP calls (`orders` -> `users:3001`, `pricing` -> `shipping:3007` & `catalog:3002`, `reviews` -> `users:3001`, `recommendations` -> `catalog:3002`, `cart` -> `inventory:3006`).
+* `allow-payments-to-stripe-egress`: Allows `payments-service` egress to external HTTPS (port 443) for Stripe webhook and payment intent creation, while blocking internet egress from all other database services.
+
+#### 3. Container Vulnerability & CI Scanning
+* **GitHub Actions:** Added `security-audit` job to [`.github/workflows/ci.yml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/.github/workflows/ci.yml) running Aqua Security Trivy for High and Critical CVEs and configuration misconfigurations.
+* **Developer CLI Suite:** Created [`scripts/security-audit.sh`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/scripts/security-audit.sh) executable via `npm run security:audit`.
+
+---
+
+## 8. Quick Commands & Verification
+
+### Security Auditing
+```bash
+# Run comprehensive zero-trust security audit
+npm run security:audit
+```
 
 ### Kubernetes & Helm Validation
 ```bash
-# 1. Validate Kustomize Base manifests
+# 1. Validate Kustomize Base manifests (including NetworkPolicies & ESO)
 kubectl kustomize deploy/k8s/base
 
 # 2. Validate Kustomize Staging & Production Overlays
 kubectl kustomize deploy/k8s/overlays/staging
 kubectl kustomize deploy/k8s/overlays/production
 
-# 3. Lint and render the Helm chart
+# 3. Lint and render the Helm chart (including NetworkPolicies)
 helm lint deploy/helm/ecommerce-platform
 helm template commerce-release deploy/helm/ecommerce-platform
 ```
@@ -432,45 +499,27 @@ npm run lint
 
 ---
 
-## 8. Complete Inventory of Files
+## 9. Complete Inventory of Files
+
+### Phase 5 New & Enhanced Files
+* [`deploy/k8s/base/security/secret-store.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/security/secret-store.yaml) *(ESO SecretStore)*
+* [`deploy/k8s/base/security/external-secrets.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/security/external-secrets.yaml) *(ESO ExternalSecret)*
+* [`deploy/k8s/base/security/network-policies.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/security/network-policies.yaml) *(Zero-trust NetworkPolicies)*
+* [`deploy/helm/ecommerce-platform/templates/networkpolicy.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/templates/networkpolicy.yaml) *(Helm NetworkPolicy template)*
+* [`scripts/security-audit.sh`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/scripts/security-audit.sh) *(Zero-trust audit script)*
+* [`.github/workflows/ci.yml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/.github/workflows/ci.yml) *(Added Trivy CVE scan and security-audit job)*
+* [`package.json`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/package.json) *(Added npm run security:audit)*
 
 ### Phase 4 New Files Created
-* [`deploy/k8s/base/namespace.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/namespace.yaml)
-* [`deploy/k8s/base/configmap.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/configmap.yaml)
-* [`deploy/k8s/base/secrets.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/secrets.yaml)
-* [`deploy/k8s/base/ingress.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/ingress.yaml)
-* [`deploy/k8s/base/hpa.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/hpa.yaml)
-* [`deploy/k8s/base/keda-scaledobjects.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/keda-scaledobjects.yaml)
-* [`deploy/k8s/base/services/*.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/services/api-gateway.yaml) *(13 microservices)*
-* [`deploy/k8s/base/kustomization.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/kustomization.yaml)
-* [`deploy/k8s/overlays/staging/kustomization.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/overlays/staging/kustomization.yaml)
-* [`deploy/k8s/overlays/production/kustomization.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/overlays/production/kustomization.yaml)
-* [`deploy/helm/ecommerce-platform/Chart.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/Chart.yaml)
-* [`deploy/helm/ecommerce-platform/values.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/values.yaml)
-* [`deploy/helm/ecommerce-platform/templates/_helpers.tpl`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/templates/_helpers.tpl)
-* [`deploy/helm/ecommerce-platform/templates/configmap.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/templates/configmap.yaml)
-* [`deploy/helm/ecommerce-platform/templates/secret.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/templates/secret.yaml)
-* [`deploy/helm/ecommerce-platform/templates/deployment.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/templates/deployment.yaml)
-* [`deploy/helm/ecommerce-platform/templates/service.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/templates/service.yaml)
-* [`deploy/helm/ecommerce-platform/templates/ingress.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/templates/ingress.yaml)
-* [`deploy/helm/ecommerce-platform/templates/hpa.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/templates/hpa.yaml)
-* [`deploy/helm/ecommerce-platform/templates/keda.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/templates/keda.yaml)
-* [`deploy/argocd/project.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/argocd/project.yaml)
-* [`deploy/argocd/application-staging.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/argocd/application-staging.yaml)
-* [`deploy/argocd/application-production.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/argocd/application-production.yaml)
-* [`deploy/terraform/main.tf`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/terraform/main.tf)
-* [`deploy/terraform/variables.tf`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/terraform/variables.tf)
-* [`deploy/terraform/outputs.tf`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/terraform/outputs.tf)
-* [`deploy/terraform/terraform.tfvars.example`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/terraform/terraform.tfvars.example)
+* K8s base manifests in [`deploy/k8s/base/`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/) and overlays (`staging`, `production`).
+* Enterprise Helm chart in [`deploy/helm/ecommerce-platform/`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/).
+* ArgoCD GitOps applications in [`deploy/argocd/`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/argocd/).
+* Terraform IaC in [`deploy/terraform/`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/terraform/).
 
 ### Earlier Phases Files Created
 * [`docs/DEVOPS_IMPLEMENTATION_LOG.md`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/docs/DEVOPS_IMPLEMENTATION_LOG.md)
 * [`scripts/rabbitmq-dlq.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/scripts/rabbitmq-dlq.ts)
-* [`apps/orders-service/test/rabbitmq-dlq.spec.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/orders-service/test/rabbitmq-dlq.spec.ts)
-* [`libs/rabbitmq/src/rabbitmq.service.spec.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/rabbitmq/src/rabbitmq.service.spec.ts)
-* [`libs/common/src/tracing/trace-context.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/common/src/tracing/trace-context.ts)
-* [`apps/orders-service/test/tracing.spec.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/orders-service/test/tracing.spec.ts)
-* [`docker-compose.observability.yml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/docker-compose.observability.yml)
-* Observability configs in `observability/` (Loki, Tempo, Prometheus, Grafana).
+* RabbitMQ DLQ spec & tracing specs in `apps/orders-service/test/` and `libs/rabbitmq/src/`.
+* LGTM Observability stack in `docker-compose.observability.yml` and `observability/`.
 
 

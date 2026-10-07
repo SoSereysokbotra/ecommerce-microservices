@@ -271,3 +271,24 @@ jobs:
 
       - name: Scan for committed credentials
         run: bash scripts/scan-secrets.sh
+
+  # ---------------------------------------------------------------------------
+  # 7. Vulnerability & CVE Scanning (Trivy & Zero-Trust Audit)
+  # ---------------------------------------------------------------------------
+  security-audit:
+    name: Zero-Trust Security Audit & Trivy Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Zero-Trust Security Audit
+        run: bash scripts/security-audit.sh
+
+      - name: Run Trivy Vulnerability Scanner (Config & Manifests)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          hide-progress: true
+          format: 'table'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '0'

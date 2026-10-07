@@ -33,6 +33,7 @@
     "dlq:stats": "ts-node scripts/rabbitmq-dlq.ts stats",
     "dlq:replay": "ts-node scripts/rabbitmq-dlq.ts replay",
     "dlq:purge": "ts-node scripts/rabbitmq-dlq.ts purge",
+    "security:audit": "bash scripts/security-audit.sh",
     "start:orders": "npm run start:dev --prefix apps/orders-service",
     "start:payments": "npm run start:dev --prefix apps/payments-service",
     "migrate:orders": "npm run migration:run --prefix apps/orders-service",

@@ -21,6 +21,9 @@ resources:
   - services/search-service.yaml
   - services/recommendations-service.yaml
   - services/storefront.yaml
+  - security/secret-store.yaml
+  - security/external-secrets.yaml
+  - security/network-policies.yaml
 
 labels:
   - pairs:
