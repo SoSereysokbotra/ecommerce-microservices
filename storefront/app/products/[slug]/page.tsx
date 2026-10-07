@@ -14,6 +14,7 @@ import {
   type Stock,
 } from '@/lib/types';
 import { Stars } from '@/components/Stars';
+import { AlsoBought } from '@/components/AlsoBought';
 
 export default function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
@@ -519,6 +520,9 @@ export default function ProductPage({ params }: { params: Promise<{ slug: string
           </p>
         )}
       </section>
+
+      {/* Recommendations section (docs/M14_RECOMMENDATIONS_PLAN.md §9) */}
+      <AlsoBought productId={product.id} />
     </>
   );
 }

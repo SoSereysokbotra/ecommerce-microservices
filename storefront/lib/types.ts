@@ -409,3 +409,27 @@ export interface Eligibility {
   existingReviewId?: string | null;
   existing?: string | null;
 }
+
+// --- Recommendations -----------------------------------------------------
+
+/**
+ * A co-purchased recommendation item from recommendations-service.
+ *
+ * Narrow view model matching RecommendedProductDto (docs/M14_RECOMMENDATIONS_PLAN.md §13 step 3).
+ * Enriched by recommendations-service from catalog-service.
+ */
+export interface Recommendation {
+  productId: string;
+  sku: string;
+  slug: string;
+  name: string;
+  priceMinor: number;
+  currency: string;
+  coPurchaseCount: number;
+}
+
+export interface RecommendationsResponse {
+  items: Recommendation[];
+  total: number;
+}
+
