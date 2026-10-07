@@ -291,7 +291,105 @@ In asynchronous messaging architectures, failures fall into two categories:
 
 ---
 
-## 6. Quick Commands & Verification
+---
+
+## 6. Phase 4: GitOps & Container Orchestration (Kubernetes, Helm, KEDA, ArgoCD, Terraform)
+
+### Architecture & Overview
+Phase 4 provides complete, enterprise-grade cloud-native deployment primitives across 13 services (12 backend NestJS microservices + 1 Next.js storefront).
+
+```
+                            ┌────────────────────────────────────────┐
+                            │ Git Repository (GitHub: origin/main)   │
+                            └───────────────────┬────────────────────┘
+                                                │
+                                    GitOps Sync │ (Polling / Webhook)
+                                                ▼
+                            ┌────────────────────────────────────────┐
+                            │ ArgoCD GitOps Controller               │
+                            │  (apps/deploy/argocd)                  │
+                            └─────────┬────────────────────┬─────────┘
+                                      │                    │
+                        Sync Staging  │                    │ Sync Production
+                                      ▼                    ▼
+          ┌───────────────────────────────────┐    ┌───────────────────────────────────┐
+          │ Namespace: commerce-staging       │    │ Namespace: commerce-production    │
+          │ Kustomize Overlay: staging/       │    │ Kustomize Overlay: production/    │
+          │  - 1 replica / lower cost         │    │  - 3 replicas HA critical         │
+          │  - staging.commerce.example.com   │    │  - shop.example.com               │
+          │  - DEBUG logging                  │    │  - WARN logging, strict limits    │
+          └─────────────────┬─────────────────┘    └─────────────────┬─────────────────┘
+                            │                                        │
+                            └────────────────────┬───────────────────┘
+                                                 │
+                                                 ▼
+          ┌────────────────────────────────────────────────────────────────────────────┐
+          │ Kubernetes Cluster Infrastructure (Provisioned via deploy/terraform/)       │
+          │                                                                            │
+          │   Ingress (NGINX + cert-manager)                                           │
+          │     ├── /api  ──► api-gateway (ClusterIP: 3000)                             │
+          │     └── /     ──► storefront (ClusterIP: 3100)                             │
+          │                                                                            │
+          │   HorizontalPodAutoscaler (HPA)                                            │
+          │     └── api-gateway, cart-service, orders-service, storefront (CPU > 70%)  │
+          │                                                                            │
+          │   Event-Driven Autoscaling (KEDA)                                          │
+          │     └── shipping-service, inventory-service (RabbitMQ backlog > 30 msgs)   │
+          └────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Components Implemented
+
+#### 1. Kustomize Base & Environment Overlays (`deploy/k8s/`)
+* **Base Layer (`deploy/k8s/base/`):**
+  * `namespace.yaml`: Defines `commerce` namespace.
+  * `configmap.yaml`: Centralized configuration (RabbitMQ host, Redis host, OpenSearch, OTel endpoints, internal service URLs).
+  * `secrets.yaml`: Template for JWT secrets, database connection URLs, and Stripe API keys.
+  * `services/*.yaml`: 13 isolated manifests for each microservice with RollingUpdate, non-root security contexts, CPU/Memory requests & limits, and Liveness/Readiness probes.
+  * `ingress.yaml`: NGINX Ingress routing `/api` to `api-gateway` and `/` to `storefront` with SSL redirection.
+  * `hpa.yaml`: HorizontalPodAutoscalers for high-traffic HTTP entry points (`api-gateway`, `cart-service`, `orders-service`, `storefront`).
+  * `keda-scaledobjects.yaml`: KEDA triggers scaling worker pods from 2 to 6 when RabbitMQ queues exceed 30 messages.
+* **Staging Overlay (`deploy/k8s/overlays/staging/`):**
+  * Targets namespace `commerce-staging`, prefixes resources with `staging-`, reduces replicas to 1, sets `LOG_LEVEL=debug`, sets host to `staging.commerce.example.com`.
+* **Production Overlay (`deploy/k8s/overlays/production/`):**
+  * Targets namespace `commerce-production`, prefixes resources with `prod-`, scales mission-critical deployments to 3 replicas, sets `LOG_LEVEL=warn`, sets host to `shop.example.com`.
+
+#### 2. Enterprise Helm Chart (`deploy/helm/ecommerce-platform/`)
+* **File:** [`deploy/helm/ecommerce-platform/Chart.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/Chart.yaml) & [`values.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/values.yaml)
+* Reusable, parameterized deployment package for all 13 microservices.
+* DRY templates using Go template loops (`templates/deployment.yaml`, `templates/service.yaml`, `templates/hpa.yaml`, `templates/keda.yaml`).
+* Validated with `helm lint` (0 errors) and tested with `helm template`.
+
+#### 3. ArgoCD GitOps Automation (`deploy/argocd/`)
+* **File:** [`deploy/argocd/project.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/argocd/project.yaml)
+* `commerce-platform-staging`: Watches `deploy/k8s/overlays/staging` with automated pruning and self-healing.
+* `commerce-platform-production`: Watches `deploy/k8s/overlays/production` with exponential backoff retries and strict sync controls.
+
+#### 4. Terraform Cloud Infrastructure (`deploy/terraform/`)
+* **Files:** [`main.tf`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/terraform/main.tf), [`variables.tf`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/terraform/variables.tf), [`outputs.tf`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/terraform/outputs.tf)
+* Provisions:
+  * Multi-AZ VPC with Public & Private Subnets and NAT Gateway.
+  * AWS EKS Cluster (Kubernetes 1.30) with managed worker node groups (t3.xlarge).
+  * ElastiCache Redis cluster (Redis 7) with encryption and auto-failover.
+  * Security groups and IAM roles for Pod execution (IRSA).
+
+---
+
+## 7. Quick Commands & Verification
+
+### Kubernetes & Helm Validation
+```bash
+# 1. Validate Kustomize Base manifests
+kubectl kustomize deploy/k8s/base
+
+# 2. Validate Kustomize Staging & Production Overlays
+kubectl kustomize deploy/k8s/overlays/staging
+kubectl kustomize deploy/k8s/overlays/production
+
+# 3. Lint and render the Helm chart
+helm lint deploy/helm/ecommerce-platform
+helm template commerce-release deploy/helm/ecommerce-platform
+```
 
 ### Managing the Observability Stack
 ```bash
@@ -334,38 +432,45 @@ npm run lint
 
 ---
 
-## 7. Complete Inventory of Files
+## 8. Complete Inventory of Files
 
-### New Files Created
-* [`docs/DEVOPS_IMPLEMENTATION_LOG.md`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/docs/DEVOPS_IMPLEMENTATION_LOG.md) *(this documentation)*
-* [`scripts/rabbitmq-dlq.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/scripts/rabbitmq-dlq.ts) *(DLQ inspector and redrive tool)*
-* [`apps/orders-service/test/rabbitmq-dlq.spec.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/orders-service/test/rabbitmq-dlq.spec.ts) *(RabbitMQ DLQ unit test)*
-* [`libs/rabbitmq/src/rabbitmq.service.spec.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/rabbitmq/src/rabbitmq.service.spec.ts) *(RabbitMQ resilience spec)*
-* [`libs/common/src/tracing/trace-context.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/common/src/tracing/trace-context.ts) *(W3C tracing & AsyncLocalStorage)*
-* [`apps/orders-service/test/tracing.spec.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/orders-service/test/tracing.spec.ts) *(Tracing unit test)*
-* [`docker-compose.observability.yml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/docker-compose.observability.yml) *(LGTM compose stack)*
-* [`observability/loki/loki-config.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/observability/loki/loki-config.yaml)
-* [`observability/tempo/tempo-config.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/observability/tempo/tempo-config.yaml)
-* [`observability/prometheus/prometheus.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/observability/prometheus/prometheus.yaml)
-* [`observability/promtail/promtail-config.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/observability/promtail/promtail-config.yaml)
-* [`observability/grafana/provisioning/datasources/datasources.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/observability/grafana/provisioning/datasources/datasources.yaml)
-* [`observability/grafana/provisioning/dashboards/dashboards.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/observability/grafana/provisioning/dashboards/dashboards.yaml)
-* [`observability/grafana/dashboards/commerce-dashboard.json`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/observability/grafana/dashboards/commerce-dashboard.json)
+### Phase 4 New Files Created
+* [`deploy/k8s/base/namespace.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/namespace.yaml)
+* [`deploy/k8s/base/configmap.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/configmap.yaml)
+* [`deploy/k8s/base/secrets.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/secrets.yaml)
+* [`deploy/k8s/base/ingress.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/ingress.yaml)
+* [`deploy/k8s/base/hpa.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/hpa.yaml)
+* [`deploy/k8s/base/keda-scaledobjects.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/keda-scaledobjects.yaml)
+* [`deploy/k8s/base/services/*.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/services/api-gateway.yaml) *(13 microservices)*
+* [`deploy/k8s/base/kustomization.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/base/kustomization.yaml)
+* [`deploy/k8s/overlays/staging/kustomization.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/overlays/staging/kustomization.yaml)
+* [`deploy/k8s/overlays/production/kustomization.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/k8s/overlays/production/kustomization.yaml)
+* [`deploy/helm/ecommerce-platform/Chart.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/Chart.yaml)
+* [`deploy/helm/ecommerce-platform/values.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/values.yaml)
+* [`deploy/helm/ecommerce-platform/templates/_helpers.tpl`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/templates/_helpers.tpl)
+* [`deploy/helm/ecommerce-platform/templates/configmap.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/templates/configmap.yaml)
+* [`deploy/helm/ecommerce-platform/templates/secret.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/templates/secret.yaml)
+* [`deploy/helm/ecommerce-platform/templates/deployment.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/templates/deployment.yaml)
+* [`deploy/helm/ecommerce-platform/templates/service.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/templates/service.yaml)
+* [`deploy/helm/ecommerce-platform/templates/ingress.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/templates/ingress.yaml)
+* [`deploy/helm/ecommerce-platform/templates/hpa.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/templates/hpa.yaml)
+* [`deploy/helm/ecommerce-platform/templates/keda.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/helm/ecommerce-platform/templates/keda.yaml)
+* [`deploy/argocd/project.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/argocd/project.yaml)
+* [`deploy/argocd/application-staging.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/argocd/application-staging.yaml)
+* [`deploy/argocd/application-production.yaml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/argocd/application-production.yaml)
+* [`deploy/terraform/main.tf`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/terraform/main.tf)
+* [`deploy/terraform/variables.tf`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/terraform/variables.tf)
+* [`deploy/terraform/outputs.tf`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/terraform/outputs.tf)
+* [`deploy/terraform/terraform.tfvars.example`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/deploy/terraform/terraform.tfvars.example)
 
-### Files Modified & Enhanced
-* [`package.json`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/package.json) *(Added observability & dlq management scripts)*
-* [`libs/rabbitmq/src/rabbitmq.service.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/rabbitmq/src/rabbitmq.service.ts) *(DLX, backoff retry, poison quarantine, DLQ replay)*
-* [`docs/DEVOPS_PRODUCTION_ROADMAP.md`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/docs/DEVOPS_PRODUCTION_ROADMAP.md) *(Status table updated)*
-* [`.github/workflows/ci.yml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/.github/workflows/ci.yml) *(Path filtering & Docker BuildKit matrix)*
-* [`storefront/lib/api.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/storefront/lib/api.ts) *(Frontend browser trace injection)*
-* [`apps/api-gateway/src/main.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/api-gateway/src/main.ts) *(LoggingInterceptor & CORS)*
-* [`apps/api-gateway/src/proxy/proxy.service.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/api-gateway/src/proxy/proxy.service.ts) *(Downstream trace propagation)*
-* [`libs/common/src/index.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/common/src/index.ts) *(Exports tracing context)*
-* [`libs/common/src/middleware/correlation-id.middleware.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/common/src/middleware/correlation-id.middleware.ts) *(W3C parsing & AsyncLocalStorage wrap)*
-* [`libs/common/src/interceptors/logging.interceptor.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/common/src/interceptors/logging.interceptor.ts) *(Structured trace logging)*
-* [`libs/common/src/utils/logger.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/common/src/utils/logger.ts) *(StructuredLogger with auto-trace enrichment)*
-* [`libs/outbox/src/outbox.service.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/outbox/src/outbox.service.ts) *(Stores trace in outbox)*
-* [`libs/outbox/src/outbox.relay.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/outbox/src/outbox.relay.ts) *(Relays trace to RabbitMQ)*
-* [`apps/*/src/main.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/users-service/src/main.ts) *(All 11 microservices updated to accept `traceparent`)*
-* Cross-service HTTP clients: [`orders/users.client.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/orders-service/src/modules/orders/users.client.ts), [`pricing/shipping.client.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/pricing-service/src/modules/pricing/shipping.client.ts), [`pricing/catalog.client.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/pricing-service/src/modules/pricing/catalog.client.ts), [`reviews/users.client.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/reviews-service/src/modules/reviews/users.client.ts), [`recommendations/catalog.client.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/recommendations-service/src/modules/recommendations/catalog.client.ts), [`cart/inventory.client.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/cart-service/src/modules/cart/inventory.client.ts).
+### Earlier Phases Files Created
+* [`docs/DEVOPS_IMPLEMENTATION_LOG.md`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/docs/DEVOPS_IMPLEMENTATION_LOG.md)
+* [`scripts/rabbitmq-dlq.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/scripts/rabbitmq-dlq.ts)
+* [`apps/orders-service/test/rabbitmq-dlq.spec.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/orders-service/test/rabbitmq-dlq.spec.ts)
+* [`libs/rabbitmq/src/rabbitmq.service.spec.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/rabbitmq/src/rabbitmq.service.spec.ts)
+* [`libs/common/src/tracing/trace-context.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/common/src/tracing/trace-context.ts)
+* [`apps/orders-service/test/tracing.spec.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/orders-service/test/tracing.spec.ts)
+* [`docker-compose.observability.yml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/docker-compose.observability.yml)
+* Observability configs in `observability/` (Loki, Tempo, Prometheus, Grafana).
+
 

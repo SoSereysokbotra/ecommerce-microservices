@@ -1,0 +1,51 @@
+{{- $root := . -}}
+{{- $hasKeda := false -}}
+{{- range $serviceName, $serviceConfig := .Values.services }}
+  {{- if and $serviceConfig.enabled $serviceConfig.keda $serviceConfig.keda.enabled }}
+    {{- $hasKeda = true -}}
+  {{- end }}
+{{- end }}
+
+{{- if $hasKeda }}
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ include "ecommerce-platform.fullname" $root }}-rabbitmq-auth
+  labels:
+    {{- include "ecommerce-platform.labels" $root | nindent 4 }}
+spec:
+  secretTargetRef:
+    - parameter: host
+      name: {{ include "ecommerce-platform.fullname" $root }}-config
+      key: RABBITMQ_URL
+
+{{- range $serviceName, $serviceConfig := .Values.services }}
+{{- if and $serviceConfig.enabled $serviceConfig.keda $serviceConfig.keda.enabled }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "ecommerce-platform.fullname" $root }}-{{ $serviceName }}-scaler
+  labels:
+    app: {{ $serviceName }}
+    {{- include "ecommerce-platform.labels" $root | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "ecommerce-platform.fullname" $root }}-{{ $serviceName }}
+  minReplicaCount: {{ $serviceConfig.keda.minReplicas | default 2 }}
+  maxReplicaCount: {{ $serviceConfig.keda.maxReplicas | default 6 }}
+  pollingInterval: 15
+  cooldownPeriod: 300
+  triggers:
+    - type: rabbitmq
+      metadata:
+        queueName: {{ $serviceConfig.keda.queueName | default $serviceName | quote }}
+        mode: QueueLength
+        value: {{ $serviceConfig.keda.queueLength | default "30" | quote }}
+      authenticationRef:
+        name: {{ include "ecommerce-platform.fullname" $root }}-rabbitmq-auth
+{{- end }}
+{{- end }}
+{{- end }}

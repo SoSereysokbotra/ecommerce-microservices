@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: commerce-platform
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: E-Commerce Microservices Production GitOps Project
+  sourceRepos:
+    - https://github.com/SoSereysokbotra/ecommerce-microservices.git
+  destinations:
+    - namespace: commerce-staging
+      server: https://kubernetes.default.svc
+    - namespace: commerce-production
+      server: https://kubernetes.default.svc
+    - namespace: commerce
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

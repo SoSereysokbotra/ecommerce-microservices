@@ -1,0 +1,62 @@
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: rabbitmq-trigger-auth
+  namespace: commerce
+spec:
+  secretTargetRef:
+    - parameter: host
+      name: commerce-config
+      key: RABBITMQ_URL
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: shipping-worker-scaler
+  namespace: commerce
+  labels:
+    app: shipping-service
+    app.kubernetes.io/part-of: commerce-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: shipping-service
+  minReplicaCount: 2
+  maxReplicaCount: 6
+  pollingInterval: 15
+  cooldownPeriod: 300
+  triggers:
+    - type: rabbitmq
+      metadata:
+        queueName: shipping-service
+        mode: QueueLength
+        value: "30"
+      authenticationRef:
+        name: rabbitmq-trigger-auth
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: inventory-worker-scaler
+  namespace: commerce
+  labels:
+    app: inventory-service
+    app.kubernetes.io/part-of: commerce-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: inventory-service
+  minReplicaCount: 2
+  maxReplicaCount: 6
+  pollingInterval: 15
+  cooldownPeriod: 300
+  triggers:
+    - type: rabbitmq
+      metadata:
+        queueName: inventory-service
+        mode: QueueLength
+        value: "30"
+      authenticationRef:
+        name: rabbitmq-trigger-auth

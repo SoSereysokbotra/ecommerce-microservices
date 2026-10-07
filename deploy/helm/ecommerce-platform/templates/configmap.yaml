@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ecommerce-platform.fullname" . }}-config
+  labels:
+    {{- include "ecommerce-platform.labels" . | nindent 4 }}
+data:
+  NODE_ENV: {{ .Values.config.nodeEnv | quote }}
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  RABBITMQ_URL: {{ .Values.config.rabbitmqUrl | quote }}
+  REDIS_URL: {{ .Values.config.redisUrl | quote }}
+  OPENSEARCH_NODE: {{ .Values.config.opensearchNode | quote }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.config.otelEndpoint | quote }}
+  LOKI_ENDPOINT: {{ .Values.config.lokiEndpoint | quote }}
+  API_GATEWAY_PORT: "3000"
+  USERS_SERVICE_URL: "http://{{ include "ecommerce-platform.fullname" . }}-users-service:3001"
+  CATALOG_SERVICE_URL: "http://{{ include "ecommerce-platform.fullname" . }}-catalog-service:3002"
+  CART_SERVICE_URL: "http://{{ include "ecommerce-platform.fullname" . }}-cart-service:3003"
+  ORDERS_SERVICE_URL: "http://{{ include "ecommerce-platform.fullname" . }}-orders-service:3004"
+  PAYMENTS_SERVICE_URL: "http://{{ include "ecommerce-platform.fullname" . }}-payments-service:3005"
+  INVENTORY_SERVICE_URL: "http://{{ include "ecommerce-platform.fullname" . }}-inventory-service:3006"
+  SHIPPING_SERVICE_URL: "http://{{ include "ecommerce-platform.fullname" . }}-shipping-service:3007"
+  REVIEWS_SERVICE_URL: "http://{{ include "ecommerce-platform.fullname" . }}-reviews-service:3008"
+  PRICING_SERVICE_URL: "http://{{ include "ecommerce-platform.fullname" . }}-pricing-service:3009"
+  SEARCH_SERVICE_URL: "http://{{ include "ecommerce-platform.fullname" . }}-search-service:3010"
+  RECOMMENDATIONS_SERVICE_URL: "http://{{ include "ecommerce-platform.fullname" . }}-recommendations-service:3011"
+  NEXT_PUBLIC_API_URL: "http://{{ include "ecommerce-platform.fullname" . }}-api-gateway:3000"

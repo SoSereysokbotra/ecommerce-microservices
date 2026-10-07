@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-service
+  namespace: commerce
+  labels:
+    app: orders-service
+    app.kubernetes.io/name: orders-service
+    app.kubernetes.io/part-of: commerce-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: orders-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: orders-service
+        app.kubernetes.io/name: orders-service
+        app.kubernetes.io/part-of: commerce-platform
+    spec:
+      containers:
+        - name: orders-service
+          image: ghcr.io/sosereysokbotra/ecommerce-microservices/orders-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3004
+              name: http
+          envFrom:
+            - configMapRef:
+                name: commerce-config
+          env:
+            - name: PORT
+              value: "3004"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: commerce-secrets
+                  key: DATABASE_URL_ORDERS
+          resources:
+            requests:
+              cpu: 100m
+              memory: 180Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 3004
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /api/v1/ready
+              port: 3004
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orders-service
+  namespace: commerce
+  labels:
+    app: orders-service
+    app.kubernetes.io/name: orders-service
+    app.kubernetes.io/part-of: commerce-platform
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3004
+      targetPort: 3004
+      name: http
+  selector:
+    app: orders-service

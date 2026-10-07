@@ -1,0 +1,324 @@
+global:
+  environment: production
+  imageRegistry: ghcr.io/sosereysokbotra/ecommerce-microservices
+
+config:
+  nodeEnv: production
+  logLevel: info
+  rabbitmqUrl: "amqp://guest:${RABBITMQ_PASS}@rabbitmq:5672"
+  redisUrl: "redis://redis.commerce.svc.cluster.local:6379"
+  opensearchNode: "http://opensearch.commerce.svc.cluster.local:9200"
+  otelEndpoint: "http://tempo.commerce.svc.cluster.local:4318"
+  lokiEndpoint: "http://loki.commerce.svc.cluster.local:3100"
+
+secrets:
+  jwtSecret: "change-in-vault-production-secret"
+  stripeSecretKey: "placeholder_test_key_not_real"
+  stripeWebhookSecret: "whsec_placeholder"
+  databases:
+    users: "postgresql://postgres:${DB_PASSWORD}@users-db:5432/users"
+    catalog: "postgresql://postgres:${DB_PASSWORD}@catalog-db:5432/catalog"
+    orders: "postgresql://postgres:${DB_PASSWORD}@orders-db:5432/orders"
+    payments: "postgresql://postgres:${DB_PASSWORD}@payments-db:5432/payments"
+    inventory: "postgresql://postgres:${DB_PASSWORD}@inventory-db:5432/inventory"
+    shipping: "postgresql://postgres:${DB_PASSWORD}@shipping-db:5432/shipping"
+    reviews: "postgresql://postgres:${DB_PASSWORD}@reviews-db:5432/reviews"
+    pricing: "postgresql://postgres:${DB_PASSWORD}@pricing-db:5432/pricing"
+
+ingress:
+  enabled: true
+  className: nginx
+  host: commerce.local
+  tls:
+    enabled: true
+    secretName: commerce-tls-cert
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+
+services:
+  api-gateway:
+    enabled: true
+    image:
+      repository: api-gateway
+      tag: latest
+      pullPolicy: IfNotPresent
+    replicas: 2
+    port: 3000
+    probes:
+      livenessPath: /api/v1/health
+      readinessPath: /api/v1/health
+    resources:
+      requests:
+        cpu: 100m
+        memory: 180Mi
+      limits:
+        cpu: 500m
+        memory: 384Mi
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPU: 70
+      targetMemory: 80
+
+  users-service:
+    enabled: true
+    image:
+      repository: users-service
+      tag: latest
+      pullPolicy: IfNotPresent
+    replicas: 2
+    port: 3001
+    probes:
+      livenessPath: /api/v1/health
+      readinessPath: /api/v1/ready
+    resources:
+      requests:
+        cpu: 100m
+        memory: 180Mi
+      limits:
+        cpu: 500m
+        memory: 384Mi
+
+  catalog-service:
+    enabled: true
+    image:
+      repository: catalog-service
+      tag: latest
+      pullPolicy: IfNotPresent
+    replicas: 2
+    port: 3002
+    probes:
+      livenessPath: /api/v1/health
+      readinessPath: /api/v1/ready
+    resources:
+      requests:
+        cpu: 100m
+        memory: 180Mi
+      limits:
+        cpu: 500m
+        memory: 384Mi
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 8
+      targetCPU: 70
+
+  cart-service:
+    enabled: true
+    image:
+      repository: cart-service
+      tag: latest
+      pullPolicy: IfNotPresent
+    replicas: 2
+    port: 3003
+    probes:
+      livenessPath: /api/v1/health
+      readinessPath: /api/v1/ready
+    resources:
+      requests:
+        cpu: 100m
+        memory: 180Mi
+      limits:
+        cpu: 500m
+        memory: 384Mi
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 8
+      targetCPU: 70
+
+  orders-service:
+    enabled: true
+    image:
+      repository: orders-service
+      tag: latest
+      pullPolicy: IfNotPresent
+    replicas: 2
+    port: 3004
+    probes:
+      livenessPath: /api/v1/health
+      readinessPath: /api/v1/ready
+    resources:
+      requests:
+        cpu: 100m
+        memory: 180Mi
+      limits:
+        cpu: 500m
+        memory: 384Mi
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 8
+      targetCPU: 70
+
+  payments-service:
+    enabled: true
+    image:
+      repository: payments-service
+      tag: latest
+      pullPolicy: IfNotPresent
+    replicas: 2
+    port: 3005
+    probes:
+      livenessPath: /api/v1/health
+      readinessPath: /api/v1/ready
+    resources:
+      requests:
+        cpu: 100m
+        memory: 180Mi
+      limits:
+        cpu: 500m
+        memory: 384Mi
+
+  inventory-service:
+    enabled: true
+    image:
+      repository: inventory-service
+      tag: latest
+      pullPolicy: IfNotPresent
+    replicas: 2
+    port: 3006
+    probes:
+      livenessPath: /api/v1/health
+      readinessPath: /api/v1/ready
+    resources:
+      requests:
+        cpu: 100m
+        memory: 180Mi
+      limits:
+        cpu: 500m
+        memory: 384Mi
+    keda:
+      enabled: true
+      queueName: inventory-service
+      queueLength: "30"
+      minReplicas: 2
+      maxReplicas: 6
+
+  shipping-service:
+    enabled: true
+    image:
+      repository: shipping-service
+      tag: latest
+      pullPolicy: IfNotPresent
+    replicas: 2
+    port: 3007
+    probes:
+      livenessPath: /api/v1/health
+      readinessPath: /api/v1/ready
+    resources:
+      requests:
+        cpu: 100m
+        memory: 180Mi
+      limits:
+        cpu: 500m
+        memory: 384Mi
+    keda:
+      enabled: true
+      queueName: shipping-service
+      queueLength: "30"
+      minReplicas: 2
+      maxReplicas: 6
+
+  reviews-service:
+    enabled: true
+    image:
+      repository: reviews-service
+      tag: latest
+      pullPolicy: IfNotPresent
+    replicas: 2
+    port: 3008
+    probes:
+      livenessPath: /api/v1/health
+      readinessPath: /api/v1/ready
+    resources:
+      requests:
+        cpu: 100m
+        memory: 180Mi
+      limits:
+        cpu: 500m
+        memory: 384Mi
+
+  pricing-service:
+    enabled: true
+    image:
+      repository: pricing-service
+      tag: latest
+      pullPolicy: IfNotPresent
+    replicas: 2
+    port: 3009
+    probes:
+      livenessPath: /api/v1/health
+      readinessPath: /api/v1/ready
+    resources:
+      requests:
+        cpu: 100m
+        memory: 180Mi
+      limits:
+        cpu: 500m
+        memory: 384Mi
+
+  search-service:
+    enabled: true
+    image:
+      repository: search-service
+      tag: latest
+      pullPolicy: IfNotPresent
+    replicas: 2
+    port: 3010
+    probes:
+      livenessPath: /api/v1/health
+      readinessPath: /api/v1/ready
+    resources:
+      requests:
+        cpu: 100m
+        memory: 180Mi
+      limits:
+        cpu: 500m
+        memory: 384Mi
+
+  recommendations-service:
+    enabled: true
+    image:
+      repository: recommendations-service
+      tag: latest
+      pullPolicy: IfNotPresent
+    replicas: 2
+    port: 3011
+    probes:
+      livenessPath: /api/v1/health
+      readinessPath: /api/v1/ready
+    resources:
+      requests:
+        cpu: 100m
+        memory: 180Mi
+      limits:
+        cpu: 500m
+        memory: 384Mi
+
+  storefront:
+    enabled: true
+    image:
+      repository: storefront
+      tag: latest
+      pullPolicy: IfNotPresent
+    replicas: 2
+    port: 3100
+    probes:
+      livenessPath: /
+      readinessPath: /
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 512Mi
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPU: 75

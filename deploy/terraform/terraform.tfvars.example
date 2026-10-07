@@ -1,0 +1,10 @@
+aws_region          = "us-east-1"
+environment         = "production"
+cluster_name        = "commerce-eks-cluster"
+vpc_cidr            = "10.0.0.0/16"
+node_instance_types = ["t3.xlarge"]
+min_node_count      = 3
+max_node_count      = 10
+desired_node_count  = 3
+db_instance_class   = "db.t4g.medium"
+redis_node_type     = "cache.t4g.medium"

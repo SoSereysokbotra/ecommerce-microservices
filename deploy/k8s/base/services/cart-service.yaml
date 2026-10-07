@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cart-service
+  namespace: commerce
+  labels:
+    app: cart-service
+    app.kubernetes.io/name: cart-service
+    app.kubernetes.io/part-of: commerce-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cart-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: cart-service
+        app.kubernetes.io/name: cart-service
+        app.kubernetes.io/part-of: commerce-platform
+    spec:
+      containers:
+        - name: cart-service
+          image: ghcr.io/sosereysokbotra/ecommerce-microservices/cart-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3003
+              name: http
+          envFrom:
+            - configMapRef:
+                name: commerce-config
+          env:
+            - name: PORT
+              value: "3003"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 180Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 3003
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /api/v1/ready
+              port: 3003
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cart-service
+  namespace: commerce
+  labels:
+    app: cart-service
+    app.kubernetes.io/name: cart-service
+    app.kubernetes.io/part-of: commerce-platform
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3003
+      targetPort: 3003
+      name: http
+  selector:
+    app: cart-service

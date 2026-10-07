@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secrets.yaml
+  - ingress.yaml
+  - hpa.yaml
+  - keda-scaledobjects.yaml
+  - services/api-gateway.yaml
+  - services/users-service.yaml
+  - services/catalog-service.yaml
+  - services/cart-service.yaml
+  - services/orders-service.yaml
+  - services/payments-service.yaml
+  - services/inventory-service.yaml
+  - services/shipping-service.yaml
+  - services/reviews-service.yaml
+  - services/pricing-service.yaml
+  - services/search-service.yaml
+  - services/recommendations-service.yaml
+  - services/storefront.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: commerce-platform
+      app.kubernetes.io/managed-by: kustomize

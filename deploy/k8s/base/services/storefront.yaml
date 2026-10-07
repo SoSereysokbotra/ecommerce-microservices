@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storefront
+  namespace: commerce
+  labels:
+    app: storefront
+    app.kubernetes.io/name: storefront
+    app.kubernetes.io/part-of: commerce-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: storefront
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: storefront
+        app.kubernetes.io/name: storefront
+        app.kubernetes.io/part-of: commerce-platform
+    spec:
+      containers:
+        - name: storefront
+          image: ghcr.io/sosereysokbotra/ecommerce-microservices/storefront:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3100
+              name: http
+          envFrom:
+            - configMapRef:
+                name: commerce-config
+          env:
+            - name: PORT
+              value: "3100"
+            - name: NODE_ENV
+              value: "production"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3100
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3100
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: storefront
+  namespace: commerce
+  labels:
+    app: storefront
+    app.kubernetes.io/name: storefront
+    app.kubernetes.io/part-of: commerce-platform
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3100
+      targetPort: 3100
+      name: http
+  selector:
+    app: storefront

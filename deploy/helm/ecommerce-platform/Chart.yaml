@@ -1,0 +1,15 @@
+apiVersion: v2
+name: ecommerce-platform
+description: Production-grade Helm chart for the 13-service E-Commerce Microservices platform
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - ecommerce
+  - microservices
+  - nestjs
+  - nextjs
+  - kubernetes
+maintainers:
+  - name: DevOps Engineering Team
+    email: devops@example.com
