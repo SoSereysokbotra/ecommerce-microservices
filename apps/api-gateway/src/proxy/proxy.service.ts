@@ -1,7 +1,12 @@
 import { HttpService } from '@nestjs/axios';
 import { HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { CORRELATION_ID_HEADER, USER_ID_HEADER, USER_ROLE_HEADER } from '@libs/common';
+import {
+  CORRELATION_ID_HEADER,
+  TRACEPARENT_HEADER,
+  USER_ID_HEADER,
+  USER_ROLE_HEADER,
+} from '@libs/common';
 import { AxiosError, AxiosResponse } from 'axios';
 import { Request } from 'express';
 import { firstValueFrom } from 'rxjs';
@@ -9,6 +14,7 @@ import { firstValueFrom } from 'rxjs';
 type AuthenticatedRequest = Request & {
   user?: { sub?: string; role?: string };
   correlationId?: string;
+  traceparent?: string;
   /** Present only for routes registered with a raw body parser. */
   rawBody?: Buffer;
 };
@@ -65,6 +71,9 @@ export class ProxyService {
     delete headers.host;
     delete headers['content-length'];
     headers[CORRELATION_ID_HEADER] = request.correlationId ?? '';
+    if (request.traceparent) {
+      headers[TRACEPARENT_HEADER] = request.traceparent;
+    }
 
     // Forward the identity the guard already verified. Strip anything the
     // caller sent under these names first — otherwise a client could simply

@@ -1,8 +1,13 @@
 import { Injectable, NestMiddleware } from '@nestjs/common';
-import { randomUUID } from 'crypto';
 import { NextFunction, Request, Response } from 'express';
+import {
+  CORRELATION_ID_HEADER,
+  TRACEPARENT_HEADER,
+  createTraceContext,
+  runWithTraceContext,
+} from '../tracing/trace-context';
 
-export const CORRELATION_ID_HEADER = 'x-correlation-id';
+export { CORRELATION_ID_HEADER, TRACEPARENT_HEADER };
 
 /**
  * Identity the gateway extracted from a verified JWT and forwards downstream.
@@ -18,26 +23,49 @@ export const USER_ROLE_HEADER = 'x-user-role';
 declare module 'express-serve-static-core' {
   interface Request {
     correlationId?: string;
+    traceparent?: string;
+    traceId?: string;
+    spanId?: string;
   }
 }
 
 /**
- * Gives every request an id that follows it across service boundaries.
+ * Gives every request a correlation ID and standard W3C traceparent header that
+ * follows it across service boundaries and message queues.
  *
- * The gateway generates one when the caller did not supply it; downstream
- * services reuse whatever arrives. Without this, a single user action produces
- * unrelated log lines in five services with no way to join them.
+ * Incoming trace context is extracted or freshly generated, attached to request
+ * and response headers, and mounted in AsyncLocalStorage so all downstream
+ * controllers, services, database queries, and event dispatches are automatically
+ * bound to the same distributed trace.
  */
 @Injectable()
 export class CorrelationIdMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction): void {
-    const incoming = req.headers[CORRELATION_ID_HEADER];
-    const correlationId = (Array.isArray(incoming) ? incoming[0] : incoming) || randomUUID();
+    const rawCorr = req.headers[CORRELATION_ID_HEADER];
+    const rawTrace = req.headers[TRACEPARENT_HEADER];
+    const rawUserId = req.headers[USER_ID_HEADER];
+    const rawUserRole = req.headers[USER_ROLE_HEADER];
 
-    req.correlationId = correlationId;
-    req.headers[CORRELATION_ID_HEADER] = correlationId;
-    res.setHeader(CORRELATION_ID_HEADER, correlationId);
+    const ctx = createTraceContext({
+      correlationId: Array.isArray(rawCorr) ? rawCorr[0] : rawCorr,
+      traceparent: Array.isArray(rawTrace) ? rawTrace[0] : rawTrace,
+      userId: Array.isArray(rawUserId) ? rawUserId[0] : rawUserId,
+      userRole: Array.isArray(rawUserRole) ? rawUserRole[0] : rawUserRole,
+      serviceName: process.env.SERVICE_NAME,
+    });
 
-    next();
+    req.correlationId = ctx.correlationId;
+    req.headers[CORRELATION_ID_HEADER] = ctx.correlationId;
+    res.setHeader(CORRELATION_ID_HEADER, ctx.correlationId);
+
+    req.traceparent = ctx.traceparent;
+    req.headers[TRACEPARENT_HEADER] = ctx.traceparent;
+    res.setHeader(TRACEPARENT_HEADER, ctx.traceparent);
+
+    req.traceId = ctx.traceId;
+    req.spanId = ctx.spanId;
+
+    // Run remaining middleware, guards, interceptors, and handlers inside the trace context
+    runWithTraceContext(ctx, () => next());
   }
 }

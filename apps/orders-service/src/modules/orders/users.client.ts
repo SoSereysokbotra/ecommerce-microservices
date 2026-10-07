@@ -1,5 +1,10 @@
 import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
-import { CORRELATION_ID_HEADER, USER_ID_HEADER } from '@libs/common';
+import {
+  CORRELATION_ID_HEADER,
+  TRACEPARENT_HEADER,
+  USER_ID_HEADER,
+  getTraceparent,
+} from '@libs/common';
 
 /** An address as users-service returns it. */
 export interface CustomerAddress {
@@ -69,6 +74,7 @@ export class UsersClient {
           headers: {
             [USER_ID_HEADER]: customerId,
             ...(correlationId ? { [CORRELATION_ID_HEADER]: correlationId } : {}),
+            ...(getTraceparent() ? { [TRACEPARENT_HEADER]: getTraceparent() } : {}),
           },
           signal: controller.signal,
         },

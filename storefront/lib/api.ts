@@ -154,10 +154,18 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken();
   const cartToken = getCartToken();
 
+  // W3C traceparent (00-{traceId}-{spanId}-01) and correlation ID propagation from storefront
+  const traceId = (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)).replace(/-/g, '').padEnd(32, '0').slice(0, 32);
+  const spanId = (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)).replace(/-/g, '').slice(0, 16);
+  const traceparent = `00-${traceId}-${spanId}-01`;
+  const correlationId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `browser-${Date.now()}`;
+
   const response = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
+      'x-correlation-id': correlationId,
+      'traceparent': traceparent,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       // Sent alongside the JWT on purpose: a request carrying both is exactly
       // what triggers the guest cart being merged into the signed-in one.

@@ -21,6 +21,9 @@ export * from './filters/http-exception.filter';
 export * from './interceptors/logging.interceptor';
 export * from './interceptors/transform.interceptor';
 
+// Tracing
+export * from './tracing/trace-context';
+
 // Middleware
 export * from './middleware/correlation-id.middleware';
 

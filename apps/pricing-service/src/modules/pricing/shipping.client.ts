@@ -4,7 +4,7 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { CORRELATION_ID_HEADER } from '@libs/common';
+import { CORRELATION_ID_HEADER, TRACEPARENT_HEADER, getTraceparent } from '@libs/common';
 
 export interface ShippingOption {
   code: string;
@@ -72,6 +72,7 @@ export class ShippingClient {
         headers: {
           'Content-Type': 'application/json',
           ...(correlationId ? { [CORRELATION_ID_HEADER]: correlationId } : {}),
+          ...(getTraceparent() ? { [TRACEPARENT_HEADER]: getTraceparent() } : {}),
         },
         body: JSON.stringify({
           destination: {

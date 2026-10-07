@@ -50,7 +50,13 @@ async function bootstrap(): Promise<void> {
   app.enableCors({
     origin: corsOrigins.length > 0 ? corsOrigins : '*',
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-correlation-id', 'stripe-signature'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'x-correlation-id',
+      'traceparent',
+      'stripe-signature',
+    ],
   });
   app.setGlobalPrefix('api/v1');
   app.useGlobalPipes(createValidationPipe());

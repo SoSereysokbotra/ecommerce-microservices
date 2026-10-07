@@ -18,7 +18,13 @@ async function bootstrap(): Promise<void> {
     // x-cart-token identifies a guest cart. It is a header rather than a cookie
     // because the storefront and gateway sit on different origins, which would
     // make a cookie third-party — see docs/M7_CART_PLAN.md §3.
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-correlation-id', 'x-cart-token'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'x-correlation-id',
+      'traceparent',
+      'x-cart-token',
+    ],
   });
   app.setGlobalPrefix('api/v1');
   app.useGlobalPipes(createValidationPipe());

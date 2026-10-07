@@ -1,6 +1,14 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import * as amqp from 'amqplib';
 import type { Channel, ChannelModel } from 'amqplib';
+import {
+  CORRELATION_ID_HEADER,
+  TRACEPARENT_HEADER,
+  createChildSpanContext,
+  createTraceContext,
+  getTraceContext,
+  runWithTraceContext,
+} from '@libs/common';
 
 export interface RabbitMQModuleOptions {
   url: string;
@@ -126,43 +134,94 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Prepares payload and AMQP headers with distributed trace context (W3C traceparent & correlationId).
+   */
+  private preparePublishOptions(
+    message: unknown,
+    options?: amqp.Options.Publish,
+  ): { payload: Buffer; publishOptions: amqp.Options.Publish; correlationId: string } {
+    const activeCtx = getTraceContext();
+    const msgObj =
+      typeof message === 'object' && message !== null ? (message as Record<string, unknown>) : null;
+
+    let traceCtx = activeCtx ? createChildSpanContext(activeCtx) : undefined;
+    if (!traceCtx && msgObj && (msgObj.correlationId || msgObj.traceparent)) {
+      traceCtx = createTraceContext({
+        correlationId: msgObj.correlationId as string,
+        traceparent: msgObj.traceparent as string,
+        serviceName: process.env.SERVICE_NAME,
+      });
+    }
+
+    const headers: Record<string, unknown> = { ...(options?.headers ?? {}) };
+    if (traceCtx) {
+      if (!headers[CORRELATION_ID_HEADER]) {
+        headers[CORRELATION_ID_HEADER] = traceCtx.correlationId;
+      }
+      if (!headers[TRACEPARENT_HEADER]) {
+        headers[TRACEPARENT_HEADER] = traceCtx.traceparent;
+      }
+    }
+
+    let serialized = message;
+    if (msgObj && traceCtx) {
+      serialized = {
+        ...msgObj,
+        correlationId: msgObj.correlationId ?? traceCtx.correlationId,
+        traceparent: msgObj.traceparent ?? traceCtx.traceparent,
+      };
+    }
+
+    const payload = Buffer.from(JSON.stringify(serialized));
+    const publishOptions: amqp.Options.Publish = {
+      persistent: true,
+      ...options,
+      headers,
+    };
+
+    return {
+      payload,
+      publishOptions,
+      correlationId: traceCtx?.correlationId ?? '-',
+    };
+  }
+
+  /**
    * Fire-and-forget publish. Logs and returns when the broker is unreachable.
-   *
-   * Only safe for events nobody depends on. Anything that must not be lost goes
-   * through the outbox, which uses `publishOrThrow`.
+   * Injects active distributed trace context into AMQP headers and payload envelope.
    */
   async publish(
     exchange: string = this.exchange,
     routingKey: string,
     message: unknown,
+    options?: amqp.Options.Publish,
   ): Promise<void> {
-    const payload = Buffer.from(JSON.stringify(message));
+    const { payload, publishOptions, correlationId } = this.preparePublishOptions(message, options);
 
     if (!this.channel) {
       this.logger.log(`[offline] Publish ${routingKey}: ${payload.toString()}`);
       return;
     }
 
-    this.channel.publish(exchange, routingKey, payload, { persistent: true });
-    this.logger.debug(`Published ${routingKey} to ${exchange}`);
+    this.channel.publish(exchange, routingKey, payload, publishOptions);
+    this.logger.debug(`Published ${routingKey} to ${exchange} [${correlationId}]`);
   }
 
   /**
    * Publish, or throw if the broker is unreachable.
-   *
-   * The outbox relay must use this. If a failed publish looked like a success
-   * the relay would mark the row sent and the event would be lost forever —
-   * the precise failure the outbox pattern exists to make impossible.
+   * Used by outbox relays and critical sagas. Injects distributed trace context.
    */
-  async publishOrThrow(routingKey: string, message: unknown): Promise<void> {
+  async publishOrThrow(
+    routingKey: string,
+    message: unknown,
+    options?: amqp.Options.Publish,
+  ): Promise<void> {
     if (!this.channel) {
       throw new Error(`RabbitMQ is not connected; cannot publish ${routingKey}`);
     }
 
-    const payload = Buffer.from(JSON.stringify(message));
-    const accepted = this.channel.publish(this.exchange, routingKey, payload, {
-      persistent: true,
-    });
+    const { payload, publishOptions, correlationId } = this.preparePublishOptions(message, options);
+    const accepted = this.channel.publish(this.exchange, routingKey, payload, publishOptions);
 
     if (!accepted) {
       // The write buffer is full. Treat it as a failure so the row stays
@@ -170,7 +229,7 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
       throw new Error(`RabbitMQ back-pressure; ${routingKey} not accepted`);
     }
 
-    this.logger.debug(`Published ${routingKey} to ${this.exchange}`);
+    this.logger.debug(`Published ${routingKey} to ${this.exchange} [${correlationId}]`);
   }
 
   async subscribe(queue: string, handler: RabbitMQHandler): Promise<void> {
@@ -198,10 +257,28 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
 
       try {
         const parsed = JSON.parse(message.content.toString()) as Record<string, unknown>;
-        await handler({
-          ...parsed,
-          routingKey: message.fields.routingKey,
+        const headers = (message.properties.headers ?? {}) as Record<string, unknown>;
+
+        const incomingTrace =
+          (headers[TRACEPARENT_HEADER] as string) || (parsed.traceparent as string);
+        const incomingCorr =
+          (headers[CORRELATION_ID_HEADER] as string) || (parsed.correlationId as string);
+
+        const consumerCtx = createTraceContext({
+          traceparent: incomingTrace,
+          correlationId: incomingCorr,
+          serviceName: process.env.SERVICE_NAME,
         });
+
+        await runWithTraceContext(consumerCtx, async () => {
+          await handler({
+            ...parsed,
+            correlationId: parsed.correlationId ?? consumerCtx.correlationId,
+            traceparent: parsed.traceparent ?? consumerCtx.traceparent,
+            routingKey: message.fields.routingKey,
+          });
+        });
+
         this.channel.ack(message);
       } catch (error) {
         this.logger.error(`Failed to process message on ${queue}: ${getErrorMessage(error)}`);

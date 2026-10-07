@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { CORRELATION_ID_HEADER, TRACEPARENT_HEADER, getTraceparent } from '@libs/common';
 import { StockLevels } from './cart-merge';
 
 interface StockRow {
@@ -42,7 +43,10 @@ export class InventoryClient {
     try {
       const response = await fetch(url, {
         signal: controller.signal,
-        headers: correlationId ? { 'x-correlation-id': correlationId } : {},
+        headers: {
+          ...(correlationId ? { [CORRELATION_ID_HEADER]: correlationId } : {}),
+          ...(getTraceparent() ? { [TRACEPARENT_HEADER]: getTraceparent() } : {}),
+        },
       });
 
       if (!response.ok) {

@@ -5,7 +5,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { CORRELATION_ID_HEADER } from '@libs/common';
+import { CORRELATION_ID_HEADER, TRACEPARENT_HEADER, getTraceparent } from '@libs/common';
 
 interface CatalogProductResponse {
   id: string;
@@ -163,7 +163,10 @@ export class CatalogClient {
     try {
       const response = await fetch(url, {
         signal: controller.signal,
-        headers: correlationId ? { [CORRELATION_ID_HEADER]: correlationId } : {},
+        headers: {
+          ...(correlationId ? { [CORRELATION_ID_HEADER]: correlationId } : {}),
+          ...(getTraceparent() ? { [TRACEPARENT_HEADER]: getTraceparent() } : {}),
+        },
       });
 
       if (response.status === 404) {

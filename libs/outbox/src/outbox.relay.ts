@@ -97,12 +97,18 @@ export class OutboxRelay implements OnModuleInit, OnModuleDestroy {
   }
 
   private async publishOne(manager: EntityManager, row: OutboxRow): Promise<boolean> {
+    const traceparent =
+      typeof row.payload === 'object' && row.payload !== null
+        ? ((row.payload as Record<string, unknown>).traceparent as string | undefined)
+        : undefined;
+
     const envelope = {
       eventId: row.event_id,
       eventType: row.event_type,
       occurredAt: new Date(row.created_at).toISOString(),
       aggregateId: row.aggregate_id,
       correlationId: row.correlation_id ?? '',
+      traceparent,
       version: row.version,
       payload: row.payload,
     };

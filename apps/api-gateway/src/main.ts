@@ -1,7 +1,12 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { HttpExceptionFilter, createValidationPipe, validateEnv } from '@libs/common';
+import {
+  HttpExceptionFilter,
+  LoggingInterceptor,
+  createValidationPipe,
+  validateEnv,
+} from '@libs/common';
 import * as express from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
@@ -24,8 +29,22 @@ async function bootstrap(): Promise<void> {
     .map((origin) => origin.trim())
     .filter(Boolean);
 
+  const corsOptions = {
+    origin: corsOrigins.length > 0 ? corsOrigins : true,
+    credentials: true,
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'x-correlation-id',
+      'traceparent',
+      'x-cart-token',
+      'stripe-signature',
+    ],
+    exposedHeaders: ['x-correlation-id', 'traceparent', 'x-cart-token'],
+  };
+
   const app = await NestFactory.create(AppModule, {
-    cors: corsOrigins.length > 0 ? { origin: corsOrigins, credentials: true } : true,
+    cors: corsOptions,
     bodyParser: false,
   });
 
@@ -50,6 +69,7 @@ async function bootstrap(): Promise<void> {
   app.setGlobalPrefix('api/v1');
   app.useGlobalPipes(createValidationPipe());
   app.useGlobalFilters(new HttpExceptionFilter());
+  app.useGlobalInterceptors(new LoggingInterceptor());
   app.enableShutdownHooks();
 
   const swaggerConfig = new DocumentBuilder()
