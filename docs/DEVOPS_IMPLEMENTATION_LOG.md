@@ -197,6 +197,105 @@ A dedicated, lightweight Docker Compose configuration was created to run the ent
 
 ```bash
 # 1. Start Grafana, Tempo, Loki, Prometheus in the background
+## 5. Phase 3 Implementation: RabbitMQ Resilience & Dead Letter Queues (DLQ)
+
+### What Was the Problem Before?
+In asynchronous messaging architectures, failures fall into two categories:
+1. **Transient Network or DB Hiccups:** A database query timed out or a connection pool was briefly saturated. Dropping the event immediately (`nack(message, false, false)`) lost customer shipments or order updates permanently.
+2. **Poison Messages:** A corrupt payload or unhandled edge-case triggered an unrecoverable exception. If requeued (`requeue: true`), RabbitMQ entered an infinite processing loop burning 100% CPU and blocking all subsequent events in the queue.
+
+### Architecture: Dead Letter Exchange (DLX) & Exponential Backoff
+
+```
+                                  [ RabbitMQ Exchange ]
+                                    (commerce.events)
+                                            │
+                                            ▼
+                           ┌──────────────────────────────────┐
+                           │   Main Service Queue             │
+                           │   (e.g., shipping-service)       │
+                           └────────────────┬─────────────────┘
+                                            │ Consume
+                                            ▼
+                            ┌───────────────────────────────┐
+                            │    Message Processing         │
+                            └───────┬───────────────┬───────┘
+                                    │               │
+                            Success │               │ Throws Exception
+                                    ▼               ▼
+                                 [ ACK ]    Attempt < MaxRetries (3)?
+                                                    │
+                                           ┌────────┴────────┐
+                                      YES  │                 │ NO (Poison Pill)
+                                           ▼                 ▼
+                               ┌───────────────────────┐ ┌───────────────────────────┐
+                               │ Exponential Backoff   │ │ Dead Letter Exchange      │
+                               │ Retry (1s, 2s, 4s)    │ │ (commerce.dlx)            │
+                               │ with 'x-retry-count'  │ └─────────────┬─────────────┘
+                               └───────────────────────┘               │
+                                                                       ▼
+                                                         ┌───────────────────────────┐
+                                                         │ Dead Letter Queue (DLQ)   │
+                                                         │ (shipping-service.dlq)    │
+                                                         │ Headers:                  │
+                                                         │  x-quarantine-reason      │
+                                                         │  x-quarantine-error       │
+                                                         │  x-quarantine-at          │
+                                                         │  x-original-routing-key   │
+                                                         │  x-correlation-id         │
+                                                         └─────────────┬─────────────┘
+                                                                       │
+                                                         ┌─────────────┴─────────────┐
+                                                         │ Admin Redrive / Replay    │
+                                                         │ npm run dlq:replay -- ... │
+                                                         └───────────────────────────┘
+```
+
+### Detailed Features Implemented
+
+#### 1. Dead Letter Exchange (DLX) & Queue Binding
+* **File:** [`libs/rabbitmq/src/rabbitmq.service.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/rabbitmq/src/rabbitmq.service.ts)
+* Every service queue automatically provisions a paired Dead Letter Queue (`<queue>.dlq`) bound to `commerce.dlx`.
+* Main queues are configured with `x-dead-letter-exchange` pointing to `commerce.dlx`.
+
+#### 2. Exponential Backoff Retry (1s, 2s, 4s)
+* When a message throws an exception in a consumer handler, RabbitMQService checks `'x-retry-count'`.
+* If retries are under `maxRetries` (default: 3), the message is scheduled for delayed redelivery with progressive exponential backoff:
+  $$\text{backoffMs} = \text{retryBackoffMs} \times 2^{\text{attempts}}$$
+* The original message is acknowledged so it does not block the queue.
+
+#### 3. Poison Message Quarantine with Diagnostic Headers
+* If a message fails after 3 attempts, it is quarantined to `${queue}.dlq` via `commerce.dlx`.
+* Full diagnostic metadata is attached directly to the message headers:
+  * `x-quarantine-reason`: `'MaxRetriesExceeded'`
+  * `x-quarantine-error`: Error message / exception reason
+  * `x-quarantine-at`: ISO-8601 timestamp
+  * `x-original-queue`: Originating queue name
+  * `x-original-routing-key`: Event routing key (`order.confirmed`, etc.)
+  * `x-correlation-id` and `traceparent`: Complete distributed trace context
+
+#### 4. DLQ Replay & Administrative CLI
+* **File:** [`scripts/rabbitmq-dlq.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/scripts/rabbitmq-dlq.ts)
+* Once an engineer fixes a downstream database or deploys a code fix, quarantined messages can be redriven into the main exchange with clean headers:
+  ```bash
+  # Check depth of all microservice queues and DLQs
+  npm run dlq:stats
+
+  # Redrive up to 50 quarantined messages back into the event exchange
+  npm run dlq:replay shipping-service 50
+
+  # Purge quarantined junk messages from a DLQ
+  npm run dlq:purge shipping-service
+  ```
+* **Unit Tests:** [`apps/orders-service/test/rabbitmq-dlq.spec.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/orders-service/test/rabbitmq-dlq.spec.ts) & [`libs/rabbitmq/src/rabbitmq.service.spec.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/rabbitmq/src/rabbitmq.service.spec.ts) (100% pass).
+
+---
+
+## 6. Quick Commands & Verification
+
+### Managing the Observability Stack
+```bash
+# 1. Start Grafana, Tempo, Loki, Prometheus in the background
 npm run observability:up
 
 # 2. View live logs from the observability containers
@@ -206,17 +305,25 @@ npm run observability:logs
 npm run observability:down
 ```
 
-### Accessing the Web Dashboard
-* Open your browser to: **`http://localhost:3050`**
-* Login with:
-  * Username: **`admin`**
-  * Password: **`admin`**
-* Navigate to **Explore** or **Dashboards $\rightarrow$ Commerce Microservices - Traces & Logs**.
+### Managing Dead Letter Queues (DLQ)
+```bash
+# Inspect all queue and DLQ depths
+npm run dlq:stats
+
+# Replay messages from a DLQ
+npm run dlq:replay shipping-service 50
+
+# Purge a DLQ
+npm run dlq:purge shipping-service
+```
 
 ### Running Tests & Code Quality
 ```bash
 # Run tracing unit tests
 npm test --prefix apps/orders-service -- tracing.spec.ts
+
+# Run RabbitMQ DLQ unit tests
+npm test --prefix apps/orders-service -- rabbitmq-dlq.spec.ts
 
 # Run Saga integration tests
 npm test --prefix apps/orders-service -- order-saga.service.spec.ts
@@ -227,10 +334,13 @@ npm run lint
 
 ---
 
-## 6. Complete Inventory of Files
+## 7. Complete Inventory of Files
 
 ### New Files Created
 * [`docs/DEVOPS_IMPLEMENTATION_LOG.md`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/docs/DEVOPS_IMPLEMENTATION_LOG.md) *(this documentation)*
+* [`scripts/rabbitmq-dlq.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/scripts/rabbitmq-dlq.ts) *(DLQ inspector and redrive tool)*
+* [`apps/orders-service/test/rabbitmq-dlq.spec.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/orders-service/test/rabbitmq-dlq.spec.ts) *(RabbitMQ DLQ unit test)*
+* [`libs/rabbitmq/src/rabbitmq.service.spec.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/rabbitmq/src/rabbitmq.service.spec.ts) *(RabbitMQ resilience spec)*
 * [`libs/common/src/tracing/trace-context.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/common/src/tracing/trace-context.ts) *(W3C tracing & AsyncLocalStorage)*
 * [`apps/orders-service/test/tracing.spec.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/orders-service/test/tracing.spec.ts) *(Tracing unit test)*
 * [`docker-compose.observability.yml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/docker-compose.observability.yml) *(LGTM compose stack)*
@@ -243,9 +353,10 @@ npm run lint
 * [`observability/grafana/dashboards/commerce-dashboard.json`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/observability/grafana/dashboards/commerce-dashboard.json)
 
 ### Files Modified & Enhanced
-* [`.github/workflows/ci.yml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/.github/workflows/ci.yml) *(Path filtering & Docker BuildKit matrix)*
-* [`package.json`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/package.json) *(Added observability scripts)*
+* [`package.json`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/package.json) *(Added observability & dlq management scripts)*
+* [`libs/rabbitmq/src/rabbitmq.service.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/rabbitmq/src/rabbitmq.service.ts) *(DLX, backoff retry, poison quarantine, DLQ replay)*
 * [`docs/DEVOPS_PRODUCTION_ROADMAP.md`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/docs/DEVOPS_PRODUCTION_ROADMAP.md) *(Status table updated)*
+* [`.github/workflows/ci.yml`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/.github/workflows/ci.yml) *(Path filtering & Docker BuildKit matrix)*
 * [`storefront/lib/api.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/storefront/lib/api.ts) *(Frontend browser trace injection)*
 * [`apps/api-gateway/src/main.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/api-gateway/src/main.ts) *(LoggingInterceptor & CORS)*
 * [`apps/api-gateway/src/proxy/proxy.service.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/api-gateway/src/proxy/proxy.service.ts) *(Downstream trace propagation)*
@@ -253,8 +364,8 @@ npm run lint
 * [`libs/common/src/middleware/correlation-id.middleware.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/common/src/middleware/correlation-id.middleware.ts) *(W3C parsing & AsyncLocalStorage wrap)*
 * [`libs/common/src/interceptors/logging.interceptor.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/common/src/interceptors/logging.interceptor.ts) *(Structured trace logging)*
 * [`libs/common/src/utils/logger.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/common/src/utils/logger.ts) *(StructuredLogger with auto-trace enrichment)*
-* [`libs/rabbitmq/src/rabbitmq.service.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/rabbitmq/src/rabbitmq.service.ts) *(AMQP headers propagation & consumer context)*
 * [`libs/outbox/src/outbox.service.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/outbox/src/outbox.service.ts) *(Stores trace in outbox)*
 * [`libs/outbox/src/outbox.relay.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/libs/outbox/src/outbox.relay.ts) *(Relays trace to RabbitMQ)*
 * [`apps/*/src/main.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/users-service/src/main.ts) *(All 11 microservices updated to accept `traceparent`)*
 * Cross-service HTTP clients: [`orders/users.client.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/orders-service/src/modules/orders/users.client.ts), [`pricing/shipping.client.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/pricing-service/src/modules/pricing/shipping.client.ts), [`pricing/catalog.client.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/pricing-service/src/modules/pricing/catalog.client.ts), [`reviews/users.client.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/reviews-service/src/modules/reviews/users.client.ts), [`recommendations/catalog.client.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/recommendations-service/src/modules/recommendations/catalog.client.ts), [`cart/inventory.client.ts`](file:///d:/Year2/Microservices/Order‑Inventory‑Payment%20Microservices/ecommerce-microservices/apps/cart-service/src/modules/cart/inventory.client.ts).
+
