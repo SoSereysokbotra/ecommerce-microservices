@@ -15,6 +15,20 @@ services:
     networks:
       - commerce
 
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: commerce-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/config.yaml
+    volumes:
+      - ./observability/promtail/promtail-config.yaml:/etc/promtail/config.yaml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    networks:
+      - commerce
+
   tempo:
     image: grafana/tempo:2.4.1
     container_name: commerce-tempo
