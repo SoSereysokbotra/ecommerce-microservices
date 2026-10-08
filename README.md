@@ -90,14 +90,21 @@ Databases are hosted on Neon; there is no Postgres container. See
 
 | Service | Port | Owns | Status |
 |---|---:|---|---|
-| api-gateway | 3000 | Routing, JWT, rate limiting, correlation ids | **Running** |
-| users-service | 3001 | Auth, customers | **Running** |
-| catalog-service | 3002 | Products, categories | **Running** |
-| inventory-service | 3003 | Stock levels | **Running** |
-| orders-service | 3004 | Order lifecycle, saga orchestrator | M2–M5 |
-| payments-service | 3005 | Stripe, webhooks, refunds | M4 |
+| api-gateway | 3000 | Routing, JWT, rate limiting, correlation IDs, traceparent propagation | **Running** |
+| users-service | 3001 | Auth, customers, profile management | **Running** |
+| catalog-service | 3002 | Products, categories, catalog events | **Running** |
+| inventory-service | 3003 | Stock levels, inventory reservations | **Running** |
+| orders-service | 3004 | Order lifecycle, checkout saga orchestrator | **Running** |
+| payments-service | 3005 | Stripe, webhooks, refunds, idempotency | **Running** |
+| cart-service | 3006 | Persistent user shopping carts, Redis cache | **Running** |
+| pricing-service | 3007 | Price rules, bulk discounts, promotional calculations | **Running** |
+| shipping-service | 3008 | Carrier rating, fulfillment tracking | **Running** |
+| search-service | 3009 | OpenSearch product indexing, search queries | **Running** |
+| reviews-service | 3010 | Product ratings, customer review moderation | **Running** |
+| recommendations-service | 3012 | Co-purchase analytics, frequent product pairings | **Running** |
+| storefront | 3011 | Next.js 14 web client with AlsoBought recommendations | **Running** |
 
-Supporting: Neon PostgreSQL (one database per service), RabbitMQ, Redis.
+Supporting infrastructure: Neon PostgreSQL (dedicated database per service), RabbitMQ (with DLX & poison message handling), Redis, OpenSearch.
 
 ---
 
@@ -165,6 +172,39 @@ docker compose restart users-service   # source is bind-mounted; no rebuild need
 
 Services run under `ts-node` without watch mode, so a code change needs
 `docker compose restart <service>`.
+
+---
+
+## Observability & Monitoring (Grafana, Loki, Prometheus, Tempo)
+
+The platform includes a complete production-grade observability stack supporting the **Three Pillars of Observability**:
+
+* **Grafana (Port 3050):** Unified cockpit dashboard correlating metrics, logs, and distributed traces in one UI.
+* **Prometheus (Port 9090):** Time-series metrics engine scraping service health, HTTP throughput, and CPU/memory usage.
+* **Loki (Port 3101):** High-efficiency log aggregation engine receiving container logs streamed by **Promtail**.
+* **Tempo (Port 3200, OTLP 4317/4318):** Distributed tracing backend rendering visual waterfall latency timelines across microservices.
+
+### Starting and Stopping
+
+```bash
+npm run observability:up    # Starts Grafana, Prometheus, Loki, Promtail, and Tempo
+npm run observability:down  # Stops the stack and frees system resources
+npm run observability:logs  # Follows live logs from the observability stack
+```
+
+### Accessing the Web Interfaces
+
+| Service | Local URL | Credentials / Purpose |
+|---|---|---|
+| **Grafana** | [http://localhost:3050](http://localhost:3050) | `admin` / `admin` (central UI for logs, traces, and dashboards) |
+| **Prometheus** | [http://localhost:9090](http://localhost:9090) | Raw metric queries (PromQL) and target health checks |
+| **Tempo** | [http://localhost:3200](http://localhost:3200) | Distributed trace storage and OTLP receiver (4317/4318) |
+
+### Quick Query Cheatsheet in Grafana Explore
+
+* **Live Container Logs (Loki):** In Grafana `Explore` ➔ select **Loki** ➔ query `{job="docker"}` or `{job="docker"} |= "error"`.
+* **Health & Metrics (Prometheus):** In Grafana `Explore` ➔ select **Prometheus** ➔ query `up` (1 = online, 0 = down) or `process_resident_memory_bytes / 1024 / 1024` (RAM in MB).
+* **Distributed Traces (Tempo):** In Grafana `Explore` ➔ select **Tempo** ➔ search `{}` or by service name (e.g. `api-gateway`) to inspect the visual latency waterfall across services.
 
 ---
 
