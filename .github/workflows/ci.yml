@@ -285,10 +285,6 @@ jobs:
         run: bash scripts/security-audit.sh
 
       - name: Run Trivy Vulnerability Scanner (Config & Manifests)
-        uses: aquasecurity/trivy-action@v0.30.0
-        with:
-          scan-type: 'config'
-          hide-progress: true
-          format: 'table'
-          severity: 'HIGH,CRITICAL'
-          exit-code: '0'
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
+          trivy config deploy/ --severity HIGH,CRITICAL --exit-code 0

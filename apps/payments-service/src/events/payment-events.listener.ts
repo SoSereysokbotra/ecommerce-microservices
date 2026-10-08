@@ -9,6 +9,7 @@ interface PaymentRequestedPayload {
   orderId: string;
   amountMinor: number;
   currency: string;
+  exponent?: number | null;
 }
 
 interface RefundRequestedPayload {
