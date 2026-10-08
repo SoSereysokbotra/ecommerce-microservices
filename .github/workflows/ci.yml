@@ -210,13 +210,7 @@ jobs:
           - service: recommendations-service
             dir: apps/recommendations-service
             key: recommendations
-    # Only run matrix jobs for services whose code changed or if core changed
-    if: |
-      needs.changes.outputs.core == 'true' ||
-      (matrix.key == 'gateway' && needs.changes.outputs.gateway == 'true') ||
-      (matrix.key == 'catalog' && needs.changes.outputs.catalog == 'true') ||
-      (matrix.key == 'orders' && needs.changes.outputs.orders == 'true') ||
-      (matrix.key == 'recommendations' && needs.changes.outputs.recommendations == 'true')
+    if: needs.changes.outputs.any_backend == 'true' || needs.changes.outputs.core == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -224,6 +218,12 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Validate Dockerfile Build (${{ matrix.service }})
+        if: |
+          needs.changes.outputs.core == 'true' ||
+          (matrix.key == 'gateway' && needs.changes.outputs.gateway == 'true') ||
+          (matrix.key == 'catalog' && needs.changes.outputs.catalog == 'true') ||
+          (matrix.key == 'orders' && needs.changes.outputs.orders == 'true') ||
+          (matrix.key == 'recommendations' && needs.changes.outputs.recommendations == 'true')
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -285,7 +285,7 @@ jobs:
         run: bash scripts/security-audit.sh
 
       - name: Run Trivy Vulnerability Scanner (Config & Manifests)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: 'config'
           hide-progress: true
