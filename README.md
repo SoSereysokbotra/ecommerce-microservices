@@ -192,13 +192,14 @@ npm run observability:down  # Stops the stack and frees system resources
 npm run observability:logs  # Follows live logs from the observability stack
 ```
 
-### Accessing the Web Interfaces
+### Accessing the Web Interfaces & APIs
 
-| Service | Local URL | Credentials / Purpose |
-|---|---|---|
-| **Grafana** | [http://localhost:3050](http://localhost:3050) | `admin` / `admin` (central UI for logs, traces, and dashboards) |
-| **Prometheus** | [http://localhost:9090](http://localhost:9090) | Raw metric queries (PromQL) and target health checks |
-| **Tempo** | [http://localhost:3200](http://localhost:3200) | Distributed trace storage and OTLP receiver (4317/4318) |
+| Service | Local URL | Interface Type | Purpose |
+|---|---|---|---|
+| **Grafana** | [http://localhost:3050](http://localhost:3050) | **Full Web UI** (`admin` / `admin`) | Central cockpit to view **everything**: Dashboards, Loki Logs, and Tempo Traces |
+| **Prometheus** | [http://localhost:9090](http://localhost:9090) | **Web UI & API** | Standalone PromQL query editor and target health checks |
+| **Loki** | `http://localhost:3101` | **Backend API only** | Log aggregation engine (viewed visually inside Grafana Explore) |
+| **Tempo** | `http://localhost:3200` | **Backend API only** | Trace storage engine & OTLP receiver (viewed visually inside Grafana Explore) |
 
 ### Quick Query Cheatsheet in Grafana Explore
 
