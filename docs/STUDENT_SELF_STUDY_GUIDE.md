@@ -27,8 +27,15 @@
 14. [Pillar 9: Zero-Trust Security, Secret Management & Container Hardening](#14-pillar-9-zero-trust-security-secret-management--container-hardening)
 
 ### Part III: Practical Mastery & Glossary
-15. [Master Hands-On Lab Experiments (The Complete Local Runbook)](#15-master-hands-on-lab-experiments-the-complete-local-runbook)
-16. [Master Glossary of Essential Terms](#16-master-glossary-of-essential-terms)
+30. 15. [Master Hands-On Lab Experiments (The Complete Local Runbook)](#15-master-hands-on-lab-experiments-the-complete-local-runbook)
+31. 16. [Master Glossary of Essential Terms](#16-master-glossary-of-essential-terms)
+
+### Part IV: What We Have Done: Hands-On Engineering Journey & Problem-Solving Log
+32. 17. [The Complete Chronology: Every Problem We Investigated & Solved](#17-the-complete-chronology-every-problem-we-investigated--solved)
+33. 18. [Observability Deep Dive: Grafana, Prometheus, Loki, Promtail & Tempo](#18-observability-deep-dive-grafana-prometheus-loki-promtail--tempo)
+34. 19. [RabbitMQ Dead-Letter Queues (DLQ) & The Windows Scripting Refactor](#19-rabbitmq-dead-letter-queues-dlq--the-windows-scripting-refactor)
+35. 20. [Security Deep Dive: What `npm run security:audit` Actually Inspects](#20-security-deep-dive-what-npm-run-securityaudit-actually-inspects)
+36. 21. [Student Quick Reference: Complete Commands, URLs & Diagnostic Cheat Sheet](#21-student-quick-reference-complete-commands-urls--diagnostic-cheat-sheet)
 
 ---
 
@@ -811,5 +818,255 @@ To truly understand this platform, run these live experiments on your computer:
 
 ---
 
-*Keep this guide open as you study each microservice in `apps/`, library in `libs/`, and deployment manifest in `deploy/`!*
+# Part IV: What We Have Done: Hands-On Engineering Journey & Problem-Solving Log
 
+> **Why this section exists:**  
+> When learning software engineering, reading pure architecture diagrams is not enough. Real engineering happens when things break, when configurations fail, when protocols behave unexpectedly, and when you debug your way through production logs.  
+> This section is your **personal retrospective log** of every question you asked, every error we encountered, how we debugged it, and the underlying computer science principles we uncovered together!
+
+---
+
+## 17. The Complete Chronology: Every Problem We Investigated & Solved
+
+Here is the exact journey of our engineering sessions, ordered chronologically from our first question to our final operational tests:
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                       OUR HANDS-ON ENGINEERING JOURNEY                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+   │
+   ├─► 1. Exploring Observability Core Concepts
+   │      - You asked: "What is Grafana, Tempo, Loki, and Prometheus?"
+   │      - We mapped them to the 3 Pillars of Observability: Metrics, Logs, and Traces.
+   │
+   ├─► 2. Investigating Background Services & UI Access
+   │      - You asked: "Do these run in the background? How can I see them?"
+   │      - We clarified how Docker Compose runs background daemon containers and identified the ports (3050, 9090, 3200, 3101).
+   │
+   ├─► 3. Debugging Loki: "Label browser: No labels found"
+   │      - You saw empty labels in Grafana Loki and couldn't see any logs.
+   │      - Root Cause 1: Loki 3.0.0 container crashed on permissions (`mkdir /tmp/loki/rules: permission denied`).
+   │      - Root Cause 2: No log shipping agent was collecting Docker container logs.
+   │      - The Fix: Added `user: "0:0"` to Loki and launched `commerce-promtail` to ship Docker container logs.
+   │
+   ├─► 4. Demystifying Tempo & Port 3200
+   │      - You tried opening `http://localhost:3200` in your browser and asked: "What about Tempo?"
+   │      - We clarified that Tempo is a trace storage backend and OTLP ingestion engine, not a standalone web app.
+   │      - We showed you how to inspect traces visually inside Grafana Explore using the Tempo datasource.
+   │
+   ├─► 5. Documenting Observability in the Project
+   │      - You requested: "Can you note that in the README file?"
+   │      - We updated `README.md` with complete port tables, credentials, and distinct Web UI vs API endpoints.
+   │
+   ├─► 6. Resolving the Windows `ts-node` Failure for RabbitMQ DLQ
+   │      - You ran `npm run dlq:stats` and encountered: `'ts-node' is not recognized as an internal or external command`.
+   │      - We eliminated the fragile TypeScript execution dependency by creating a standalone, dependency-free Node.js script: `scripts/rabbitmq-dlq.js`.
+   │      - We discovered the AMQP protocol quirk (channel closes on 404) and fixed it using the RabbitMQ Management HTTP API.
+   │
+   ├─► 7. Dissecting Platform Security Auditing
+   │      - You asked: "For this, how does it check security? (`npm run security:audit`)"
+   │      - We unpacked the 3 automated defense layers: Secret Scans, Kubernetes Policies, and Container Sandboxing.
+   │
+   └─► 8. Consolidating All Learning in this Master Self-Study Guide
+          - Recalling every pattern, code fix, script, and command so you retain full ownership of the entire system!
+```
+
+---
+
+## 18. Observability Deep Dive: Grafana, Prometheus, Loki, Promtail & Tempo
+
+During our exploration, we set up and diagnosed the entire distributed telemetry pipeline. Here is the technical breakdown of what each component does and why we configured them the way we did.
+
+### The Architectural Blueprint
+
+```
+ ┌──────────────────────┐          ┌──────────────────────┐
+ │  api-gateway (Node)  │          │ orders-service (Node)│
+ └──────────┬───────────┘          └──────────┬───────────┘
+            │                                 │
+     (OTLP Traces)                     (OTLP Traces)
+            │                                 │
+            ▼                                 ▼
+   ┌─────────────────┐               ┌─────────────────┐
+   │  Tempo (:3200)  │               │ Prometheus(:9090│
+   │  Trace Storage  │               │ Scrapes /metrics│
+   └────────┬────────┘               └────────┬────────┘
+            │                                 │
+            │        ┌────────────────┐       │
+            └───────►│ Grafana (:3050)│◄──────┘
+            ┌───────►│ Unified UI     │
+            │        └────────────────┘
+            │
+   ┌─────────────────┐
+   │  Loki (:3101)   │
+   │  Log Storage    │
+   └────────▲────────┘
+            │
+   ┌─────────────────┐
+   │ Promtail Daemon │
+   │ (Docker agent)  │
+   └────────▲────────┘
+            │
+   [ Docker Container Stdout/Stderr Files ]
+```
+
+### 1. Prometheus (`http://localhost:9090`)
+- **Category:** Metrics (Numbers over time).
+- **How it works:** Prometheus is a **pull-based** system. Every 15 seconds, it sends an HTTP GET request to each microservice's `/metrics` endpoint.
+- **What it tracks:**
+  - Counter: Total HTTP requests received (`http_requests_total`).
+  - Gauge: Current memory usage (`process_resident_memory_bytes`).
+  - Histogram: Request duration latency distributions (p50, p95, p99).
+- **Web UI:** Has its own standalone web interface at `http://localhost:9090` where you can execute PromQL queries (e.g. `rate(http_requests_total[5m])`).
+
+### 2. Loki (`http://localhost:3101`) & Promtail
+- **Category:** Logs (Text records).
+- **How it works:** Unlike Elasticsearch (which indexes every single word and consumes massive RAM), Loki indexes **only metadata labels** (e.g. `job="docker"`, `service="orders-service"`), storing raw log text in compressed chunks.
+- **The Bug We Fixed:**
+  - When you first opened Grafana Loki and clicked *Label browser*, it showed **"No labels found"**.
+  - **Why?** Two reasons:
+    1. Loki 3.0.0 was crashing upon container start with:
+       ```text
+       mkdir /tmp/loki/rules: permission denied
+       ```
+       The named Docker volume mounted at `/tmp/loki` was created with `root:root` permissions, but the Loki binary inside the container ran under UID `10001` (`loki`). We resolved this by explicitly specifying `user: "0:0"` for `loki` in `docker-compose.observability.yml`.
+    2. Even when Loki ran, nothing was feeding logs to it. Docker containers write their logs to JSON files on the host (`/var/lib/docker/containers/*/*-json.log`). Loki does not automatically discover those files.
+  - **The Solution:** We deployed **Promtail** (`commerce-promtail`), an agent container that mounts the Docker socket and container log folders, parses container names, and streams logs continuously to Loki's push API.
+  - Now, querying `{job="docker"}` in Grafana returns live logs from all 12 microservices!
+
+### 3. Tempo (`http://localhost:3200`)
+- **Category:** Distributed Tracing (Request journey through multiple servers).
+- **How it works:** When a client sends a request to `api-gateway`, an OpenTelemetry SDK attaches a W3C `traceparent` header. As `api-gateway` calls `catalog-service` or emits an event to RabbitMQ, that same `traceId` travels with the payload. Each service reports its "span" to Tempo on port `4317` (gRPC) or `4318` (HTTP).
+- **The "What about Tempo?" Question:**
+  - You asked what Tempo was trying to show and why port `3200` didn't show a nice web page.
+  - **Key takeaway:** Tempo is a headless trace engine. Its HTTP port (`3200`) is for health checks (`/ready`) and API queries. It relies entirely on **Grafana** as its visual presentation layer!
+  - **How to view traces:** In Grafana (`http://localhost:3050`), open **Explore** ➔ Select **Tempo** datasource ➔ Click **Search** ➔ Choose service `api-gateway` ➔ Click a Trace ID to view the full request waterfall diagram.
+
+---
+
+## 19. RabbitMQ Dead-Letter Queues (DLQ) & The Windows Scripting Refactor
+
+### The Problem: Windows `ts-node` Failure
+When you ran `npm run dlq:stats`, PowerShell threw the following error:
+```text
+PS D:\Year2\Microservices\Order‑Inventory‑Payment Microservices\ecommerce-microservices> npm run dlq:stats
+> ecommerce-microservices@1.0.0 dlq:stats
+> ts-node scripts/rabbitmq-dlq.ts stats
+
+'ts-node' is not recognized as an internal or external command,
+operable program or batch file.
+```
+
+### Why Did This Happen?
+1. The project originally invoked `ts-node scripts/rabbitmq-dlq.ts`.
+2. On Windows machines where developers haven't globally installed `ts-node` (`npm install -g ts-node`), npm scripts fail unless `ts-node` is in local `node_modules/.bin` and PowerShell execution policies permit it.
+3. Furthermore, compiling TypeScript on-the-fly for simple administrative maintenance scripts creates unnecessary CPU overhead and path-resolution issues (`tsconfig` path aliases).
+
+### The Solution: Standalone Pure Node.js CLI (`scripts/rabbitmq-dlq.js`)
+We replaced the TypeScript script with a zero-dependency, pure CommonJS script executed directly by standard `node`:
+```bash
+node scripts/rabbitmq-dlq.js stats
+```
+
+### The AMQP Protocol Discovery: Channel Closure vs HTTP Management API
+When writing the DLQ manager, we encountered a fundamental distributed systems protocol behavior:
+1. **The AMQP 0-9-1 Gotcha:** If you write code using the raw AMQP client (`amqplib`) and call:
+   ```javascript
+   await channel.checkQueue('some-queue-that-does-not-exist');
+   ```
+   The RabbitMQ broker does **not** simply return `null` or `false`. According to the AMQP specification, checking a non-existent queue is considered a protocol violation! The broker returns error code `404 (NOT_FOUND)` and **immediately forcibly closes the entire AMQP channel**. Any subsequent calls on that channel fail immediately.
+2. **The Modern SRE Solution:** Instead of using raw AMQP channels for administrative monitoring, we utilized the **RabbitMQ Management HTTP REST API** (`http://localhost:15672/api/queues`).
+   - We query the management endpoint with HTTP Basic Auth (`guest:guest`).
+   - It returns a clean JSON list of all queues, message depths, consumer counts, and memory rates—without opening or crashing any AMQP channels!
+   - If an administrative replay operation is requested (`npm run dlq:replay <queue>`), the script connects an AMQP channel only to consume from the `.dlq` queue and publish back to `commerce.events`.
+
+### Available DLQ Commands:
+| Command | What it does | Example |
+| :--- | :--- | :--- |
+| `npm run dlq:stats` | Prints a live ASCII table of all queues and DLQ message counts | `npm run dlq:stats` |
+| `npm run dlq:replay <queue>` | Moves messages from a DLQ quarantine queue back to `commerce.events` | `node scripts/rabbitmq-dlq.js replay orders-service.dlq` |
+| `npm run dlq:purge <queue>` | Permanently empties all messages from a quarantine queue | `node scripts/rabbitmq-dlq.js purge orders-service.dlq` |
+
+---
+
+## 20. Security Deep Dive: What `npm run security:audit` Actually Inspects
+
+You asked: *"For this, how does it check security?"*
+
+The command `npm run security:audit` executes `bash scripts/security-audit.sh`, which enforces a **defense-in-depth security model across 3 distinct boundaries**:
+
+```
+                       ┌────────────────────────────────────────────────┐
+                       │          npm run security:audit                │
+                       └───────────────────────┬────────────────────────┘
+                                               │
+               ┌───────────────────────────────┼───────────────────────────────┐
+               ▼                               ▼                               ▼
+     [ Stage 1: Git Repo ]          [ Stage 2: Kubernetes ]        [ Stage 3: Containers ]
+     Secret Scanner                 Zero-Trust Policies            Non-Root User Check
+     (scripts/scan-secrets.sh)      (deploy/k8s/base/security/)    (apps/*/Dockerfile)
+               │                               │                               │
+     - Stripe secret keys           - Default-deny all traffic     - Verify `USER node`
+     - Private RSA keys             - ExternalSecret integration   - Ban running as `root`
+     - Database passwords           - Explicit ingress/egress
+```
+
+### Stage 1: Source Code & Secret Scanning (`scripts/scan-secrets.sh`)
+- **What it does:** Scans every file tracked by Git and unstaged working files using regular expressions.
+- **Patterns inspected:**
+  - `sk_live_[0-9a-zA-Z]{24}` / `sk_test_[0-9a-zA-Z]{24}`: Stripe private API keys.
+  - `-----BEGIN (RSA|OPENSSH|EC) PRIVATE KEY-----`: Leaked SSH or TLS certificates.
+  - `postgres://user:password@host`: Hardcoded production database credentials.
+  - `ghp_[0-9a-zA-Z]{36}`: Leaked GitHub Personal Access Tokens.
+- **Why this matters:** If a developer accidentally commits an AWS key or database password to Git, git history preserves it forever—even if deleted in a later commit! This script prevents dangerous commits before they happen.
+
+### Stage 2: Cloud-Native Zero-Trust Policies (`deploy/k8s/base/security/`)
+- **What it does:** Validates that Kubernetes configuration follows the principle of least privilege.
+- **Policies checked:**
+  1. **External Secrets Operator (`external-secrets.yaml`):** Verifies that secrets are not committed as plain Base64 in Git, but dynamically fetched from AWS Secrets Manager or Vault at pod startup.
+  2. **Default-Deny NetworkPolicies (`network-policies.yaml`):** Verifies that pod-to-pod networking is strictly isolated:
+     - `storefront` can only talk to `api-gateway`.
+     - `orders-service` can talk to `orders_db` and RabbitMQ, but is physically blocked from contacting `payments_db` or `inventory_db`.
+
+### Stage 3: Container Non-Root Sandboxing
+- **What it does:** Inspects the Dockerfile of every service in `apps/`.
+- **What it enforces:** Every multi-stage build must conclude with:
+  ```dockerfile
+  USER node
+  ```
+- **Why this matters:** In Linux, if a hacker exploits a Remote Code Execution (RCE) bug inside your Node.js application and the container runs as `root` (UID 0), the hacker has root privileges on the container and can potentially break out onto the host machine kernel. Running as unprivileged `USER node` (UID 1000) strictly contains any exploit.
+
+---
+
+## 21. Student Quick Reference: Complete Commands, URLs & Diagnostic Cheat Sheet
+
+Keep this table handy during development, debugging, and presentations!
+
+### 1. Web Portals & Graphical UIs
+| System | URL | Credentials / Notes | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Grafana** | `http://localhost:3050` | `admin` / `admin` | Dashboards, Loki live logs, Tempo traces |
+| **Prometheus** | `http://localhost:9090` | None (Direct access) | Raw PromQL metric queries, target scrape health |
+| **RabbitMQ Admin** | `http://localhost:15672` | `guest` / `guest` | Visual queue depths, exchange bindings, connections |
+| **API Gateway** | `http://localhost:3000` | Bearer JWT (Auth header) | Central entry point for all frontend API traffic |
+| **Next.js Storefront**| `http://localhost:3011` | Open in browser | The full customer-facing shopping experience |
+| **Tempo API** | `http://localhost:3200` | Internal backend API | OTLP ingestion on 4317/4318; inspect via Grafana |
+| **Loki API** | `http://localhost:3101` | Internal backend API | Log ingestion; inspect via Grafana Explore |
+
+### 2. Operational CLI Commands
+| Action | Shell Command | What Happens Under the Hood |
+| :--- | :--- | :--- |
+| **Start All Microservices** | `docker compose up -d` | Boots 12 microservices, Postgres databases, Redis, RabbitMQ, OpenSearch |
+| **Start Observability** | `npm run observability:up` | Boots Grafana, Prometheus, Loki, Promtail, and Tempo |
+| **Tail Observability Logs** | `npm run observability:logs` | Streams live stdout from Grafana, Loki, Promtail, and Tempo |
+| **Stop Observability** | `npm run observability:down` | Gracefully shuts down observability containers |
+| **Check RabbitMQ Queues** | `npm run dlq:stats` | Queries RabbitMQ Management API and prints table of all queues |
+| **Replay Quarantined Messages**| `node scripts/rabbitmq-dlq.js replay <queue>` | Replays dead-letter messages from `.dlq` back to `commerce.events` |
+| **Purge Dead-Letter Queue** | `node scripts/rabbitmq-dlq.js purge <queue>` | Drops poison messages from a specified `.dlq` queue |
+| **Run Security Audit** | `npm run security:audit` | Runs 3-tier audit: secret scanner, K8s policies, Docker non-root check |
+| **Scan Secrets Only** | `npm run security:scan-secrets` | Scans working tree for uncommitted or committed private keys/tokens |
+| **Launch Storefront Dev** | `npm run dev:storefront` | Starts Next.js storefront dev server with Turbopack on port 3011 |
+
+---
+
+*This guide reflects everything built, debugged, and documented across this project. Keep it open as your engineering companion!*
