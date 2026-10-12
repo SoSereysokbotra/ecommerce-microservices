@@ -7,6 +7,8 @@
 ---
 
 ## Table of Contents
+
+### Part I: Distributed Systems Architecture (The Core Engine)
 1. [The Big Picture: Why Not Just Build a Monolith?](#1-the-big-picture-why-not-just-build-a-monolith)
 2. [The Core Problem: Distributed Transactions & The Death of ACID](#2-the-core-problem-distributed-transactions--the-death-of-acid)
 3. [Architecture Overview: Who Does What?](#3-architecture-overview-who-does-what)
@@ -16,8 +18,17 @@
 7. [Pillar 4: Concurrency & Contention (Coupons, Holds & Sweeps)](#7-pillar-4-concurrency--contention-coupons-holds--sweeps)
 8. [Service-by-Service Deep Dive (The Code Tour)](#8-service-by-service-deep-dive-the-code-tour)
 9. [Step-by-Step Order Lifecycle (Sequence Diagrams)](#9-step-by-step-order-lifecycle-sequence-diagrams)
-10. [Glossary of Essential Terms](#10-glossary-of-essential-terms)
-11. [Hands-On Lab Experiments You Can Run Locally](#11-hands-on-lab-experiments-you-can-run-locally)
+
+### Part II: Production DevOps & Site Reliability Engineering (SRE)
+10. [Pillar 5: Production CI/CD & Path-Based Docker Matrix](#10-pillar-5-production-cicd--path-based-docker-matrix)
+11. [Pillar 6: Full-Stack Distributed Tracing & Observability](#11-pillar-6-full-stack-distributed-tracing--observability)
+12. [Pillar 7: RabbitMQ Production Hardening & Dead-Letter Queues (DLQ)](#12-pillar-7-rabbitmq-production-hardening--dead-letter-queues-dlq)
+13. [Pillar 8: Cloud-Native Deployments (Kubernetes, Helm, KEDA & Terraform)](#13-pillar-8-cloud-native-deployments-kubernetes-helm-keda--terraform)
+14. [Pillar 9: Zero-Trust Security, Secret Management & Container Hardening](#14-pillar-9-zero-trust-security-secret-management--container-hardening)
+
+### Part III: Practical Mastery & Glossary
+15. [Master Hands-On Lab Experiments (The Complete Local Runbook)](#15-master-hands-on-lab-experiments-the-complete-local-runbook)
+16. [Master Glossary of Essential Terms](#16-master-glossary-of-essential-terms)
 
 ---
 
@@ -143,21 +154,26 @@ This project consists of 9 distinct backend applications, a Next.js frontend, a 
 
 | Service | Port | Database | Primary Responsibility |
 |---|---|---|---|
-| **api-gateway** | 3000 | None | Single public entrance. Validates JWT tokens, adds `x-correlation-id`, enforces rate limits, proxies requests, passes Stripe webhooks raw body. |
+| **api-gateway** | 3000 | None | Single public entrance. Validates JWT tokens, adds `x-correlation-id` and W3C `traceparent`, enforces rate limits, proxies requests, passes Stripe webhooks raw body. |
 | **users-service** | 3001 | `users_db` | User registration, password hashing (bcrypt), login, customer profile management. |
-| **catalog-service** | 3002 | `catalog_db` | Products catalog, categories, descriptions, images, product search. Read-heavy. |
+| **catalog-service** | 3002 | `catalog_db` | Products catalog, categories, descriptions, images, read-heavy query patterns. |
 | **inventory-service** | 3003 | `inventory_db` | Real-time stock counts, reservations (holds), commit stock, release stock, 15-minute expiry sweeper. |
 | **orders-service** | 3004 | `orders_db` | Order records and the **Checkout Saga Orchestrator**. Coordinates the entire checkout sequence. |
 | **payments-service** | 3005 | `payments_db` | Stripe integration, PaymentIntent creation, webhook signature verification, refunds. |
 | **cart-service** | 3006 | Redis + `cart_db` | Guest carts (stored in Redis with TTL) & signed-in user carts (stored in Postgres). Merges guest cart into user cart on login. |
 | **pricing-service** | 3007 | `pricing_db` | Tax computation (US sales tax vs EU VAT inclusive), automated promotions, and highly-concurrent coupon redemptions. |
-| **shipping-service** | 3008 | `shipping_db` | Shipping address validation, rate calculation, shipment fulfillment lifecycle. |
-| **storefront** | 3100 | None | Next.js 16 (App Router), React 19, Tailwind CSS, Stripe Elements checkout form. |
+| **shipping-service** | 3008 | `shipping_db` | Shipping address validation, carrier rating, shipment fulfillment lifecycle. |
+| **search-service** | 3009 | OpenSearch | OpenSearch full-text search, fuzzy search, facet aggregations, asynchronous CQRS projections. |
+| **reviews-service** | 3010 | `reviews_db` | Verified purchaser reviews, star ratings, moderation lifecycle, rating rollup calculations. |
+| **recommendations-service** | 3012 | `recommendations_db` | Real-time co-purchase frequency matrix, "Customers Also Bought" recommendations. |
+| **storefront** | 3011 | None | Next.js 14 web client with AlsoBought recommendations, React, Tailwind CSS, Stripe Elements checkout. |
 
 ### Supporting Infrastructure:
-- **RabbitMQ (Port 5672 / 15672):** Topic-based message broker (`commerce.events` exchange). Allows asynchronous event publishing and subscription.
+- **RabbitMQ (Port 5672 / 15672):** Topic-based message broker (`commerce.events` exchange) with Dead Letter Exchange (`commerce.dlx`) and exponential backoff retry.
 - **Redis (Port 6380 on host / 6379 in docker network):** Ultra-fast key-value store used for anonymous guest shopping carts.
+- **OpenSearch (Port 9200):** Distributed full-text search engine for high-performance product discovery.
 - **Neon PostgreSQL:** Serverless cloud PostgreSQL. **Rule: One database per microservice.** No service ever queries another service's database directly!
+- **Observability Stack (Port 3050):** Grafana, Prometheus, Loki, Promtail, and Tempo for production monitoring, log aggregation, and distributed tracing.
 
 ---
 
@@ -397,11 +413,49 @@ Here is your reference map to navigate the repository:
   - `src/modules/pricing/pricing.service.ts`: Groups line items by tax rate, computes inclusive (VAT) vs exclusive (sales tax), applies coupon discounts.
   - `src/modules/coupons/coupon.service.ts`: Atomic coupon claim logic.
 
+### `apps/shipping-service` (Port 3008)
+- **Role:** Shipping rates, carrier methods, package fulfillment tracking.
+- **Key Files:**
+  - `src/modules/shipping/shipping.service.ts`: Calculates shipping methods (Standard, Express, Overnight) and taxes.
+
+### `apps/search-service` (Port 3009)
+- **Role:** OpenSearch full-text search, multi-field fuzzy matching, category aggregations.
+- **Key Files:**
+  - `src/modules/search/search.service.ts`: QueryDSL query generator for OpenSearch.
+  - `src/events/catalog-events.listener.ts`: **CQRS Projection.** Listens for `catalog.product_created` and `catalog.product_updated` events from RabbitMQ and projects them into the OpenSearch index asynchronously!
+
+### `apps/reviews-service` (Port 3010)
+- **Role:** Customer reviews, verified purchase checks, rating statistics.
+- **Key Files:**
+  - `src/modules/reviews/reviews.service.ts`: Enforces review moderation, verified purchaser checks, and calculates average star ratings.
+
+### `apps/recommendations-service` (Port 3012)
+- **Role:** Co-purchase matrix analytics and "Frequently Bought Together" recommendations.
+- **Key Files:**
+  - `src/modules/recommendations/recommendations.service.ts`: Analyzes item co-occurrence across completed orders and returns top recommended companion products.
+  - `src/events/order-events.listener.ts`: Listens for `order.confirmed` events and increments pairwise item co-purchase frequency counters.
+
+### `storefront` (Port 3011)
+- **Role:** Next.js 14 web client with App Router, React Server Components, and Client Components.
+- **Key Files:**
+  - `src/components/AlsoBought.tsx`: Client component that queries `recommendations-service` and displays dynamically recommended companion products with 1-click cart addition.
+  - `src/app/checkout/page.tsx`: Embedded Stripe Elements checkout.
+
 ### `libs/outbox`
 - **Role:** Shared library used by every microservice for Outbox & Idempotency.
 - **Key Files:**
   - `src/outbox.relay.ts`: Polling loop that safely reads `outbox` table and pushes to RabbitMQ.
   - `src/idempotency.service.ts`: `handleOnce()` transaction wrapper using `processed_events`.
+
+### `libs/rabbitmq`
+- **Role:** Enterprise RabbitMQ client featuring Dead-Letter Exchange (DLX), exponential backoff, and poison message handling.
+- **Key Files:**
+  - `src/rabbitmq.service.ts`: Binds `commerce.events` exchange and `commerce.dlx`. Manages exponential retry delays (`x-retry-count`) and routes failed messages to `.dlq` quarantine queues.
+
+### `libs/common`
+- **Role:** Cross-cutting concerns, W3C distributed tracing, and AsyncLocalStorage.
+- **Key Files:**
+  - `src/tracing/trace-context.ts`: Captures and propagates W3C `traceparent` headers (`00-{traceId}-{spanId}-{flags}`) across asynchronous execution contexts and HTTP/RabbitMQ hops.
 
 ---
 
@@ -479,63 +533,283 @@ sequenceDiagram
 
 ---
 
-## 10. Glossary of Essential Terms
+---
 
-- **Monolith:** An application where all business modules share a single codebase and a single database.
-- **Microservices:** An architectural style where each domain is a standalone process owning its own private database.
-- **Database-per-Service:** A fundamental microservices rule stating that services cannot directly read or write each other's databases.
-- **Dual-Write Problem:** The impossibility of atomically updating a local database and publishing a network event without special patterns.
-- **Transactional Outbox:** Storing events in a local database table inside the same transaction as business data, then relaying them to a message broker asynchronously.
-- **At-Least-Once Delivery:** A message delivery guarantee where messages are guaranteed not to be lost, but might occasionally be delivered more than once.
-- **Idempotency:** A property where performing an operation multiple times produces the exact same side-effects as performing it once.
-- **Saga Pattern:** A sequence of local transactions coordinated via messages to maintain consistency across microservices without 2-phase commit locks.
-- **Compensating Transaction:** An operation that semantically reverses the effect of a previously committed local transaction.
-- **TTL (Time-To-Live):** An expiration timeframe (e.g., 15-minute hold on inventory) used as an automated backstop against uncompleted workflows.
-- **Correlation ID:** A unique UUID passed through HTTP headers (`x-correlation-id`) and event envelopes across all microservices to track a single user request through logs.
+# Part II: Production DevOps & Site Reliability Engineering (SRE)
+
+> **Why DevOps Matters for Students:** Writing working code is only 50% of software engineering. The other 50% is keeping it alive in production: automated testing, CI/CD, live observability, zero-downtime deployments, self-healing message queues, and zero-trust security.
 
 ---
 
-## 11. Hands-On Lab Experiments You Can Run Locally
+## 10. Pillar 5: Production CI/CD & Path-Based Docker Matrix
 
-To truly understand this codebase, don't just read it—test its fault-tolerance yourself!
+Located in: `.github/workflows/ci.yml`
 
-### Experiment 1: See the Outbox & RabbitMQ in Action
-1. Start the project:
+### The Problem: Monorepo Build Fatigue
+In a monorepo containing 12 NestJS services, 1 Next.js storefront, and 4 shared libraries:
+- If a developer fixes a typo in `reviews-service`, compiling all 12 services and building 13 Docker images takes **35+ minutes** and consumes expensive CI runner minutes.
+- If an untested change breaks an API type, the frontend crashes in production.
+- If a developer commits a `.env` file containing database passwords, the company is compromised.
+
+### The Solution: Multi-Stage Change Detection Pipeline
+Our GitHub Actions workflow implements an enterprise 7-stage pipeline:
+
+```
+[ Git Push / PR to main ]
+          │
+          ├──> 1. Detect Changes (dorny/paths-filter: only build touched services)
+          ├──> 2. Secret Scan (scripts/scan-secrets.sh: blocks committed tokens/DB URLs)
+          ├──> 3. API Types Contract Check (verifies generated TypeScript matches OpenAPI)
+          ├──> 4. Zero-Trust Security Audit & Trivy (manifest validation + non-root scan)
+          │
+          └──> (If changes detected):
+                 ├──> 5. Lint & Typecheck (tsc --noEmit, eslint)
+                 ├──> 6. Backend Unit Tests (jest matrix)
+                 └──> 7. Docker Build Matrix (buildx parallel multi-stage images)
+```
+
+#### Key Architecture Lessons:
+1. **Path-Based Change Filtering:** `dorny/paths-filter` checks Git file diffs. Editing `apps/orders-service/**` only triggers the `orders-service` Docker build!
+2. **Step-Level Matrix Evaluation:** GitHub Actions does not allow evaluating `matrix` keys in top-level job `if:` blocks (`Unrecognized named-value: 'matrix'`). Instead, matrix jobs initialize and conditionally execute build steps (`if: needs.changes.outputs[matrix.key] == 'true'`), keeping the pipeline fast and compliant.
+3. **Multi-Stage Dockerfiles:** Every service uses a 3-stage Dockerfile:
+   - `FROM node:20-alpine AS base`: Installs shared dependencies.
+   - `FROM base AS build`: Installs devDependencies, compiles TypeScript via `nest build`.
+   - `FROM node:20-alpine AS production`: Copies only compiled `dist/` and production node_modules (`--omit=dev`). Reduces container images from 1.2 GB to under 180 MB!
+
+---
+
+## 11. Pillar 6: Full-Stack Distributed Tracing & Observability
+
+Located in: `docker-compose.observability.yml`, `observability/`, `libs/common/src/tracing/`
+
+In distributed architectures, you cannot use `console.log()` to debug issues across 12 servers. We implement the **Three Pillars of Observability**:
+
+```
+                              ┌──────────────────────────────────────┐
+                              │        GRAFANA (:3050 Dashboard)    │
+                              └───────┬──────────┬──────────┬────────┘
+                                      │          │          │
+                     ┌────────────────┴────┐ ┌───┴────────┐ ┌┴────────────────────┐
+                     │  PROMETHEUS (:9090) │ │ LOKI (:3101│ │    TEMPO (:3200)    │
+                     │       Metrics       │ │    Logs    │ │    Distributed      │
+                     │  "How much CPU/RAM? │ │ "What went │ │      Tracing        │
+                     │   How many req/s?"  │ │   wrong?"  │ │  "Where was latency?│
+                     └─────────────────────┘ └────────────┘ └─────────────────────┘
+```
+
+### 1. W3C Distributed Tracing (`libs/common/src/tracing/trace-context.ts`)
+- Every HTTP request hitting `api-gateway` receives an official **W3C `traceparent` header**:
+  ```text
+  00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+  │  └──────────────┬────────────────┘ └───────┬────────┘ └─► Flags (01 = sampled)
+  │                 │                          │
+  Version        Trace ID (32 hex)          Span ID (16 hex)
+  ```
+- **AsyncLocalStorage:** In Node.js, asynchronous operations (`async/await`, Promises, event loops) lose context. We use Node's native `AsyncLocalStorage<TraceContext>` so every function call, database query, and RabbitMQ message automatically retains the `traceId` without needing to pass it as a function argument!
+
+### 2. Live Log Streaming with Loki & Promtail
+- **Loki** indexes logs using labels (`job`, `stream`, `service_name`).
+- **Promtail** runs as a container agent, tailing Docker container logs from `/var/lib/docker/containers/` and streaming them directly to Loki.
+- Querying in Grafana (LogQL):
+  ```logql
+  {job="docker"} |= "error"
+  ```
+
+### 3. Latency Waterfall Timelines with Tempo
+- Tempo collects trace spans across all microservices and renders a visual timeline waterfall:
+  - Top bar: `api-gateway` (200ms total)
+  - Sub-bar: `catalog-service.findProducts` (140ms)
+- Engineers can spot the exact slow microservice or database query in seconds!
+
+---
+
+## 12. Pillar 7: RabbitMQ Production Hardening & Dead-Letter Queues (DLQ)
+
+Located in: `libs/rabbitmq/src/rabbitmq.service.ts`, `scripts/rabbitmq-dlq.js`
+
+### The Problem: The "Poison Pill" & Infinite Retry Storms
+If a message is corrupted or unprocessable (e.g. malformed JSON or a database constraint violation):
+1. A microservice consumer rejects the message (`channel.nack()`).
+2. Without dead-lettering, RabbitMQ redelivers the message immediately.
+3. The consumer rejects it again.
+4. The system enters an infinite loop, consuming 100% CPU and crashing the broker!
+
+### The Solution: Dead-Letter Exchange (DLX) & Exponential Backoff
+
+```
+[ Publisher ] ──> commerce.events (Main Exchange)
+                        │
+                        ▼
+                 [ orders-service Queue ]
+                        │
+                  Consumer Fails?
+                  ┌─────┴─────┐
+             Retry < 3        Retry >= 3
+                  │               │
+       Wait with Backoff          ▼
+     (1s -> 2s -> 4s delay)   commerce.dlx (Dead Letter Exchange)
+                                  │
+                                  ▼
+                         [ orders-service.dlq ] (Quarantine Queue)
+                                  │
+                          Admin inspects / replays
+```
+
+#### The Quarantine & Replay Architecture:
+1. **Exponential Backoff:** Failed messages are retried with delays: `delay = initialDelay * (2 ^ (retryCount - 1))`.
+2. **Dead-Letter Exchange (`commerce.dlx`):** Messages exceeding max retries (3) are forwarded to `<service>.dlq` with quarantine metadata:
+   - `x-quarantine-reason`: Error message
+   - `x-quarantine-at`: ISO timestamp
+   - `x-original-routing-key`: The original topic so it can be replayed later!
+3. **The DLQ Administrative CLI:**
+   - Check queue depths: `npm run dlq:stats`
+   - Replay quarantined messages back to main exchange: `npm run dlq:replay <queue-name>`
+   - Purge poison messages: `npm run dlq:purge <queue-name>`
+
+---
+
+## 13. Pillar 8: Cloud-Native Deployments (Kubernetes, Helm, KEDA & Terraform)
+
+Located in: `deploy/k8s/`, `deploy/helm/`, `deploy/argocd/`, `deploy/terraform/`
+
+How do you run 13 microservices in the cloud?
+
+### 1. Base Manifests & Kustomize Overlays (`deploy/k8s/`)
+- **Base (`deploy/k8s/base/`):** Pure, environment-agnostic YAML manifests for all 13 services:
+  - `Deployment`: Container image, resource limits (CPU: 250m, RAM: 256Mi), liveness/readiness probes.
+  - `Service`: ClusterIP networking.
+  - `ConfigMap` & `Secrets`: Environment variables.
+- **Overlays (`deploy/k8s/overlays/`):**
+  - `staging`: 1 replica, lower CPU/memory limits.
+  - `production`: 3+ replicas, rolling updates (`maxSurge: 25%`, `maxUnavailable: 0`), strict resource guarantees.
+
+### 2. Enterprise Helm Chart (`deploy/helm/ecommerce-platform/`)
+- Instead of manually editing 26 separate Kubernetes YAML files, our Helm chart templates the entire platform using a single `values.yaml` file:
+  ```bash
+  helm install commerce ./deploy/helm/ecommerce-platform -f values-prod.yaml
+  ```
+
+### 3. KEDA: Event-Driven Queue Autoscaling (`deploy/k8s/base/scaled-objects.yaml`)
+- Traditional Kubernetes HPA (Horizontal Pod Autoscaler) scales based on CPU usage. But what if CPU is low, but 10,000 orders are waiting in RabbitMQ?
+- **KEDA (Kubernetes Event-driven Autoscaling)** connects directly to RabbitMQ:
+  - If `orders-service` queue depth > 30 messages, KEDA automatically scales pods up from 2 to 10 instances!
+  - When the queue is drained, it scales back down to 2 pods, saving cloud hosting costs.
+
+### 4. GitOps with ArgoCD (`deploy/argocd/`)
+- Developers never run `kubectl apply` in production.
+- **ArgoCD** continuously monitors this Git repository. When a commit merges to `main`, ArgoCD automatically synchronizes the cluster to match Git (Declarative GitOps).
+
+### 5. Infrastructure as Code with Terraform (`deploy/terraform/`)
+- Defines the actual cloud hardware in code:
+  - AWS VPC with public and private subnets across 3 Availability Zones.
+  - AWS EKS (Elastic Kubernetes Service) managed cluster.
+  - AWS ElastiCache Redis replication group.
+
+---
+
+## 14. Pillar 9: Zero-Trust Security, Secret Management & Container Hardening
+
+Located in: `deploy/k8s/base/security/`, `scripts/security-audit.sh`, `scripts/scan-secrets.sh`
+
+### 1. External Secrets Operator (ESO)
+- **The Vulnerability:** Kubernetes native `Secret` manifests are only Base64 encoded—anyone with read access to Git can decode passwords.
+- **The Solution:** We use **External Secrets Operator (`kind: ExternalSecret`)**. Kubernetes connects directly to AWS Secrets Manager or HashiCorp Vault at runtime and pulls secrets dynamically without them ever touching Git!
+
+### 2. Zero-Trust NetworkPolicies (`network-policies.yaml`)
+- By default in Kubernetes, any pod can talk to any other pod. If a hacker exploits a vulnerability in the `storefront`, they could directly query the internal `payments` database!
+- **Our Policy:** A **`default-deny-all`** firewall:
+  - All ingress and egress traffic is blocked by default.
+  - Only explicitly permitted communication is allowed:
+    - `storefront` can ONLY talk to `api-gateway` (port 3000).
+    - `api-gateway` can talk to microservices.
+    - Microservices can ONLY reach their assigned database and RabbitMQ.
+
+### 3. Container Non-Root Sandboxing
+- Production Dockerfiles execute under unprivileged user contexts (`USER node`).
+- If a vulnerability in Node.js allows arbitrary code execution, the attacker is trapped as an unprivileged user and cannot modify system binaries or escape the container.
+
+---
+
+# Part III: Practical Mastery & Glossary
+
+## 15. Master Hands-On Lab Experiments (The Complete Local Runbook)
+
+To truly understand this platform, run these live experiments on your computer:
+
+### Lab 1: Distributed Tracing in Grafana Tempo
+1. Start observability: `npm run observability:up`
+2. Open Grafana: `http://localhost:3050` (Login: `admin` / `admin`).
+3. Navigate to **Explore** ➔ select **Tempo**.
+4. In Query A, click **Search** ➔ select Service Name: `api-gateway` ➔ click **Run query**.
+5. Click any Trace ID ➔ observe the **pink & green latency waterfall** showing how many milliseconds were spent in the Gateway vs downstream microservices!
+
+### Lab 2: Live Log Streaming in Grafana Loki
+1. In Grafana **Explore**, change datasource to **Loki**.
+2. Type query: `{job="docker"}`
+3. Click the **`▷ Live`** button in the top-right corner.
+4. Open another tab and browse products on your storefront (`http://localhost:3011`). Watch the logs stream onto your screen in real time!
+
+### Lab 3: Inspecting RabbitMQ Queues & DLQ Status
+1. Run the administrative CLI in your terminal:
    ```bash
-   npm run dev
+   npm run dlq:stats
    ```
-2. Open RabbitMQ management in your browser: `http://localhost:15672` (Username: `guest`, Password: `guest`).
-3. Click on the **Exchanges** tab, then find `commerce.events`.
-4. Click on the **Queues** tab. Notice each microservice has its own queue bound to the specific topic routing keys it cares about!
+2. Observe the live table displaying queue message depth and dead-letter queue count for all 12 microservices.
 
-### Experiment 2: Provoke a Compensating Transaction (Declined Payment)
-1. Open the storefront at `http://localhost:3100`.
+### Lab 4: Running the Platform Zero-Trust Security Audit
+1. Run the automated audit:
+   ```bash
+   npm run security:audit
+   ```
+2. Verify all 3 automated defense layers pass:
+   - Secret scan for committed tokens.
+   - Kubernetes zero-trust default-deny NetworkPolicies and External Secrets.
+   - Non-root container execution audit.
+
+### Lab 5: Provoke a Compensating Transaction (Declined Payment)
+1. Open the storefront at `http://localhost:3011`.
 2. Add an item to your cart and proceed to checkout.
 3. In the Stripe card field, enter Stripe's test card for card decline:
    - Card Number: `4000 0000 0000 0002` (Card Declined test card)
    - Expiry: `12/34`, CVC: `123`
-4. Click "Pay".
-5. Observe what happens in Docker logs:
-   ```bash
-   docker compose logs -f orders-service inventory-service
-   ```
-   You will see:
+4. Click "Pay" and watch Docker logs (`docker compose logs -f orders-service inventory-service`):
    - `inventory-service` reserved the stock.
-   - `payments-service` received the decline from Stripe and emitted `payment.declined`.
+   - `payments-service` received the decline and emitted `payment.declined`.
    - `orders-service` triggered compensation: `inventory.release_requested`.
-   - `inventory-service` gave the stock back!
-   - The stock count never leaked.
-
-### Experiment 3: Inspect the Saga Database Table
-Connect to your Neon database for `orders_db` and run:
-```sql
-SELECT order_id, current_step, outcome, compensating, last_error, updated_at
-FROM order_saga
-ORDER BY updated_at DESC
-LIMIT 5;
-```
-You will see the exact state machine transitions recorded row by row!
+   - `inventory-service` un-held the stock!
 
 ---
 
-*Keep this guide open as you explore each service in `apps/` and each library in `libs/`!*
+## 16. Master Glossary of Essential Terms
+
+### Distributed Systems & Architecture:
+- **Monolith:** An application where all business modules share a single codebase and a single database.
+- **Microservices:** Standalone autonomous processes that communicate over networks and own private databases.
+- **Database-per-Service:** Strict architectural rule where no service may directly query another service's database.
+- **Dual-Write Problem:** The impossibility of atomically updating a database and publishing a network event without special patterns.
+- **Transactional Outbox:** Writing events into an `outbox` database table within the same ACID transaction as business changes, then relaying them to a message broker asynchronously.
+- **At-Least-Once Delivery:** Guarantee that events will never be lost, but may occasionally be delivered more than once.
+- **Idempotency:** The property where executing an operation multiple times produces the exact same outcome as executing it once (`handleOnce()`).
+- **Saga Pattern:** A sequence of local transactions coordinated via events to maintain data consistency across microservices.
+- **Compensating Transaction:** An operation that semantically reverses the effect of a previously committed local transaction.
+- **Correlation ID:** A unique UUID passed in headers (`x-correlation-id`) across all services to correlate all log entries for a single request.
+
+### DevOps, SRE & Cloud Native:
+- **CI/CD:** Continuous Integration (automated building, linting, testing) and Continuous Deployment (automated shipping).
+- **Three Pillars of Observability:** Metrics (Prometheus), Logs (Loki), and Traces (Tempo).
+- **W3C Traceparent:** Standardized header (`00-{traceId}-{spanId}-{flags}`) linking a request's distributed trace across microservice boundaries.
+- **AsyncLocalStorage:** Node.js API allowing execution context to persist across asynchronous callbacks and Promise chains without manual parameter passing.
+- **Dead-Letter Exchange (DLX):** A RabbitMQ exchange where unroutable or repeatedly rejected messages are forwarded for quarantine.
+- **Poison Pill:** A message whose content causes a consumer to crash every time it attempts processing.
+- **Exponential Backoff:** Progressively doubling the delay between retry attempts (1s, 2s, 4s) to avoid overwhelming failing services.
+- **KEDA:** Kubernetes Event-driven Autoscaling—scaling pods based on external metrics like RabbitMQ queue depth.
+- **Kustomize:** A template-free Kubernetes configuration management tool using overlays (`staging`, `production`) over a shared base.
+- **Helm:** The package manager for Kubernetes; defines, packages, and deploys applications using templated charts.
+- **GitOps:** Managing cloud infrastructure and application deployments declaratively using Git as the single source of truth (via ArgoCD).
+- **External Secrets Operator (ESO):** A Kubernetes operator integrating external secret stores (AWS Secrets Manager, Vault) into Kubernetes secrets.
+- **Zero-Trust NetworkPolicy:** A security posture that default-denies all pod-to-pod network traffic, allowing only explicitly declared communication paths.
+
+---
+
+*Keep this guide open as you study each microservice in `apps/`, library in `libs/`, and deployment manifest in `deploy/`!*
+
