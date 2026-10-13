@@ -34,7 +34,6 @@
     "dlq:replay": "node scripts/rabbitmq-dlq.js replay",
     "dlq:purge": "node scripts/rabbitmq-dlq.js purge",
     "security:audit": "bash scripts/security-audit.sh",
-    "voice:start": "node scripts/assistant-voice.js",
     "start:orders": "npm run start:dev --prefix apps/orders-service",
     "start:payments": "npm run start:dev --prefix apps/payments-service",
     "migrate:orders": "npm run migration:run --prefix apps/orders-service",
