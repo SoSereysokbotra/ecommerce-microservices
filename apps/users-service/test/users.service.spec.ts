@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from '../src/modules/users/users.service';
 import { UsersRepository } from '../src/modules/users/users.repository';
-import { UserRole } from '@libs/shared-types';
+import { UserRole, UserStatus } from '@libs/shared-types';
 import { NotFoundException } from '@nestjs/common';
 import { UserEntity } from '../src/modules/users/user.entity';
 
@@ -15,7 +15,9 @@ describe('UsersService', () => {
     name: 'Test User',
     passwordHash: 'hashed_password',
     role: UserRole.CUSTOMER,
+    status: UserStatus.ACTIVE,
     isEmailVerified: false,
+    sessions: [],
     createdAt: new Date(),
     updatedAt: new Date(),
   };

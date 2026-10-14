@@ -1,5 +1,6 @@
 // Enums
 export * from './enums/user-role.enum';
+export * from './enums/user-status.enum';
 
 // Types
 export * from './entities/user.type';

@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner, Table, TableForeignKey } from 'typeorm';
+import { MigrationInterface, QueryRunner, Table, TableForeignKey, TableIndex } from 'typeorm';
 
 export class CreateSessionsTable1704067300000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -14,9 +14,15 @@ export class CreateSessionsTable1704067300000 implements MigrationInterface {
             generationStrategy: 'uuid',
           },
           { name: 'user_id', type: 'uuid' },
-          { name: 'refresh_token', type: 'varchar', isNullable: true },
-          { name: 'expires_at', type: 'timestamp', isNullable: true },
+          { name: 'token_hash', type: 'varchar', isUnique: true },
+          { name: 'prev_token_hash', type: 'varchar', isNullable: true },
+          { name: 'user_agent', type: 'varchar', isNullable: true },
+          { name: 'ip_address', type: 'varchar', isNullable: true },
+          { name: 'expires_at', type: 'timestamp' },
+          { name: 'revoked_at', type: 'timestamp', isNullable: true },
+          { name: 'revocation_reason', type: 'varchar', isNullable: true },
           { name: 'created_at', type: 'timestamp', default: 'now()' },
+          { name: 'updated_at', type: 'timestamp', default: 'now()' },
         ],
       }),
     );
@@ -28,6 +34,22 @@ export class CreateSessionsTable1704067300000 implements MigrationInterface {
         referencedTableName: 'users',
         referencedColumnNames: ['id'],
         onDelete: 'CASCADE',
+      }),
+    );
+
+    await queryRunner.createIndex(
+      'user_sessions',
+      new TableIndex({
+        name: 'IDX_user_sessions_user_id',
+        columnNames: ['user_id'],
+      }),
+    );
+
+    await queryRunner.createIndex(
+      'user_sessions',
+      new TableIndex({
+        name: 'IDX_user_sessions_expires_at',
+        columnNames: ['expires_at'],
       }),
     );
   }

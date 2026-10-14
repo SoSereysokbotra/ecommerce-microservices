@@ -6,7 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { EventEmitterService } from '../src/events/event-emitter.service';
 import { UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { UserRole } from '@libs/shared-types';
+import { UserRole, UserStatus } from '@libs/shared-types';
 import { UserEntity } from '../src/modules/users/user.entity';
 
 // Mock bcrypt
@@ -24,7 +24,9 @@ describe('AuthService', () => {
     name: 'Test User',
     passwordHash: 'hashed_password',
     role: UserRole.CUSTOMER,
+    status: UserStatus.ACTIVE,
     isEmailVerified: false,
+    sessions: [],
     createdAt: new Date(),
     updatedAt: new Date(),
   };
