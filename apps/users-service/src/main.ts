@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import cookieParser from 'cookie-parser';
 import { HttpExceptionFilter, createValidationPipe, validateEnv } from '@libs/common';
 import { AppModule } from './app.module';
 
@@ -12,8 +13,11 @@ async function bootstrap(): Promise<void> {
 
   const app = await NestFactory.create(AppModule, { cors: true });
 
+  app.use(cookieParser());
+
   app.enableCors({
-    origin: '*',
+    origin: ['http://localhost:3011', 'http://localhost:3000'],
+    credentials: true,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-correlation-id', 'traceparent'],
   });

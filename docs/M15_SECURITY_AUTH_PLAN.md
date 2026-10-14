@@ -75,7 +75,7 @@ Based on user requirements and architectural audit:
 
 ## 4. Phased Execution Roadmap
 
-### Phase 1: Database Schema & Entity Overhaul (`apps/users-service`)
+### Phase 1: Database Schema & Entity Overhaul (`apps/users-service`) - [COMPLETED - Commit `eceafd9`]
 * **Goal:** Clean, production-ready PostgreSQL tables for users, sessions, and password resets.
 * **Tasks:**
   1. Reset `users_db` migrations.
@@ -112,7 +112,7 @@ Based on user requirements and architectural audit:
 
 ---
 
-### Phase 2: Core Session & Authentication Engine (`apps/users-service`)
+### Phase 2: Core Session & Authentication Engine (`apps/users-service`) - [COMPLETED]
 * **Goal:** Implement Angkoro's session lifecycle with SHA-256 token hashing and Redis synchronization.
 * **Tasks:**
   1. Create `SessionService` in `apps/users-service`:

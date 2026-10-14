@@ -61,6 +61,14 @@ export class UsersService {
     await this.usersRepository.remove(user);
   }
 
+  async updateLastLogin(id: string): Promise<void> {
+    const user = await this.usersRepository.findById(id);
+    if (user) {
+      user.lastLoginAt = new Date();
+      await this.usersRepository.save(user);
+    }
+  }
+
   async getProfile(id: string): Promise<UserResponseDto> {
     const user = await this.usersRepository.findById(id);
 

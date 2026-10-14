@@ -1,8 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from '../src/modules/auth/auth.service';
 import { UsersService } from '../src/modules/users/users.service';
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
+import { SessionService } from '../src/modules/auth/services/session.service';
 import { EventEmitterService } from '../src/events/event-emitter.service';
 import { UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
@@ -15,7 +14,7 @@ jest.mock('bcrypt');
 describe('AuthService', () => {
   let authService: AuthService;
   let usersService: jest.Mocked<UsersService>;
-  let jwtService: jest.Mocked<JwtService>;
+  let sessionService: jest.Mocked<SessionService>;
   let eventEmitter: jest.Mocked<EventEmitterService>;
 
   const mockUser: UserEntity = {
@@ -36,18 +35,23 @@ describe('AuthService', () => {
       findByEmail: jest.fn(),
       findById: jest.fn(),
       create: jest.fn(),
+      updateLastLogin: jest.fn(),
     };
-    const mockJwtService = {
-      signAsync: jest.fn(),
-      verify: jest.fn(),
-    };
-    const mockConfigService = {
-      get: jest.fn().mockImplementation((key: string) => {
-        if (key === 'jwtSecret') return 'secret';
-        if (key === 'jwtExpiresIn') return '1h';
-        if (key === 'refreshTokenExpiresIn') return '7d';
-        return null;
+    const mockSessionService = {
+      createSession: jest.fn().mockResolvedValue({
+        accessToken: 'access_token',
+        refreshToken: 'refresh_token',
+        session: { id: 'session-123', userId: '1' },
       }),
+      rotateSession: jest.fn().mockResolvedValue({
+        accessToken: 'new_access_token',
+        refreshToken: 'new_refresh_token',
+        session: { id: 'session-123', userId: '1' },
+      }),
+      revokeSession: jest.fn(),
+      revokeAllUserSessions: jest.fn(),
+      listUserSessions: jest.fn(),
+      isSessionActive: jest.fn(),
     };
     const mockEventEmitter = {
       emit: jest.fn(),
@@ -57,15 +61,14 @@ describe('AuthService', () => {
       providers: [
         AuthService,
         { provide: UsersService, useValue: mockUsersService },
-        { provide: JwtService, useValue: mockJwtService },
-        { provide: ConfigService, useValue: mockConfigService },
+        { provide: SessionService, useValue: mockSessionService },
         { provide: EventEmitterService, useValue: mockEventEmitter },
       ],
     }).compile();
 
     authService = module.get<AuthService>(AuthService);
     usersService = module.get(UsersService);
-    jwtService = module.get(JwtService);
+    sessionService = module.get(SessionService);
     eventEmitter = module.get(EventEmitterService);
   });
 
@@ -78,9 +81,6 @@ describe('AuthService', () => {
       usersService.findByEmail.mockResolvedValue(null);
       (bcrypt.hash as jest.Mock).mockResolvedValue('hashed_password');
       usersService.create.mockResolvedValue(mockUser);
-      jwtService.signAsync
-        .mockResolvedValueOnce('access_token')
-        .mockResolvedValueOnce('refresh_token');
 
       const result = await authService.register('test@example.com', 'Test User', 'password');
 
@@ -88,6 +88,7 @@ describe('AuthService', () => {
       expect(result.refreshToken).toEqual('refresh_token');
       expect(result.user.email).toEqual('test@example.com');
       expect(eventEmitter.emit).toHaveBeenCalledWith('user.created', expect.any(Object));
+      expect(sessionService.createSession).toHaveBeenCalled();
     });
 
     it('should throw UnauthorizedException if email already registered', async () => {
@@ -102,15 +103,13 @@ describe('AuthService', () => {
     it('should authenticate user and return tokens', async () => {
       usersService.findByEmail.mockResolvedValue(mockUser);
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
-      jwtService.signAsync
-        .mockResolvedValueOnce('access_token')
-        .mockResolvedValueOnce('refresh_token');
 
       const result = await authService.login('test@example.com', 'password');
 
       expect(result.accessToken).toEqual('access_token');
       expect(result.refreshToken).toEqual('refresh_token');
       expect(result.user.email).toEqual('test@example.com');
+      expect(sessionService.createSession).toHaveBeenCalled();
     });
 
     it('should throw UnauthorizedException if invalid password', async () => {
@@ -133,31 +132,23 @@ describe('AuthService', () => {
 
   describe('refreshToken', () => {
     it('should issue new tokens if refresh token is valid', async () => {
-      jwtService.verify.mockReturnValue({
-        sub: '1',
-        email: 'test@example.com',
-        role: UserRole.CUSTOMER,
-      });
       usersService.findById.mockResolvedValue(mockUser);
-      jwtService.signAsync
-        .mockResolvedValueOnce('new_access_token')
-        .mockResolvedValueOnce('new_refresh_token');
 
       const result = await authService.refreshToken('valid_token');
 
       expect(result.accessToken).toEqual('new_access_token');
       expect(result.refreshToken).toEqual('new_refresh_token');
+      expect(sessionService.rotateSession).toHaveBeenCalledWith('valid_token', undefined, undefined);
     });
 
     it('should throw UnauthorizedException if user not found during refresh', async () => {
-      jwtService.verify.mockReturnValue({
-        sub: '999',
-        email: 'test@example.com',
-        role: UserRole.CUSTOMER,
-      });
       usersService.findById.mockResolvedValue(null);
 
       await expect(authService.refreshToken('valid_token')).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException if no token is provided', async () => {
+      await expect(authService.refreshToken('')).rejects.toThrow(UnauthorizedException);
     });
   });
 });
