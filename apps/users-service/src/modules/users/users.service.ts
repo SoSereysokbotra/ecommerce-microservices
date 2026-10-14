@@ -69,6 +69,15 @@ export class UsersService {
     }
   }
 
+  async updatePassword(id: string, passwordHash: string): Promise<void> {
+    const user = await this.usersRepository.findById(id);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    user.passwordHash = passwordHash;
+    await this.usersRepository.save(user);
+  }
+
   async getProfile(id: string): Promise<UserResponseDto> {
     const user = await this.usersRepository.findById(id);
 

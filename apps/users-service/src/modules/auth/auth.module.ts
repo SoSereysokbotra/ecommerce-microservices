@@ -10,6 +10,7 @@ import { UserEntity } from '../users/user.entity';
 import { SessionEntity } from './entities/session.entity';
 import { PasswordResetEntity } from './entities/password-reset.entity';
 import { SessionService } from './services/session.service';
+import { PasswordResetService } from './services/password-reset.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 
@@ -27,7 +28,7 @@ import { LocalStrategy } from './strategies/local.strategy';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, SessionService, JwtStrategy, LocalStrategy],
-  exports: [AuthService, SessionService],
+  providers: [AuthService, SessionService, PasswordResetService, JwtStrategy, LocalStrategy],
+  exports: [AuthService, SessionService, PasswordResetService],
 })
 export class AuthModule {}

@@ -15,8 +15,11 @@ import { CurrentUser, Public } from '@libs/common';
 import { JwtPayload } from '@libs/shared-types';
 import { AuthService } from './auth.service';
 import { SessionService } from './services/session.service';
+import { PasswordResetService } from './services/password-reset.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { PasswordResetRequestDto } from './dto/password-reset-request.dto';
+import { PasswordResetConfirmDto } from './dto/password-reset-confirm.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -24,6 +27,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly sessionService: SessionService,
+    private readonly passwordResetService: PasswordResetService,
   ) {}
 
   @Public()
@@ -107,6 +111,18 @@ export class AuthController {
       await this.authService.logout(user.sid);
     }
     return { success: true, message: 'Logged out successfully' };
+  }
+
+  @Public()
+  @Post('password-reset/request')
+  async requestPasswordReset(@Body() dto: PasswordResetRequestDto) {
+    return this.passwordResetService.requestPasswordReset(dto.email);
+  }
+
+  @Public()
+  @Post('password-reset/confirm')
+  async confirmPasswordReset(@Body() dto: PasswordResetConfirmDto) {
+    return this.passwordResetService.confirmPasswordReset(dto.token, dto.newPassword);
   }
 
   @ApiBearerAuth()

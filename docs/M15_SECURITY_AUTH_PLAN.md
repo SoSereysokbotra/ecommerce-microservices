@@ -112,7 +112,7 @@ Based on user requirements and architectural audit:
 
 ---
 
-### Phase 2: Core Session & Authentication Engine (`apps/users-service`) - [COMPLETED]
+### Phase 2: Core Session & Authentication Engine (`apps/users-service`) - [COMPLETED - Commit `3531a06`]
 * **Goal:** Implement Angkoro's session lifecycle with SHA-256 token hashing and Redis synchronization.
 * **Tasks:**
   1. Create `SessionService` in `apps/users-service`:
@@ -135,7 +135,7 @@ Based on user requirements and architectural audit:
 
 ---
 
-### Phase 3: Password Reset Flow (`apps/users-service`)
+### Phase 3: Password Reset Flow (`apps/users-service`) - [COMPLETED]
 * **Goal:** Cryptographically secure self-service password recovery.
 * **Tasks:**
   1. Create `PasswordResetService`:
