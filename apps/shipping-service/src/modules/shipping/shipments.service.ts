@@ -96,6 +96,10 @@ export class ShipmentsService {
     return this.shipments.findOne({ where: { orderId, customerId } });
   }
 
+  findByOrderForStaff(orderId: string): Promise<ShipmentEntity | null> {
+    return this.shipments.findOne({ where: { orderId } });
+  }
+
   dispatch(
     id: string,
     details: { carrier?: string; trackingCode?: string } = {},

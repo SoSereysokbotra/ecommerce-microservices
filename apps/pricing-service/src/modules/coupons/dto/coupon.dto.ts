@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsInt, IsString, IsUUID, Length, Min } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsBoolean, IsDateString, IsInt, IsOptional, IsString, IsUUID, Length, Min } from 'class-validator';
 
 export class HoldCouponDto {
   @ApiProperty({ example: 'SAVE10USES' })
@@ -28,3 +28,42 @@ export class HoldCouponDto {
   @Min(0)
   amountMinor: number;
 }
+
+export class CreateCouponDto {
+  @ApiProperty({ example: 'SAVE20' })
+  @IsString()
+  @Length(1, 64)
+  code: string;
+
+  @ApiProperty()
+  @IsUUID()
+  discountId: string;
+
+  @ApiPropertyOptional({ example: 100 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  maxUses?: number;
+
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  perCustomerLimit?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  startsAt?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  endsAt?: string;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+}
+

@@ -1,8 +1,9 @@
 import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { CORRELATION_ID_HEADER, Public } from '@libs/common';
+import { CORRELATION_ID_HEADER, Public, Roles, UserRole } from '@libs/common';
 import { PricingService, QuoteView } from './pricing.service';
 import { CreateQuoteDto, QuoteResponseDto } from './dto/quote.dto';
+import { CreateTaxRateDto } from './dto/tax-rate.dto';
 import { DiscountEntity } from './discount.entity';
 import { TaxRateEntity } from './tax-rate.entity';
 
@@ -46,6 +47,15 @@ export class PricingController {
     return this.pricing.listTaxRates();
   }
 
+  /** Admin endpoint to configure tax rates. */
+  @Post('tax-rates')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Create or update a tax rate rule (admin)' })
+  @ApiOkResponse({ type: TaxRateEntity })
+  createTaxRate(@Body() body: CreateTaxRateDto): Promise<TaxRateEntity> {
+    return this.pricing.createTaxRate(body);
+  }
+
   @Public()
   @Get('discounts')
   @ApiOperation({ summary: 'Promotions currently active' })
@@ -53,3 +63,4 @@ export class PricingController {
     return this.pricing.listDiscounts();
   }
 }
+

@@ -1,7 +1,23 @@
+import { Reflector } from '@nestjs/core';
+import { ROLES_KEY, UserRole } from '@libs/common';
 import { AdminController } from '../src/modules/recommendations/admin.controller';
 import { RecommendationsService } from '../src/modules/recommendations/recommendations.service';
 
 describe('AdminController & reset', () => {
+  const reflector = new Reflector();
+
+  it('has @Roles(UserRole.ADMIN, UserRole.STAFF) on controller class and reset handler', () => {
+    const classRoles = reflector.get<UserRole[]>(ROLES_KEY, AdminController);
+    expect(classRoles).toContain(UserRole.ADMIN);
+    expect(classRoles).toContain(UserRole.STAFF);
+
+    const recommendationsMock = { reset: jest.fn() } as unknown as RecommendationsService;
+    const controller = new AdminController(recommendationsMock);
+    const methodRoles = reflector.get<UserRole[]>(ROLES_KEY, controller.reset);
+    expect(methodRoles).toContain(UserRole.ADMIN);
+    expect(methodRoles).toContain(UserRole.STAFF);
+  });
+
   it('reset() delegates to service and returns clear status with next replay command', async () => {
     const recommendationsMock = {
       reset: jest.fn(async () => undefined),

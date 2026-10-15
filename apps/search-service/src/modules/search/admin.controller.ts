@@ -1,5 +1,6 @@
 import { Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiProperty, ApiTags } from '@nestjs/swagger';
+import { Roles, UserRole } from '@libs/common';
 import { OpenSearchClient } from './opensearch.client';
 import { PRODUCTS_INDEX, PRODUCTS_INDEX_BODY } from './products.index';
 
@@ -22,16 +23,17 @@ export class RecreateIndexResponseDto {
  * fields, reviews for rating fields). Rebuilding the index now requires both
  * write sides to republish (docs/M13_REVIEWS_PLAN.md §5, §6).
  *
- * Not `@Public()`: it falls through to the gateway's guarded `@All`, so a
- * valid JWT is required. Staff-only in M16 (HANDOFF §9).
+ * Protected in M16 with @Roles(UserRole.ADMIN).
  */
 @ApiTags('search')
 @ApiBearerAuth()
+@Roles(UserRole.ADMIN)
 @Controller('search/admin')
 export class AdminController {
   constructor(private readonly opensearch: OpenSearchClient) {}
 
   @Post('recreate-index')
+  @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Drop the products index and recreate it empty with the current mapping',

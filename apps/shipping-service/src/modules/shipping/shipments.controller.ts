@@ -10,7 +10,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiHeader, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { USER_ID_HEADER } from '@libs/common';
+import { Roles, USER_ID_HEADER, USER_ROLE_HEADER, UserRole } from '@libs/common';
 import { ShipmentsService } from './shipments.service';
 import { ShipmentEntity } from './shipment.entity';
 import { DispatchShipmentDto, ShipmentResponseDto } from './dto/shipment.dto';
@@ -18,11 +18,8 @@ import { DispatchShipmentDto, ShipmentResponseDto } from './dto/shipment.dto';
 /**
  * Reading a delivery, and moving it along.
  *
- * The two write endpoints are **staff actions**, and there are no roles until
- * M16 — so they are protected by nothing but a valid JWT, exactly like "create
- * product" and "adjust stock" have been since M1 (HANDOFF §9). That is not new
- * debt, but it is two more endpoints on the pile, and the M16 entry should say
- * so. Anyone with an account can currently mark any parcel delivered.
+ * The two write endpoints are **staff actions**, protected in M16 by @Roles(ADMIN, STAFF).
+ * findByOrder is scoped to customer, with staff/admin override.
  */
 @ApiTags('shipments')
 @ApiHeader({ name: USER_ID_HEADER, description: 'Set by the gateway from the verified JWT.' })
@@ -40,9 +37,13 @@ export class ShipmentsController {
   @ApiOkResponse({ type: ShipmentResponseDto })
   async findByOrder(
     @Headers(USER_ID_HEADER) customerId: string,
+    @Headers(USER_ROLE_HEADER) callerRole: string | undefined,
     @Param('orderId', ParseUUIDPipe) orderId: string,
   ): Promise<ShipmentEntity> {
-    const shipment = await this.shipments.findByOrder(orderId, this.requireCustomer(customerId));
+    const isStaffOrAdmin = callerRole === UserRole.ADMIN || callerRole === UserRole.STAFF;
+    const shipment = isStaffOrAdmin
+      ? await this.shipments.findByOrderForStaff(orderId)
+      : await this.shipments.findByOrder(orderId, this.requireCustomer(customerId));
 
     if (!shipment) {
       // Also what somebody else's order looks like from here. A confirmed order
@@ -53,9 +54,10 @@ export class ShipmentsController {
   }
 
   @Post(':id/dispatch')
+  @Roles(UserRole.ADMIN, UserRole.STAFF)
   @ApiOperation({ summary: 'Hand a parcel to the carrier (staff)' })
   @ApiOkResponse({ type: ShipmentResponseDto })
-  dispatch(
+  async dispatch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: DispatchShipmentDto,
   ): Promise<ShipmentEntity> {
@@ -63,9 +65,10 @@ export class ShipmentsController {
   }
 
   @Post(':id/deliver')
+  @Roles(UserRole.ADMIN, UserRole.STAFF)
   @ApiOperation({ summary: 'Mark a parcel delivered (staff)' })
   @ApiOkResponse({ type: ShipmentResponseDto })
-  deliver(@Param('id', ParseUUIDPipe) id: string): Promise<ShipmentEntity> {
+  async deliver(@Param('id', ParseUUIDPipe) id: string): Promise<ShipmentEntity> {
     return this.shipments.deliver(id);
   }
 
@@ -76,3 +79,4 @@ export class ShipmentsController {
     return customerId;
   }
 }
+

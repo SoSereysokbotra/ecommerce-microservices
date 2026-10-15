@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { CouponEntity } from './coupon.entity';
 import { DiscountEntity } from '../pricing/discount.entity';
@@ -285,7 +285,55 @@ export class CouponsService {
 
     return manager ? run(manager) : this.dataSource.transaction(run);
   }
+
+  /**
+   * Create a new coupon code (Admin).
+   */
+  async createCoupon(input: {
+    code: string;
+    discountId: string;
+    maxUses?: number;
+    perCustomerLimit?: number;
+    startsAt?: Date;
+    endsAt?: Date;
+    active?: boolean;
+  }): Promise<CouponEntity> {
+    const normalised = input.code.trim().toUpperCase();
+    const repo = this.dataSource.getRepository(CouponEntity);
+
+    const existing = await repo.findOne({ where: { code: normalised } });
+    if (existing) {
+      throw new ConflictException(`Coupon code '${normalised}' already exists`);
+    }
+
+    const coupon = repo.create({
+      code: normalised,
+      discountId: input.discountId,
+      maxUses: input.maxUses ?? null,
+      perCustomerLimit: input.perCustomerLimit ?? null,
+      startsAt: input.startsAt ?? null,
+      endsAt: input.endsAt ?? null,
+      active: input.active ?? true,
+    });
+
+    return repo.save(coupon);
+  }
+
+  /**
+   * Delete a coupon code (Admin).
+   */
+  async deleteCoupon(code: string): Promise<boolean> {
+    const normalised = code.trim().toUpperCase();
+    const repo = this.dataSource.getRepository(CouponEntity);
+    const coupon = await repo.findOne({ where: { code: normalised } });
+    if (!coupon) {
+      throw new NotFoundException(`Coupon '${normalised}' not found`);
+    }
+    await repo.remove(coupon);
+    return true;
+  }
 }
+
 
 /**
  * Rows from a `... RETURNING` clause, whatever statement produced them.

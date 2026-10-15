@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Public } from '@libs/common';
+import { Public, Roles, UserRole } from '@libs/common';
 import { CouponsService, type CouponRejection, type HoldResult } from './coupons.service';
-import { HoldCouponDto } from './dto/coupon.dto';
+import { CreateCouponDto, HoldCouponDto } from './dto/coupon.dto';
+import { CouponEntity } from './coupon.entity';
 
 /**
  * Why a code was refused, in words a shopper can act on.
@@ -96,4 +97,31 @@ export class CouponsController {
   async release(@Body() body: { orderId: string }): Promise<{ released: boolean }> {
     return { released: await this.coupons.release(body.orderId) };
   }
+
+  /**
+   * Create a new coupon code (admin only).
+   */
+  @Post()
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Create a new coupon code (admin)' })
+  @ApiOkResponse({ type: CouponEntity })
+  async createCoupon(@Body() body: CreateCouponDto): Promise<CouponEntity> {
+    return this.coupons.createCoupon({
+      ...body,
+      startsAt: body.startsAt ? new Date(body.startsAt) : undefined,
+      endsAt: body.endsAt ? new Date(body.endsAt) : undefined,
+    });
+  }
+
+  /**
+   * Delete a coupon code (admin only).
+   */
+  @Delete(':code')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Delete a coupon code (admin)' })
+  async deleteCoupon(@Param('code') code: string): Promise<{ deleted: boolean }> {
+    const deleted = await this.coupons.deleteCoupon(code);
+    return { deleted };
+  }
 }
+

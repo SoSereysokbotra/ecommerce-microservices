@@ -37,3 +37,6 @@ export * from './utils/logger';
 export * from './utils/pagination.helper';
 export * from './utils/error.helper';
 export * from './utils/date.helper';
+
+// Shared types re-export
+export { UserRole, UserStatus } from '@libs/shared-types';

@@ -10,6 +10,7 @@ import { CouponsService, type CouponRejection } from '../coupons/coupons.service
 import { DiscountEntity } from './discount.entity';
 import { TaxRateEntity } from './tax-rate.entity';
 import { CreateQuoteDto } from './dto/quote.dto';
+import { CreateTaxRateDto } from './dto/tax-rate.dto';
 import { convert } from './money';
 import {
   computeQuote,
@@ -359,6 +360,19 @@ export class PricingService {
 
   listTaxRates(): Promise<TaxRateEntity[]> {
     return this.taxRates.find({ order: { country: 'ASC', region: 'ASC', category: 'ASC' } });
+  }
+
+  async createTaxRate(input: CreateTaxRateDto): Promise<TaxRateEntity> {
+    const taxRate = this.taxRates.create({
+      country: input.country.toUpperCase(),
+      region: input.region ? input.region.toUpperCase() : null,
+      category: input.category ?? null,
+      rateBp: input.rateBp,
+      name: input.name,
+      pricesIncludeTax: input.pricesIncludeTax ?? false,
+      shippingTaxable: input.shippingTaxable ?? true,
+    });
+    return this.taxRates.save(taxRate);
   }
 
   listDiscounts(): Promise<DiscountEntity[]> {

@@ -1,5 +1,6 @@
 import { Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiProperty, ApiTags } from '@nestjs/swagger';
+import { Roles, UserRole } from '@libs/common';
 import { RecommendationsService } from './recommendations.service';
 
 export class ResetRecommendationsResponseDto {
@@ -29,15 +30,17 @@ export class ResetRecommendationsResponseDto {
  * Resetting truncates `product_recommendations` and clears `processed_events` markers
  * for recommendations-service so the write side replay starts with a clean slate.
  *
- * Staff-only in M16 (HANDOFF §9). Guarded by the gateway's JWT check.
+ * Staff-only in M16 (HANDOFF §9). Guarded by RolesGuard.
  */
 @ApiTags('recommendations')
 @ApiBearerAuth()
+@Roles(UserRole.ADMIN, UserRole.STAFF)
 @Controller('recommendations/admin')
 export class AdminController {
   constructor(private readonly recommendations: RecommendationsService) {}
 
   @Post('reset')
+  @Roles(UserRole.ADMIN, UserRole.STAFF)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Truncate product recommendations and reset idempotency markers',
