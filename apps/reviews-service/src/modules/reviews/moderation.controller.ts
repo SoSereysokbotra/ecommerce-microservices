@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiHeader, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { USER_ID_HEADER } from '@libs/common';
+import { Roles, USER_ID_HEADER } from '@libs/common';
+import { UserRole } from '@libs/shared-types';
 import { ReviewsService } from './reviews.service';
 import {
   ListModerationQueryDto,
@@ -9,16 +10,10 @@ import {
   ReviewResponseDto,
 } from './dto/review.dto';
 
-/**
- * Staff moderation actions and write-side replay.
- *
- * M16 debt (HANDOFF §9): There are no roles until M16, so endpoints like
- * approve/reject and republish are currently protected by a valid JWT from the
- * gateway. Anyone with an account can call them until role checks land.
- */
 @ApiTags('moderation')
 @ApiHeader({ name: USER_ID_HEADER, description: 'Set by the gateway from the verified JWT.' })
 @Controller('reviews')
+@Roles(UserRole.ADMIN, UserRole.STAFF)
 export class ModerationController {
   constructor(private readonly reviews: ReviewsService) {}
 

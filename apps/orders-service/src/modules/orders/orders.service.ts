@@ -237,12 +237,20 @@ export class OrdersService {
     return this.orders.findOneOrFail({ where: { id: orderId } });
   }
 
-  findOne(id: string, customerId: string): Promise<OrderEntity | null> {
-    return this.orders.findOne({ where: { id, customerId } });
+  findOne(id: string, customerId?: string): Promise<OrderEntity | null> {
+    const where: any = { id };
+    if (customerId) {
+      where.customerId = customerId;
+    }
+    return this.orders.findOne({ where });
   }
 
-  list(customerId: string): Promise<OrderEntity[]> {
-    return this.orders.find({ where: { customerId }, order: { createdAt: 'DESC' }, take: 50 });
+  list(customerId?: string): Promise<OrderEntity[]> {
+    const where: any = {};
+    if (customerId) {
+      where.customerId = customerId;
+    }
+    return this.orders.find({ where, order: { createdAt: 'DESC' }, take: 50 });
   }
 }
 

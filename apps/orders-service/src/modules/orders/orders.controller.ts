@@ -8,9 +8,11 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ApiHeader, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { CORRELATION_ID_HEADER, USER_ID_HEADER } from '@libs/common';
+import { CORRELATION_ID_HEADER, USER_ID_HEADER, USER_ROLE_HEADER } from '@libs/common';
+import { UserRole } from '@libs/shared-types';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto, OrderResponseDto } from './dto/order.dto';
 
@@ -32,20 +34,31 @@ export class OrdersController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List my orders' })
+  @ApiOperation({ summary: 'List orders (Customer sees own; Staff/Admin can view all or filter by customerId)' })
   @ApiOkResponse({ type: [OrderResponseDto] })
-  list(@Headers(USER_ID_HEADER) customerId: string): Promise<OrderResponseDto[]> {
-    return this.orders.list(this.requireCustomer(customerId));
+  list(
+    @Headers(USER_ID_HEADER) customerId: string,
+    @Headers(USER_ROLE_HEADER) callerRole?: string,
+    @Query('customerId') filterCustomerId?: string,
+  ): Promise<OrderResponseDto[]> {
+    const caller = this.requireCustomer(customerId);
+    if (callerRole === UserRole.STAFF || callerRole === UserRole.ADMIN) {
+      return this.orders.list(filterCustomerId);
+    }
+    return this.orders.list(caller);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get one of my orders' })
+  @ApiOperation({ summary: 'Get an order by id (Scoped to customer, unless Staff/Admin)' })
   @ApiOkResponse({ type: OrderResponseDto })
   async findOne(
     @Headers(USER_ID_HEADER) customerId: string,
+    @Headers(USER_ROLE_HEADER) callerRole: string | undefined,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<OrderResponseDto> {
-    const order = await this.orders.findOne(id, this.requireCustomer(customerId));
+    const caller = this.requireCustomer(customerId);
+    const isStaffOrAdmin = callerRole === UserRole.STAFF || callerRole === UserRole.ADMIN;
+    const order = await this.orders.findOne(id, isStaffOrAdmin ? undefined : caller);
 
     // Scoped by customer, so another customer's order is "not found" rather
     // than "forbidden" — the difference would leak that the order exists.
