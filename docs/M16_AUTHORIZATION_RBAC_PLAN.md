@@ -206,8 +206,107 @@ Phase 6: Gateway Perimeter Policy, Automated Security Matrix Tests & Runbook
 
 ## 5. Definition of Done for M16
 
-- [ ] All 6 phases implemented and committed sequentially with clear git messages.
-- [ ] No regression on existing E2E cart, order, and payment flows.
-- [ ] Automated tests pass across all services (`npm test` in each touched app).
-- [ ] Zero hardcoded secrets committed (`scripts/scan-secrets.sh` passes).
-- [ ] User reviews and explicitly approves each phase before the next is executed.
+- [x] All 6 phases implemented and committed sequentially with clear git messages.
+- [x] No regression on existing E2E cart, order, and payment flows.
+- [x] Automated tests pass across all services (`npm test` in each touched app and `security-matrix.spec.ts`).
+- [x] Zero hardcoded secrets committed (`scripts/scan-secrets.sh` passes).
+- [x] User reviews and explicitly approves each phase before the next is executed.
+
+---
+
+## 6. Operational Security Runbook (curl Verification)
+
+The following commands verify the zero-trust perimeter, role-based access control, IDOR scoping, and admin self-protection against the running stack via API Gateway (`http://localhost:3000`).
+
+### 1. Acquire Access Tokens
+```bash
+# Customer login
+CUSTOMER_TOKEN=$(curl -s -X POST http://localhost:3000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"alice@example.com","password":"Password123!"}' | jq -r '.accessToken')
+
+# Staff login
+STAFF_TOKEN=$(curl -s -X POST http://localhost:3000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"staff@example.com","password":"Password123!"}' | jq -r '.accessToken')
+
+# Admin login
+ADMIN_TOKEN=$(curl -s -X POST http://localhost:3000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@example.com","password":"Password123!"}' | jq -r '.accessToken')
+```
+
+### 2. Verify Anonymous Perimeter (Expect 401 Unauthorized)
+```bash
+# Attempt to access protected endpoint without authentication
+curl -i -X GET http://localhost:3000/api/v1/orders
+# Expected: HTTP/1.1 401 Unauthorized
+```
+
+### 3. Verify Customer Role Authorization & IDOR Protection
+```bash
+# Customer accessing back-office user management (Expect 403 Forbidden)
+curl -i -X GET http://localhost:3000/api/v1/users \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN"
+# Expected: HTTP/1.1 403 Forbidden
+
+# Customer accessing product mutation (Expect 403 Forbidden)
+curl -i -X POST http://localhost:3000/api/v1/catalog/products \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Hacked Product","priceMinor":100}'
+# Expected: HTTP/1.1 403 Forbidden
+
+# Customer accessing other customer's order (IDOR test: Expect 404 Not Found, not 200 or leak)
+curl -i -X GET http://localhost:3000/api/v1/orders/00000000-0000-0000-0000-000000000999 \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN"
+# Expected: HTTP/1.1 404 Not Found
+```
+
+### 4. Verify Staff Role Permissions & Boundaries
+```bash
+# Staff accessing operations: stock adjustment (Expect 200 OK)
+curl -i -X POST http://localhost:3000/api/v1/inventory/stock/prod-1/adjust \
+  -H "Authorization: Bearer $STAFF_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"quantityDelta":10,"reason":"restock"}'
+# Expected: HTTP/1.1 200 OK
+
+# Staff accessing operations: shipment dispatch (Expect 200 OK)
+curl -i -X POST http://localhost:3000/api/v1/shipping/shipments/ship-1/dispatch \
+  -H "Authorization: Bearer $STAFF_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"carrier":"DHL","trackingCode":"DHL98765"}'
+# Expected: HTTP/1.1 200 OK
+
+# Staff attempting admin-only privilege: change user role (Expect 403 Forbidden)
+curl -i -X PATCH http://localhost:3000/api/v1/users/user-123/role \
+  -H "Authorization: Bearer $STAFF_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"role":"admin"}'
+# Expected: HTTP/1.1 403 Forbidden
+```
+
+### 5. Verify Admin Role Permissions & Self-Demotion Lockout Guard
+```bash
+# Admin listing users (Expect 200 OK)
+curl -i -X GET http://localhost:3000/api/v1/users \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+# Expected: HTTP/1.1 200 OK
+
+# Admin creating coupon (Expect 201/200 OK)
+curl -i -X POST http://localhost:3000/api/v1/pricing/coupons \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"code":"VIP50","discountId":"disc-uuid","maxUses":100}'
+# Expected: HTTP/1.1 201 Created
+
+# Admin self-demotion lockout guard (Expect 400 Bad Request)
+# When admin attempts to revoke their own admin role:
+curl -i -X PATCH http://localhost:3000/api/v1/users/admin-own-uuid/role \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"role":"customer"}'
+# Expected: HTTP/1.1 400 Bad Request ("Admins cannot demote their own account")
+```
+

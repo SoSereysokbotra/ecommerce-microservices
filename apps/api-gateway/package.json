@@ -7,7 +7,33 @@
     "start": "nest start api-gateway",
     "start:dev": "ts-node --transpile-only -r ./register-node-path.js -r tsconfig-paths/register src/main.ts",
     "start:prod": "node -r ./register-node-path.js dist/apps/api-gateway/src/main.js",
-    "lint": "eslint \"src/**/*.ts\""
+    "lint": "eslint \"src/**/*.ts\"",
+    "test": "jest"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": ".",
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
+    "coverageDirectory": "../coverage",
+    "testEnvironment": "node",
+    "moduleNameMapper": {
+      "^@nestjs/common$": "<rootDir>/node_modules/@nestjs/common",
+      "^@nestjs/core$": "<rootDir>/node_modules/@nestjs/core",
+      "^@libs/shared-types(|/.*)$": "<rootDir>/../../libs/shared-types/src$1",
+      "^@libs/common(|/.*)$": "<rootDir>/../../libs/common/src$1",
+      "^@libs/rabbitmq(|/.*)$": "<rootDir>/../../libs/rabbitmq/src$1",
+      "^@libs/outbox(|/.*)$": "<rootDir>/../../libs/outbox/src$1"
+    }
   },
   "dependencies": {
     "@libs/common": "file:../../libs/common",

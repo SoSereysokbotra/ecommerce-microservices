@@ -4,8 +4,8 @@
     "outDir": "./dist",
     "rootDir": "../..",
     "declaration": true,
-    "types": ["node"]
+    "types": ["node", "jest"]
   },
-  "include": ["src/**/*.ts", "../../libs/**/*.ts"],
-  "exclude": ["node_modules", "dist", "test", "**/*spec.ts", "../../libs/**/*.spec.ts", "../../**/*.spec.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "../../libs/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
 }
