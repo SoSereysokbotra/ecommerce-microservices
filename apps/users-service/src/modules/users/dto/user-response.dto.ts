@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { UserRole } from '@libs/shared-types';
+import { UserRole, UserStatus } from '@libs/shared-types';
 
 export class UserResponseDto {
   @ApiProperty()
@@ -17,6 +17,16 @@ export class UserResponseDto {
   @ApiProperty({ enum: UserRole })
   role: UserRole;
 
+  @ApiProperty({ enum: UserStatus })
+  status: UserStatus;
+
   @ApiProperty()
   isEmailVerified: boolean;
+
+  @ApiProperty({ required: false, nullable: true })
+  lastLoginAt?: Date | null;
+
+  @ApiProperty()
+  createdAt: Date;
 }
+

@@ -10,6 +10,7 @@ import { EventEmitterService } from '../../events/event-emitter.service';
 import { UsersService } from '../users/users.service';
 import { UserEntity } from '../users/user.entity';
 import { AuthResponseDto } from './dto/auth-response.dto';
+import { UserResponseDto } from '../users/dto/user-response.dto';
 import { SessionService } from './services/session.service';
 import { SessionEntity } from './entities/session.entity';
 
@@ -155,14 +156,17 @@ export class AuthService {
     }
   }
 
-  private mapUser(user: UserEntity) {
+  private mapUser(user: UserEntity): UserResponseDto {
     return {
       id: user.id,
       email: user.email,
       name: user.name,
       avatarUrl: user.avatarUrl,
       role: user.role,
+      status: user.status,
       isEmailVerified: user.isEmailVerified,
+      lastLoginAt: user.lastLoginAt,
+      createdAt: user.createdAt,
     };
   }
 }
