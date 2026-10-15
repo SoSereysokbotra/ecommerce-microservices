@@ -65,6 +65,15 @@ export class CorrelationIdMiddleware implements NestMiddleware {
     req.traceId = ctx.traceId;
     req.spanId = ctx.spanId;
 
+    // Attach verified user identity from gateway headers for @CurrentUser() and downstream guards
+    if (ctx.userId) {
+      (req as any).user = (req as any).user ?? {
+        id: ctx.userId,
+        sub: ctx.userId,
+        role: ctx.userRole,
+      };
+    }
+
     // Run remaining middleware, guards, interceptors, and handlers inside the trace context
     runWithTraceContext(ctx, () => next());
   }
