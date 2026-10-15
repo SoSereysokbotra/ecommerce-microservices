@@ -1,7 +1,7 @@
 import { Headers, Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { CORRELATION_ID_HEADER } from '@libs/common';
+import { CORRELATION_ID_HEADER, Public, Roles } from '@libs/common';
+import { UserRole } from '@libs/shared-types';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Public } from '@libs/common';
 import { ProductsService } from './products.service';
 import {
   CreateProductDto,
@@ -33,10 +33,9 @@ export class ProductsController {
     return this.products.findOne(idOrSlug);
   }
 
-  // Staff-only in M16, when real authorisation lands. Until then the gateway's
-  // JWT check is the only gate.
   @Post()
-  @ApiOperation({ summary: 'Create a product' })
+  @Roles(UserRole.ADMIN, UserRole.STAFF)
+  @ApiOperation({ summary: 'Create a product (Admin/Staff only)' })
   @ApiOkResponse({ type: ProductResponseDto })
   create(
     @Body() body: CreateProductDto,
@@ -46,7 +45,8 @@ export class ProductsController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update a product' })
+  @Roles(UserRole.ADMIN, UserRole.STAFF)
+  @ApiOperation({ summary: 'Update a product (Admin/Staff only)' })
   @ApiOkResponse({ type: ProductResponseDto })
   update(
     @Param('id') id: string,

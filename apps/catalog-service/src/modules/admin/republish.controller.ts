@@ -1,6 +1,7 @@
 import { Controller, Headers, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiProperty, ApiTags } from '@nestjs/swagger';
-import { CORRELATION_ID_HEADER } from '@libs/common';
+import { CORRELATION_ID_HEADER, Roles } from '@libs/common';
+import { UserRole } from '@libs/shared-types';
 import { RepublishResult, RepublishService } from './republish.service';
 
 export class RepublishResponseDto implements RepublishResult {
@@ -11,13 +12,9 @@ export class RepublishResponseDto implements RepublishResult {
   categories: number;
 }
 
-/**
- * Staff-only in M16. Until then the gateway's JWT check is the only gate —
- * the same debt as creating a product or dispatching a parcel, and listed
- * with them in HANDOFF §9.
- */
 @ApiTags('catalog')
 @Controller('catalog/admin')
+@Roles(UserRole.ADMIN, UserRole.STAFF)
 export class RepublishController {
   constructor(private readonly republish: RepublishService) {}
 

@@ -1,7 +1,8 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { CorrelationIdMiddleware } from '@libs/common';
+import { CorrelationIdMiddleware, RolesGuard } from '@libs/common';
 import { RabbitMQModule } from '@libs/rabbitmq';
 import { OutboxModule } from '@libs/outbox';
 import { AppController } from './app.controller';
@@ -31,6 +32,7 @@ import { StockModule } from './modules/stock/stock.module';
     EventsModule,
   ],
   controllers: [AppController],
+  providers: [{ provide: APP_GUARD, useClass: RolesGuard }],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {

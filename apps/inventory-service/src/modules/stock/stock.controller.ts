@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Public } from '@libs/common';
+import { Public, Roles } from '@libs/common';
+import { UserRole } from '@libs/shared-types';
 import { StockService } from './stock.service';
 import { AdjustStockDto, ListStockQueryDto, SetStockDto, StockResponseDto } from './dto/stock.dto';
 
@@ -27,7 +28,8 @@ export class StockController {
   }
 
   @Post(':productId/adjust')
-  @ApiOperation({ summary: 'Apply a signed change to available quantity' })
+  @Roles(UserRole.ADMIN, UserRole.STAFF)
+  @ApiOperation({ summary: 'Apply a signed change to available quantity (Admin/Staff only)' })
   @ApiOkResponse({ type: StockResponseDto })
   adjust(
     @Param('productId', ParseUUIDPipe) productId: string,
@@ -37,7 +39,8 @@ export class StockController {
   }
 
   @Put(':productId')
-  @ApiOperation({ summary: 'Set available quantity outright' })
+  @Roles(UserRole.ADMIN, UserRole.STAFF)
+  @ApiOperation({ summary: 'Set available quantity outright (Admin/Staff only)' })
   @ApiOkResponse({ type: StockResponseDto })
   set(
     @Param('productId', ParseUUIDPipe) productId: string,
