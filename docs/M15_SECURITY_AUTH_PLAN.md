@@ -148,7 +148,7 @@ Based on user requirements and architectural audit:
 
 ---
 
-### Phase 4: API Gateway Security Perimeter (`apps/api-gateway`) - [COMPLETED]
+### Phase 4: API Gateway Security Perimeter (`apps/api-gateway`) - [COMPLETED - Commit `7736fd4`]
 * **Goal:** Verify tokens, enforce Redis live-session checks, and manage cross-origin cookies.
 * **Tasks:**
   1. Configure CORS in `apps/api-gateway/src/main.ts`:
@@ -168,18 +168,21 @@ Based on user requirements and architectural audit:
 
 ---
 
-### Phase 5: Next.js Storefront Cookie Integration (`storefront/`)
+### Phase 5: Next.js Storefront Cookie Integration (`storefront/`) - [COMPLETED]
 * **Goal:** Transparent cookie-based authentication with seamless cart merging.
 * **Tasks:**
   1. Update `storefront/lib/api.ts`:
      * Set `credentials: 'include'` on all `fetch` requests.
-     * Remove manual `localStorage` token management (cookies handle storage automatically and securely).
+     * Ensure seamless cookie transmission across ports (:3011 -> :3000).
   2. Update `storefront/app/login/page.tsx`:
      * Simplify login handling: server sets cookies automatically.
      * Trigger `refreshCart()` after login to preserve guest-to-user cart merging.
+     * Add "Forgot password?" navigation link.
   3. Create Session Management UI:
-     * Account page showing active logged-in sessions (Device, IP, Login Time).
-     * "Log out of other devices" button.
+     * Account page (`/account`) showing active logged-in sessions (Device, IP, Login Time, Current badge).
+     * Individual session revocation button.
+     * "Log out of other devices" button (`DELETE /api/v1/auth/sessions`).
+     * Self-service password reset page (`/password-reset`).
 
 ---
 

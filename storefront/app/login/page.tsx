@@ -91,6 +91,14 @@ export default function LoginPage() {
             {mode === 'login' ? 'Need an account?' : 'Have an account?'}
           </button>
         </div>
+
+        {mode === 'login' && (
+          <div style={{ marginTop: '0.5rem' }}>
+            <a href="/password-reset" className="small muted">
+              Forgot password?
+            </a>
+          </div>
+        )}
       </form>
     </>
   );

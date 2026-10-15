@@ -4,6 +4,7 @@ import { CartProvider } from '@/components/CartProvider';
 import { CartLink } from '@/components/CartLink';
 import { CurrencySwitcher } from '@/components/CurrencySwitcher';
 import { SearchBox } from '@/components/SearchBox';
+import { AuthNav } from '@/components/AuthNav';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -29,7 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <SearchBox />
                 <CurrencySwitcher />
                 <CartLink />
-                <Link href="/login">Sign in</Link>
+                <AuthNav />
               </nav>
             </div>
           </header>
