@@ -34,7 +34,9 @@ export class OrdersController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List orders (Customer sees own; Staff/Admin can view all or filter by customerId)' })
+  @ApiOperation({
+    summary: 'List orders (Customer sees own; Staff/Admin can view all or filter by customerId)',
+  })
   @ApiOkResponse({ type: [OrderResponseDto] })
   list(
     @Headers(USER_ID_HEADER) customerId: string,

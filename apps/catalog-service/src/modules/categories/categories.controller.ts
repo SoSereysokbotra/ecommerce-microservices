@@ -21,7 +21,10 @@ export class CategoriesController {
 
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.STAFF)
-  @ApiOperation({ summary: 'Rename a category or change its description (Admin/Staff only); the slug is immutable' })
+  @ApiOperation({
+    summary:
+      'Rename a category or change its description (Admin/Staff only); the slug is immutable',
+  })
   @ApiOkResponse({ type: CategoryResponseDto })
   update(
     @Param('id') id: string,

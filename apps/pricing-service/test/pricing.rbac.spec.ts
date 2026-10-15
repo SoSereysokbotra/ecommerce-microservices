@@ -45,7 +45,9 @@ describe('Pricing & Coupons RBAC Protection', () => {
 
       const result = await controller.createCoupon(input);
       expect(result).toBe(fakeCoupon);
-      expect(service.createCoupon).toHaveBeenCalledWith(expect.objectContaining({ code: 'SAVE10', discountId: 'd-1' }));
+      expect(service.createCoupon).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'SAVE10', discountId: 'd-1' }),
+      );
     });
 
     it('delegates deleteCoupon to service', async () => {

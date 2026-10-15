@@ -24,9 +24,7 @@ export class GatewayJwtGuard implements CanActivate, OnModuleDestroy {
     private readonly configService: ConfigService,
   ) {
     const redisUrl =
-      this.configService.get<string>('redisUrl') ??
-      process.env.REDIS_URL ??
-      'redis://redis:6379';
+      this.configService.get<string>('redisUrl') ?? process.env.REDIS_URL ?? 'redis://redis:6379';
 
     this.redis = new Redis(redisUrl, {
       maxRetriesPerRequest: 2,

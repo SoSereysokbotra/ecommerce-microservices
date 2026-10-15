@@ -107,7 +107,11 @@ describe('M16 Security Perimeter & RBAC Matrix Audit', () => {
       await guard.onModuleDestroy();
     });
 
-    function createMockContext(headers: Record<string, string>, isPublic = false, isOptional = false) {
+    function createMockContext(
+      headers: Record<string, string>,
+      isPublic = false,
+      isOptional = false,
+    ) {
       const request: any = { headers, cookies: {} };
       jest.spyOn(reflector, 'getAllAndOverride').mockImplementation((key) => {
         if (key === IS_PUBLIC_KEY) return isPublic;
@@ -167,7 +171,10 @@ describe('M16 Security Perimeter & RBAC Matrix Audit', () => {
       rolesGuard = new RolesGuard(reflector);
     });
 
-    function createRbacContext(role: UserRole | 'anonymous', requiredRoles?: (UserRole | string)[]) {
+    function createRbacContext(
+      role: UserRole | 'anonymous',
+      requiredRoles?: (UserRole | string)[],
+    ) {
       jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(requiredRoles);
 
       const request: any = {
@@ -204,7 +211,8 @@ describe('M16 Security Perimeter & RBAC Matrix Audit', () => {
         },
       },
       {
-        category: 'Staff/Operations Routes (e.g. catalog/inventory/reviews/shipping/recommendations/orders ops)',
+        category:
+          'Staff/Operations Routes (e.g. catalog/inventory/reviews/shipping/recommendations/orders ops)',
         requiredRoles: [UserRole.ADMIN, UserRole.STAFF],
         expected: {
           anonymous: false,
@@ -214,7 +222,8 @@ describe('M16 Security Perimeter & RBAC Matrix Audit', () => {
         },
       },
       {
-        category: 'Admin-Only Routes (e.g. /search/admin/recreate-index, /pricing/coupons, /users/:id/role)',
+        category:
+          'Admin-Only Routes (e.g. /search/admin/recreate-index, /pricing/coupons, /users/:id/role)',
         requiredRoles: [UserRole.ADMIN],
         expected: {
           anonymous: false,

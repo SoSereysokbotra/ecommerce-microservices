@@ -98,7 +98,11 @@ describe('UsersController', () => {
         status: UserStatus.SUSPENDED,
       });
       expect(result.status).toBe(UserStatus.SUSPENDED);
-      expect(usersService.updateStatus).toHaveBeenCalledWith('admin-1', 'user-1', UserStatus.SUSPENDED);
+      expect(usersService.updateStatus).toHaveBeenCalledWith(
+        'admin-1',
+        'user-1',
+        UserStatus.SUSPENDED,
+      );
     });
   });
 
@@ -110,9 +114,9 @@ describe('UsersController', () => {
     });
 
     it('should forbid customer from viewing another customer profile', async () => {
-      await expect(
-        controller.getById('user-1', UserRole.CUSTOMER, 'user-2'),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(controller.getById('user-1', UserRole.CUSTOMER, 'user-2')).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('should allow staff/admin to view another customer profile', async () => {
@@ -146,9 +150,7 @@ describe('UsersController', () => {
     });
 
     it('should forbid admin from deleting their own account', async () => {
-      await expect(controller.remove('admin-1', 'admin-1')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(controller.remove('admin-1', 'admin-1')).rejects.toThrow(BadRequestException);
     });
   });
 });

@@ -56,7 +56,10 @@ describe('ShipmentsController (shipping-service RBAC & scoping)', () => {
 
     const result = await controller.dispatch('s-1', { carrier: 'FedEx', trackingCode: 'TRK123' });
     expect(result).toBe(fakeShipment);
-    expect(service.dispatch).toHaveBeenCalledWith('s-1', { carrier: 'FedEx', trackingCode: 'TRK123' });
+    expect(service.dispatch).toHaveBeenCalledWith('s-1', {
+      carrier: 'FedEx',
+      trackingCode: 'TRK123',
+    });
   });
 
   it('calls service.deliver on deliver()', async () => {

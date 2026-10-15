@@ -129,16 +129,16 @@ describe('UsersService', () => {
     });
 
     it('should prevent an admin from revoking their own admin role', async () => {
-      await expect(
-        service.updateRole('admin-id', 'admin-id', UserRole.CUSTOMER),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.updateRole('admin-id', 'admin-id', UserRole.CUSTOMER)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should throw NotFoundException if user not found', async () => {
       repository.findById.mockResolvedValue(null);
-      await expect(
-        service.updateRole('admin-id', 'user-404', UserRole.STAFF),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.updateRole('admin-id', 'user-404', UserRole.STAFF)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -164,9 +164,9 @@ describe('UsersService', () => {
 
     it('should throw NotFoundException if user not found', async () => {
       repository.findById.mockResolvedValue(null);
-      await expect(
-        service.updateStatus('admin-id', 'user-404', UserStatus.BANNED),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.updateStatus('admin-id', 'user-404', UserStatus.BANNED)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 

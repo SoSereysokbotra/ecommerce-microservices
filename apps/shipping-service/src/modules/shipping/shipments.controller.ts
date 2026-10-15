@@ -79,4 +79,3 @@ export class ShipmentsController {
     return customerId;
   }
 }
-

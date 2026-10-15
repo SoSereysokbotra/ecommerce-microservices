@@ -1,9 +1,4 @@
-import {
-  CanActivate,
-  ExecutionContext,
-  ForbiddenException,
-  Injectable,
-} from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { UserRole } from '@libs/shared-types';
 import { ROLES_KEY } from '../decorators/roles.decorator';
@@ -18,10 +13,10 @@ export class RolesGuard implements CanActivate {
   }
 
   canActivate(context: ExecutionContext): boolean {
-    const requiredRoles = this.reflector.getAllAndOverride<(UserRole | string)[]>(
-      ROLES_KEY,
-      [context.getHandler(), context.getClass()],
-    );
+    const requiredRoles = this.reflector.getAllAndOverride<(UserRole | string)[]>(ROLES_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
 
     // If route has no @Roles decorator, allow access
     if (!requiredRoles || requiredRoles.length === 0) {
@@ -30,9 +25,7 @@ export class RolesGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest();
     const rawRole =
-      request.user?.role ??
-      request.headers?.[USER_ROLE_HEADER] ??
-      request.headers?.['x-user-role'];
+      request.user?.role ?? request.headers?.[USER_ROLE_HEADER] ?? request.headers?.['x-user-role'];
 
     const userRole = Array.isArray(rawRole) ? rawRole[0] : rawRole;
 

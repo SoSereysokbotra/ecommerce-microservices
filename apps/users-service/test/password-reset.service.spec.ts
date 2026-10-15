@@ -138,7 +138,10 @@ describe('PasswordResetService', () => {
 
       expect(response.success).toBe(true);
       expect(bcrypt.hash).toHaveBeenCalledWith('NewSecurePassword123', 10);
-      expect(usersService.updatePassword).toHaveBeenCalledWith('user-uuid-1', 'new-hashed-password');
+      expect(usersService.updatePassword).toHaveBeenCalledWith(
+        'user-uuid-1',
+        'new-hashed-password',
+      );
       expect(existingRecord.usedAt).toBeDefined();
       expect(resetRepo.save).toHaveBeenCalledWith(existingRecord);
       expect(sessionService.revokeAllUserSessions).toHaveBeenCalledWith(
@@ -155,9 +158,9 @@ describe('PasswordResetService', () => {
     it('should throw BadRequestException if token is not found or already used', async () => {
       resetRepo.findOne.mockResolvedValue(null);
 
-      await expect(
-        service.confirmPasswordReset('invalid-token', 'NewPassword123'),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.confirmPasswordReset('invalid-token', 'NewPassword123')).rejects.toThrow(
+        BadRequestException,
+      );
 
       expect(usersService.updatePassword).not.toHaveBeenCalled();
       expect(sessionService.revokeAllUserSessions).not.toHaveBeenCalled();
@@ -175,9 +178,9 @@ describe('PasswordResetService', () => {
 
       resetRepo.findOne.mockResolvedValue(existingRecord);
 
-      await expect(
-        service.confirmPasswordReset(rawToken, 'NewPassword123'),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.confirmPasswordReset(rawToken, 'NewPassword123')).rejects.toThrow(
+        BadRequestException,
+      );
 
       expect(existingRecord.usedAt).toBeDefined();
       expect(resetRepo.save).toHaveBeenCalledWith(existingRecord);

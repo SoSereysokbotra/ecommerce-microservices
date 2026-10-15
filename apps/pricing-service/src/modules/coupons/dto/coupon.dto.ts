@@ -1,5 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsDateString, IsInt, IsOptional, IsString, IsUUID, Length, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsDateString,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Length,
+  Min,
+} from 'class-validator';
 
 export class HoldCouponDto {
   @ApiProperty({ example: 'SAVE10USES' })
@@ -66,4 +75,3 @@ export class CreateCouponDto {
   @IsBoolean()
   active?: boolean;
 }
-

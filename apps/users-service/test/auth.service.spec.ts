@@ -138,7 +138,11 @@ describe('AuthService', () => {
 
       expect(result.accessToken).toEqual('new_access_token');
       expect(result.refreshToken).toEqual('new_refresh_token');
-      expect(sessionService.rotateSession).toHaveBeenCalledWith('valid_token', undefined, undefined);
+      expect(sessionService.rotateSession).toHaveBeenCalledWith(
+        'valid_token',
+        undefined,
+        undefined,
+      );
     });
 
     it('should throw UnauthorizedException if user not found during refresh', async () => {

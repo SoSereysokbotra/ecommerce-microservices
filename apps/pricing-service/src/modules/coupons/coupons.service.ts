@@ -334,7 +334,6 @@ export class CouponsService {
   }
 }
 
-
 /**
  * Rows from a `... RETURNING` clause, whatever statement produced them.
  *

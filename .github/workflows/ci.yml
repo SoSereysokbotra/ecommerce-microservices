@@ -172,6 +172,7 @@ jobs:
           npm install
           npm install --prefix libs/common
           npm install --prefix libs/rabbitmq
+          npm install --prefix apps/api-gateway
           npm install --prefix apps/users-service
           npm install --prefix apps/catalog-service
           npm install --prefix apps/inventory-service

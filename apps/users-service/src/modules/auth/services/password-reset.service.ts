@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import * as crypto from 'crypto';
@@ -55,15 +51,14 @@ export class PasswordResetService {
     }
 
     if (user.status !== UserStatus.ACTIVE) {
-      this.logger.warn(`Password reset requested for non-active user ${user.id} (status: ${user.status})`);
+      this.logger.warn(
+        `Password reset requested for non-active user ${user.id} (status: ${user.status})`,
+      );
       return PasswordResetService.GENERIC_RESPONSE;
     }
 
     // Invalidate any existing unused reset tokens for this user
-    await this.resetRepo.update(
-      { userId: user.id, usedAt: IsNull() },
-      { usedAt: new Date() },
-    );
+    await this.resetRepo.update({ userId: user.id, usedAt: IsNull() }, { usedAt: new Date() });
 
     // Generate 32-byte cryptographically secure random token (64 hex characters)
     const rawToken = crypto.randomBytes(32).toString('hex');
@@ -144,7 +139,9 @@ export class PasswordResetService {
         undefined,
         'Password reset',
       );
-      this.logger.log(`Revoked ${revokedCount} active sessions for user ${resetRecord.userId} after password reset`);
+      this.logger.log(
+        `Revoked ${revokedCount} active sessions for user ${resetRecord.userId} after password reset`,
+      );
     } catch (err: any) {
       this.logger.warn(`Failed to revoke sessions during password reset: ${err.message}`);
     }

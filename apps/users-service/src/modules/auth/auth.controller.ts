@@ -63,12 +63,7 @@ export class AuthController {
     const userAgent = req.headers['user-agent'];
     const ipAddress = req.ip;
 
-    const result = await this.authService.login(
-      dto.email,
-      dto.password,
-      userAgent,
-      ipAddress,
-    );
+    const result = await this.authService.login(dto.email, dto.password, userAgent, ipAddress);
 
     this.sessionService.setAuthCookies(res, result.accessToken, result.refreshToken);
     return result;
@@ -89,11 +84,7 @@ export class AuthController {
     const userAgent = req.headers['user-agent'];
     const ipAddress = req.ip;
 
-    const result = await this.authService.refreshToken(
-      refreshToken,
-      userAgent,
-      ipAddress,
-    );
+    const result = await this.authService.refreshToken(refreshToken, userAgent, ipAddress);
 
     this.sessionService.setAuthCookies(res, result.accessToken, result.refreshToken);
     return result;
@@ -142,10 +133,7 @@ export class AuthController {
 
   @ApiBearerAuth()
   @Delete('sessions/:id')
-  async revokeSession(
-    @Param('id') sessionId: string,
-    @CurrentUser() user: JwtPayload,
-  ) {
+  async revokeSession(@Param('id') sessionId: string, @CurrentUser() user: JwtPayload) {
     await this.authService.revokeSession(sessionId, user.sub);
     return { success: true, message: 'Session revoked successfully' };
   }

@@ -127,10 +127,7 @@ export class UsersController {
   @Delete(':id')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Delete user account (Admin only)' })
-  async remove(
-    @Headers(USER_ID_HEADER) callerId: string,
-    @Param('id') id: string,
-  ): Promise<void> {
+  async remove(@Headers(USER_ID_HEADER) callerId: string, @Param('id') id: string): Promise<void> {
     if (callerId === id) {
       throw new BadRequestException('Administrators cannot delete their own account');
     }

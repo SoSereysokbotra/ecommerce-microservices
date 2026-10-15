@@ -36,9 +36,7 @@ export class UsersRepository {
       qb.andWhere('(LOWER(user.name) LIKE :search OR LOWER(user.email) LIKE :search)', { search });
     }
 
-    qb.orderBy('user.createdAt', 'DESC')
-      .skip(skip)
-      .take(limit);
+    qb.orderBy('user.createdAt', 'DESC').skip(skip).take(limit);
 
     const [items, total] = await qb.getManyAndCount();
     return { items, total };
@@ -52,4 +50,3 @@ export class UsersRepository {
     await this.repository.remove(user);
   }
 }
-

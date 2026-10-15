@@ -124,4 +124,3 @@ export class CouponsController {
     return { deleted };
   }
 }
-

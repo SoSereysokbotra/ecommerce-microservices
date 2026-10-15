@@ -12,7 +12,7 @@ import { IsNull, Repository } from 'typeorm';
 import * as crypto from 'crypto';
 import Redis from 'ioredis';
 import { Response } from 'express';
-import { UserRole, UserStatus, JwtPayload } from '@libs/shared-types';
+import { UserStatus, JwtPayload } from '@libs/shared-types';
 import { SessionEntity } from '../entities/session.entity';
 import { UserEntity } from '../../users/user.entity';
 
@@ -57,11 +57,9 @@ export class SessionService implements OnModuleDestroy {
     });
 
     this.jwtSecret = this.configService.get<string>('jwtSecret') ?? 'change-me';
-    this.refreshSecret =
-      process.env.JWT_REFRESH_SECRET || this.jwtSecret;
+    this.refreshSecret = process.env.JWT_REFRESH_SECRET || this.jwtSecret;
     this.jwtExpiresIn = this.configService.get<string>('jwtExpiresIn') ?? '1h';
-    this.refreshExpiresIn =
-      this.configService.get<string>('refreshTokenExpiresIn') ?? '7d';
+    this.refreshExpiresIn = this.configService.get<string>('refreshTokenExpiresIn') ?? '7d';
 
     // Default 7 days session lifetime (in seconds)
     this.sessionTtlSeconds = 7 * 24 * 60 * 60;
@@ -144,10 +142,9 @@ export class SessionService implements OnModuleDestroy {
   ): Promise<SessionResult> {
     let payload: RefreshTokenPayload;
     try {
-      payload = await this.jwtService.verifyAsync<RefreshTokenPayload>(
-        rawRefreshToken,
-        { secret: this.refreshSecret },
-      );
+      payload = await this.jwtService.verifyAsync<RefreshTokenPayload>(rawRefreshToken, {
+        secret: this.refreshSecret,
+      });
     } catch (err: any) {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }

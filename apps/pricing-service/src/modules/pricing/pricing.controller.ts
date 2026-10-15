@@ -63,4 +63,3 @@ export class PricingController {
     return this.pricing.listDiscounts();
   }
 }
-
