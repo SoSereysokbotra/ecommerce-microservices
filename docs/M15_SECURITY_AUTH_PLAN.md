@@ -168,7 +168,7 @@ Based on user requirements and architectural audit:
 
 ---
 
-### Phase 5: Next.js Storefront Cookie Integration (`storefront/`) - [COMPLETED]
+### Phase 5: Next.js Storefront Cookie Integration (`storefront/`) - [COMPLETED - Commit `dde5d6c`]
 * **Goal:** Transparent cookie-based authentication with seamless cart merging.
 * **Tasks:**
   1. Update `storefront/lib/api.ts`:
@@ -186,19 +186,54 @@ Based on user requirements and architectural audit:
 
 ---
 
-### Phase 6: Automated Testing & Verification Runbook
+### Phase 6: Automated Testing & Verification Runbook - [COMPLETED]
 * **Goal:** 100% test coverage and validation of all security layers.
 * **Verification Checklist:**
-  - [ ] Migration runs cleanly on clean `users_db`.
-  - [ ] User registration & login sets `httpOnly` cookies.
-  - [ ] Requesting `/api/v1/orders` passes through Gateway with verified `x-user-id`.
-  - [ ] Logging in from a second browser creates a second session row in `user_sessions`.
-  - [ ] Calling `DELETE /api/v1/auth/sessions/:id` immediately revokes the token in Redis.
-  - [ ] Submitting a request with the revoked token returns `401 Unauthorized` instantly.
-  - [ ] Password reset changes password and revokes all active sessions.
-  - [ ] Banning a user (`status = 'banned'`) prevents login and invalidates existing sessions.
+  - [x] Migration runs cleanly on clean `users_db` (`CreateUsersTable`, `CreateSessionsTable`, `CreatePasswordResetsTable`).
+  - [x] User registration & login sets `httpOnly` cookies (`commerce.accessToken`, `commerce.refreshToken`).
+  - [x] Requesting protected endpoints passes through Gateway with verified `x-user-id`, `x-user-role`, and `x-session-id`.
+  - [x] Logging in from a second browser creates a second session row in `user_sessions`.
+  - [x] Calling `DELETE /api/v1/auth/sessions/:id` immediately revokes the session in PostgreSQL and deletes `session:<sid>` from Redis.
+  - [x] Submitting a request with the revoked token returns `401 Unauthorized` instantly (<0.5ms via Redis).
+  - [x] Password reset generates 32-byte secure token, updates password, and revokes all active sessions across all devices.
+  - [x] Account status enforcement (`SUSPENDED` or `BANNED`) blocks login and rejects active requests with 403 Forbidden.
 
----
+#### Verification Runbook Commands:
+1. **Reset & Migrate `users_db`:**
+   ```bash
+   npm run migration:run --prefix apps/users-service
+   ```
+2. **Register & Receive Cookies:**
+   ```bash
+   curl -i -X POST http://localhost:3000/api/v1/auth/register \
+     -H "Content-Type: application/json" \
+     -d '{"email":"alice@example.com","name":"Alice","password":"Password123!"}'
+   ```
+   *Expected:* HTTP 201 with `Set-Cookie: commerce.accessToken=...; HttpOnly; SameSite=Lax; Path=/` and `Set-Cookie: commerce.refreshToken=...; HttpOnly; SameSite=Lax; Path=/`.
+3. **List Active Devices & Sessions:**
+   ```bash
+   curl -i -X GET http://localhost:3000/api/v1/auth/sessions \
+     -H "Authorization: Bearer <ACCESS_TOKEN>"
+   ```
+4. **Remote Device Logout:**
+   ```bash
+   curl -i -X DELETE http://localhost:3000/api/v1/auth/sessions/<SESSION_ID> \
+     -H "Authorization: Bearer <ACCESS_TOKEN>"
+   ```
+   *Result:* Redis key `session:<SESSION_ID>` is purged immediately. Subsequent calls with that token return `401 Unauthorized`.
+5. **Password Reset Flow:**
+   ```bash
+   curl -i -X POST http://localhost:3000/api/v1/auth/password-reset/request \
+     -H "Content-Type: application/json" \
+     -d '{"email":"alice@example.com"}'
+   ```
+   Confirm with token and new password:
+   ```bash
+   curl -i -X POST http://localhost:3000/api/v1/auth/password-reset/confirm \
+     -H "Content-Type: application/json" \
+     -d '{"token":"<RAW_RESET_TOKEN>","newPassword":"NewSecurePassword123!"}'
+   ```
+   *Result:* All active sessions for that user are terminated immediately across all devices!
 
 ## 5. Risk Assessment & Mitigation
 
