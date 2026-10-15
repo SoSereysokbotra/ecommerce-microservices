@@ -135,7 +135,7 @@ Based on user requirements and architectural audit:
 
 ---
 
-### Phase 3: Password Reset Flow (`apps/users-service`) - [COMPLETED]
+### Phase 3: Password Reset Flow (`apps/users-service`) - [COMPLETED - Commit `5c7bf2b`]
 * **Goal:** Cryptographically secure self-service password recovery.
 * **Tasks:**
   1. Create `PasswordResetService`:
@@ -148,7 +148,7 @@ Based on user requirements and architectural audit:
 
 ---
 
-### Phase 4: API Gateway Security Perimeter (`apps/api-gateway`)
+### Phase 4: API Gateway Security Perimeter (`apps/api-gateway`) - [COMPLETED]
 * **Goal:** Verify tokens, enforce Redis live-session checks, and manage cross-origin cookies.
 * **Tasks:**
   1. Configure CORS in `apps/api-gateway/src/main.ts`:

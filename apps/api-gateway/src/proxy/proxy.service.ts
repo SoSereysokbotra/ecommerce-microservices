@@ -80,9 +80,13 @@ export class ProxyService {
     // claim to be another user.
     delete headers[USER_ID_HEADER];
     delete headers[USER_ROLE_HEADER];
+    delete headers['x-session-id'];
     if (request.user?.sub) {
       headers[USER_ID_HEADER] = request.user.sub;
       headers[USER_ROLE_HEADER] = request.user.role ?? '';
+      if ((request.user as any).sid) {
+        headers['x-session-id'] = (request.user as any).sid;
+      }
     }
 
     const timeout = this.configService.get<number>('upstreamTimeoutMs') ?? 5000;

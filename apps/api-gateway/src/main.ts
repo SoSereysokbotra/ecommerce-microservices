@@ -8,6 +8,7 @@ import {
   validateEnv,
 } from '@libs/common';
 import * as express from 'express';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
@@ -29,8 +30,13 @@ async function bootstrap(): Promise<void> {
     .map((origin) => origin.trim())
     .filter(Boolean);
 
+  const defaultOrigins: string[] = ['http://localhost:3011', 'http://127.0.0.1:3011'];
+  if (process.env.STOREFRONT_URL) {
+    defaultOrigins.push(process.env.STOREFRONT_URL);
+  }
+
   const corsOptions = {
-    origin: corsOrigins.length > 0 ? corsOrigins : true,
+    origin: corsOrigins.length > 0 ? corsOrigins : defaultOrigins,
     credentials: true,
     allowedHeaders: [
       'Content-Type',
@@ -40,13 +46,15 @@ async function bootstrap(): Promise<void> {
       'x-cart-token',
       'stripe-signature',
     ],
-    exposedHeaders: ['x-correlation-id', 'traceparent', 'x-cart-token'],
+    exposedHeaders: ['x-correlation-id', 'traceparent', 'x-cart-token', 'set-cookie'],
   };
 
   const app = await NestFactory.create(AppModule, {
     cors: corsOptions,
     bodyParser: false,
   });
+
+  app.use(cookieParser());
 
   app.use(
     STRIPE_WEBHOOK_PATH,

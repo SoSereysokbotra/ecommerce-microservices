@@ -5,6 +5,7 @@
 export default () => ({
   port: Number(process.env.PORT ?? 3000),
   jwtSecret: process.env.JWT_SECRET,
+  redisUrl: process.env.REDIS_URL ?? 'redis://redis:6379',
 
   // Proxy behaviour — the previous gateway had none of this, so a restarting
   // upstream surfaced as an unhandled 500.
