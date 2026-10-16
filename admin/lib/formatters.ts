@@ -45,10 +45,13 @@ export function getOrderStatusBadgeClass(status: string): string {
     case 'PAID':
       return 'pill-ok';
     case 'SHIPPED':
+    case 'DISPATCHED':
     case 'ACTIVE':
       return 'pill-staff';
     case 'PENDING':
+    case 'AWAITING_PAYMENT':
     case 'PROCESSING':
+    case 'REFUNDED':
       return 'pill-warn';
     case 'CANCELLED':
     case 'FAILED':
