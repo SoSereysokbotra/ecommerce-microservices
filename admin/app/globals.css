@@ -450,10 +450,33 @@ table.admin-table tr:hover td {
   border-color: rgba(239, 68, 68, 0.3);
 }
 
-.alert-ok {
-  background: var(--status-ok-bg);
-  color: var(--status-ok);
-  border-color: rgba(16, 185, 129, 0.3);
+/* -------------------------------- Toolbars & Pagination -------------------------------- */
+.filter-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.search-input-wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 260px;
+}
+
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--line-subtle);
+  border-top: none;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  font-size: 0.85rem;
+  color: var(--text-muted);
 }
 
 .modal-backdrop {
