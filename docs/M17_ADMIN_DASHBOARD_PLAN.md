@@ -113,10 +113,10 @@ graph TD
 
 ## 4. Definition of Done for M17
 
-- [ ] All 7 phases implemented and verified.
-- [ ] Admin dashboard boots cleanly on port 3200 via `npm run dev:admin`.
-- [ ] Works seamlessly against the running Docker microservice stack through the API Gateway.
-- [ ] Role enforcement strictly verified: `CUSTOMER` denied access; `STAFF` allowed operational routes; `ADMIN` allowed full control.
-- [ ] Automated Playwright tests pass for admin workflows.
-- [ ] Code formatted with Prettier and lint passes with 0 errors.
-- [ ] Secrets scan passes (`bash scripts/scan-secrets.sh`).
+- [x] All 7 phases implemented and verified.
+- [x] Admin dashboard boots cleanly on port 3200 via `npm run dev:admin`.
+- [x] Works seamlessly against the running Docker microservice stack through the API Gateway.
+- [x] Role enforcement strictly verified: `CUSTOMER` denied access; `STAFF` allowed operational routes; `ADMIN` allowed full control.
+- [x] Automated Playwright tests pass for admin workflows.
+- [x] Code formatted with Prettier and lint passes with 0 errors.
+- [x] Secrets scan passes (`bash scripts/scan-secrets.sh`).
