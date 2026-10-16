@@ -19,6 +19,7 @@ describe('Pricing & Coupons RBAC Protection', () => {
         release: jest.fn(),
         createCoupon: jest.fn(),
         deleteCoupon: jest.fn(),
+        listCoupons: jest.fn(),
       } as unknown as jest.Mocked<CouponsService>;
 
       controller = new CouponsController(service);
@@ -28,6 +29,12 @@ describe('Pricing & Coupons RBAC Protection', () => {
       expect(reflector.get<boolean>(IS_PUBLIC_KEY, controller.validate)).toBe(true);
       expect(reflector.get<boolean>(IS_PUBLIC_KEY, controller.hold)).toBe(true);
       expect(reflector.get<boolean>(IS_PUBLIC_KEY, controller.release)).toBe(true);
+    });
+
+    it('protects listCoupons with @Roles(ADMIN, STAFF)', () => {
+      const listRoles = reflector.get<UserRole[]>(ROLES_KEY, controller.listCoupons);
+      expect(listRoles).toContain(UserRole.ADMIN);
+      expect(listRoles).toContain(UserRole.STAFF);
     });
 
     it('protects createCoupon and deleteCoupon with @Roles(ADMIN)', () => {

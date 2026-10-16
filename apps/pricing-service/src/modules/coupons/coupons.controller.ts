@@ -28,6 +28,17 @@ export class CouponsController {
   constructor(private readonly coupons: CouponsService) {}
 
   /**
+   * List all coupons with their associated discount rule (Admin/Staff).
+   */
+  @Get()
+  @Roles(UserRole.ADMIN, UserRole.STAFF)
+  @ApiOperation({ summary: 'List all coupons (admin/staff)' })
+  @ApiOkResponse({ type: [CouponEntity] })
+  async listCoupons(): Promise<CouponEntity[]> {
+    return this.coupons.listCoupons();
+  }
+
+  /**
    * Check a code without spending it.
    *
    * Read-only by design — the storefront calls this as the shopper types, and a

@@ -332,6 +332,17 @@ export class CouponsService {
     await repo.remove(coupon);
     return true;
   }
+
+  /**
+   * List all coupon codes with associated discount rule (Admin/Staff).
+   */
+  async listCoupons(): Promise<CouponEntity[]> {
+    const repo = this.dataSource.getRepository(CouponEntity);
+    return repo.find({
+      relations: ['discount'],
+      order: { createdAt: 'DESC' },
+    });
+  }
 }
 
 /**
