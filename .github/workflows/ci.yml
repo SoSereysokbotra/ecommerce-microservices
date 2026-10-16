@@ -23,6 +23,7 @@ jobs:
     outputs:
       core: ${{ steps.filter.outputs.core }}
       storefront: ${{ steps.filter.outputs.storefront }}
+      admin: ${{ steps.filter.outputs.admin }}
       gateway: ${{ steps.filter.outputs.gateway }}
       users: ${{ steps.filter.outputs.users }}
       catalog: ${{ steps.filter.outputs.catalog }}
@@ -51,6 +52,8 @@ jobs:
               - '.github/workflows/**'
             storefront:
               - 'storefront/**'
+            admin:
+              - 'admin/**'
             gateway:
               - 'apps/api-gateway/**'
             users:
@@ -150,6 +153,12 @@ jobs:
         run: |
           npm install --prefix storefront
           npx tsc --noEmit -p storefront/tsconfig.json
+
+      - name: Typecheck Admin Dashboard
+        if: needs.changes.outputs.admin == 'true' || needs.changes.outputs.core == 'true'
+        run: |
+          npm install --prefix admin
+          npx tsc --noEmit -p admin/tsconfig.json
 
   # ---------------------------------------------------------------------------
   # 3. Unit Tests

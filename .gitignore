@@ -28,6 +28,13 @@ storefront/.next/
 storefront/test-results/
 storefront/playwright-report/
 
+# Admin dashboard local env and build artifacts
+admin/.env.local
+admin/.next/
+admin/test-results/
+admin/playwright-report/
+*.tsbuildinfo
+
 # Cloudflare Tunnel runtime state and the downloaded cloudflared binary
 .tunnel/
 .tools/

@@ -30,9 +30,19 @@ async function bootstrap(): Promise<void> {
     .map((origin) => origin.trim())
     .filter(Boolean);
 
-  const defaultOrigins: string[] = ['http://localhost:3011', 'http://127.0.0.1:3011'];
+  const defaultOrigins: string[] = [
+    'http://localhost:3011',
+    'http://127.0.0.1:3011',
+    'http://localhost:3100',
+    'http://127.0.0.1:3100',
+    'http://localhost:3200',
+    'http://127.0.0.1:3200',
+  ];
   if (process.env.STOREFRONT_URL) {
     defaultOrigins.push(process.env.STOREFRONT_URL);
+  }
+  if (process.env.ADMIN_DASHBOARD_URL) {
+    defaultOrigins.push(process.env.ADMIN_DASHBOARD_URL);
   }
 
   const corsOptions = {
