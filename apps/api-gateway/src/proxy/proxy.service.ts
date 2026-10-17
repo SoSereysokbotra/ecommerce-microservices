@@ -10,6 +10,7 @@ import {
 import { AxiosError, AxiosResponse } from 'axios';
 import { Request } from 'express';
 import { firstValueFrom } from 'rxjs';
+import { CircuitBreakerRegistry, CircuitState } from '../resilience/circuit-breaker';
 
 type AuthenticatedRequest = Request & {
   user?: { sub?: string; role?: string };
@@ -40,13 +41,22 @@ const RETRYABLE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 @Injectable()
 export class ProxyService {
   private readonly logger = new Logger(ProxyService.name);
+  private readonly circuitBreakerRegistry: CircuitBreakerRegistry;
 
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
-  ) {}
+    circuitBreakerRegistry?: CircuitBreakerRegistry,
+  ) {
+    this.circuitBreakerRegistry =
+      circuitBreakerRegistry ?? new CircuitBreakerRegistry(this.configService);
+  }
 
-  resolveBaseUrl(path: string): string {
+  getCircuitBreakerRegistry(): CircuitBreakerRegistry {
+    return this.circuitBreakerRegistry;
+  }
+
+  resolveRoute(path: string): { url: string; configKey: string } {
     const normalized = path.startsWith('/') ? path : `/${path}`;
 
     for (const [pattern, configKey] of ROUTE_TABLE) {
@@ -55,17 +65,42 @@ export class ProxyService {
         if (!url) {
           throw new NotFoundException(`No URL configured for ${configKey}`);
         }
-        return url;
+        return { url, configKey };
       }
     }
 
     throw new NotFoundException(`No upstream service configured for path: ${path}`);
   }
 
+  resolveBaseUrl(path: string): string {
+    return this.resolveRoute(path).url;
+  }
+
   async forward(request: AuthenticatedRequest): Promise<AxiosResponse> {
     const path = this.rewritePath(request.originalUrl);
-    const baseUrl = this.resolveBaseUrl(path);
+    const { url: baseUrl, configKey } = this.resolveRoute(path);
     const targetUrl = `${baseUrl.replace(/\/$/, '')}${path}`;
+    const breaker = this.circuitBreakerRegistry.getBreaker(configKey);
+
+    // Fast-fail if the circuit breaker is OPEN to avoid socket exhaustion and upstream hammering
+    if (breaker.isOpen()) {
+      const retryAfter = breaker.getRetryAfterSeconds();
+      this.logger.warn(
+        `Fast-fail: Circuit breaker is OPEN for upstream '${configKey}' [${request.correlationId}]`,
+      );
+      throw new HttpException(
+        {
+          statusCode: 503,
+          error: 'Service Unavailable',
+          message: `The upstream service '${configKey}' is temporarily unavailable (circuit open). Please retry in ${retryAfter}s.`,
+          upstream: configKey,
+          circuitStatus: 'OPEN',
+          retryAfterSeconds: retryAfter,
+          correlationId: request.correlationId,
+        },
+        503,
+      );
+    }
 
     const headers = { ...request.headers };
     delete headers.host;
@@ -94,21 +129,37 @@ export class ProxyService {
       ? (this.configService.get<number>('upstreamRetries') ?? 2)
       : 0;
 
-    return this.sendWithRetry(
-      {
-        method: request.method,
-        url: targetUrl,
-        // Forward the untouched bytes when we captured them, so a provider
-        // signature over the body still verifies downstream.
-        headers,
-        data: request.rawBody ?? request.body,
-        params: request.query,
-        timeout,
-        validateStatus: () => true,
-      },
-      maxRetries,
-      request.correlationId,
-    );
+    try {
+      const response = await this.sendWithRetry(
+        {
+          method: request.method,
+          url: targetUrl,
+          // Forward the untouched bytes when we captured them, so a provider
+          // signature over the body still verifies downstream.
+          headers,
+          data: request.rawBody ?? request.body,
+          params: request.query,
+          timeout,
+          validateStatus: () => true,
+        },
+        maxRetries,
+        request.correlationId,
+      );
+
+      // Server error (5xx) is treated as an upstream failure for circuit breaker tracking
+      if (response.status >= 500) {
+        breaker.recordFailure(new Error(`Upstream returned HTTP ${response.status}`));
+      } else {
+        breaker.recordSuccess();
+      }
+
+      response.headers = response.headers ?? {};
+      response.headers['x-circuit-breaker-status'] = breaker.getState();
+      return response;
+    } catch (error) {
+      breaker.recordFailure(error);
+      throw this.toGatewayError(error, targetUrl, request.correlationId, breaker.getState());
+    }
   }
 
   /**
@@ -165,7 +216,12 @@ export class ProxyService {
    * An unreachable upstream is a 503, not an unhandled 500. The old gateway let
    * ECONNREFUSED escape as a raw stack trace, which told the caller nothing.
    */
-  private toGatewayError(error: unknown, url: string, correlationId?: string): HttpException {
+  private toGatewayError(
+    error: unknown,
+    url: string,
+    correlationId?: string,
+    circuitStatus: CircuitState = 'CLOSED',
+  ): HttpException {
     const code = (error as AxiosError)?.code;
     const isTimeout = code === 'ETIMEDOUT' || code === 'ECONNABORTED';
 
@@ -178,6 +234,7 @@ export class ProxyService {
         message: isTimeout
           ? 'The upstream service did not respond in time. Please try again.'
           : 'The upstream service is temporarily unavailable. Please try again.',
+        circuitStatus,
         correlationId,
       },
       isTimeout ? 504 : 503,

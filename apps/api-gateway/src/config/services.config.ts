@@ -12,6 +12,11 @@ export default () => ({
   upstreamTimeoutMs: Number(process.env.UPSTREAM_TIMEOUT_MS ?? 5000),
   upstreamRetries: Number(process.env.UPSTREAM_RETRIES ?? 2),
 
+  // Circuit Breaker (M18) — protects gateway from cascading outages and socket exhaustion
+  circuitBreakerFailureThreshold: Number(process.env.CB_FAILURE_THRESHOLD ?? 5),
+  circuitBreakerRecoveryTimeoutMs: Number(process.env.CB_RECOVERY_TIMEOUT_MS ?? 15000),
+  circuitBreakerHalfOpenTrials: Number(process.env.CB_HALF_OPEN_TRIALS ?? 2),
+
   // R1
   usersServiceUrl: process.env.USERS_SERVICE_URL ?? 'http://users-service:3001',
   catalogServiceUrl: process.env.CATALOG_SERVICE_URL ?? 'http://catalog-service:3002',
