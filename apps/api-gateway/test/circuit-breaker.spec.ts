@@ -251,18 +251,18 @@ describe('Phase 1: API Gateway Circuit Breaker Engine', () => {
       expect(registry.getBreaker('recommendationsServiceUrl').getState()).toBe('OPEN');
     });
 
-    it('fast-fails with 503 and does NOT hit the network when circuit is OPEN', async () => {
-      const breaker = registry.getBreaker('recommendationsServiceUrl');
-      breaker.recordFailure(new Error('Down 1'));
-      breaker.recordFailure(new Error('Down 2'));
-      breaker.recordFailure(new Error('Down 3'));
+    it('fast-fails with 503 for critical routes when circuit is OPEN and does NOT hit the network', async () => {
+      const breaker = registry.getBreaker('catalogServiceUrl');
+      breaker.recordFailure(new Error('Catalog down 1'));
+      breaker.recordFailure(new Error('Catalog down 2'));
+      breaker.recordFailure(new Error('Catalog down 3'));
       expect(breaker.isOpen()).toBe(true);
 
       const sendWithRetrySpy = jest.spyOn(proxyService as any, 'sendWithRetry');
 
       const fakeReq: any = {
-        method: 'GET',
-        originalUrl: '/api/v1/recommendations/products/p1',
+        method: 'POST',
+        originalUrl: '/api/v1/catalog/products',
         headers: {},
         correlationId: 'test-corr-id',
       };
@@ -275,12 +275,185 @@ describe('Phase 1: API Gateway Circuit Breaker Engine', () => {
         expect(err.getStatus()).toBe(503);
         const responseBody = err.getResponse();
         expect(responseBody.circuitStatus).toBe('OPEN');
-        expect(responseBody.upstream).toBe('recommendationsServiceUrl');
+        expect(responseBody.upstream).toBe('catalogServiceUrl');
         expect(responseBody.retryAfterSeconds).toBeGreaterThan(0);
       }
 
       // Assert that sendWithRetry was NEVER called because it fast-failed!
       expect(sendWithRetrySpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Phase 2: Graceful Fallbacks & Per-Route Degradation', () => {
+    let proxyService: ProxyService;
+    let configService: jest.Mocked<ConfigService>;
+    let httpService: any;
+    let registry: CircuitBreakerRegistry;
+
+    beforeEach(() => {
+      configService = {
+        get: jest.fn((key: string) => {
+          if (key === 'recommendationsServiceUrl') return 'http://recommendations-service:3012';
+          if (key === 'reviewsServiceUrl') return 'http://reviews-service:3010';
+          if (key === 'searchServiceUrl') return 'http://search-service:3009';
+          if (key === 'ordersServiceUrl') return 'http://orders-service:3004';
+          if (key === 'upstreamTimeoutMs') return 1000;
+          if (key === 'upstreamRetries') return 0;
+          if (key === 'circuitBreakerFailureThreshold') return 2;
+          if (key === 'circuitBreakerRecoveryTimeoutMs') return 10000;
+          return undefined;
+        }),
+      } as any;
+
+      httpService = {
+        request: jest.fn(),
+      };
+
+      registry = new CircuitBreakerRegistry(configService);
+      proxyService = new ProxyService(httpService, configService, registry);
+    });
+
+    it('returns degraded fallback for recommendations when upstream is unreachable', async () => {
+      jest.spyOn(proxyService as any, 'sendWithRetry').mockRejectedValue({
+        code: 'ECONNREFUSED',
+        message: 'Connection refused',
+      });
+
+      const fakeReq: any = {
+        method: 'GET',
+        originalUrl: '/api/v1/recommendations/products/p1?limit=4',
+        headers: {},
+        correlationId: 'corr-rec-1',
+      };
+
+      const res = await proxyService.forward(fakeReq);
+
+      expect(res.status).toBe(200);
+      expect(res.data).toEqual({ items: [], total: 0 });
+      expect(res.headers['x-degraded']).toBe('true');
+      expect(res.headers['x-degraded-reason']).toBe('upstream_transport_failure');
+    });
+
+    it('returns fast-fail degraded fallback for recommendations when circuit is OPEN without hitting network', async () => {
+      const breaker = registry.getBreaker('recommendationsServiceUrl');
+      breaker.recordFailure(new Error('fail 1'));
+      breaker.recordFailure(new Error('fail 2'));
+      expect(breaker.isOpen()).toBe(true);
+
+      const sendWithRetrySpy = jest.spyOn(proxyService as any, 'sendWithRetry');
+
+      const fakeReq: any = {
+        method: 'GET',
+        originalUrl: '/api/v1/recommendations/products/p1',
+        headers: {},
+        correlationId: 'corr-rec-open',
+      };
+
+      const res = await proxyService.forward(fakeReq);
+
+      expect(res.status).toBe(200);
+      expect(res.data).toEqual({ items: [], total: 0 });
+      expect(res.headers['x-degraded']).toBe('true');
+      expect(res.headers['x-circuit-breaker-status']).toBe('OPEN');
+      expect(sendWithRetrySpy).not.toHaveBeenCalled();
+    });
+
+    it('returns degraded fallback for product reviews when reviews-service returns 500', async () => {
+      jest.spyOn(proxyService as any, 'sendWithRetry').mockResolvedValue({
+        status: 500,
+        headers: {},
+        data: { error: 'Database connection failed' },
+      });
+
+      const fakeReq: any = {
+        method: 'GET',
+        originalUrl: '/api/v1/reviews/products/p1',
+        headers: {},
+        correlationId: 'corr-rev-1',
+      };
+
+      const res = await proxyService.forward(fakeReq);
+
+      expect(res.status).toBe(200);
+      expect(res.data).toEqual({ items: [], rating: null, total: 0, page: 1, limit: 10 });
+      expect(res.headers['x-degraded']).toBe('true');
+    });
+
+    it('returns degraded fallback for review eligibility when reviews-service is down', async () => {
+      jest.spyOn(proxyService as any, 'sendWithRetry').mockRejectedValue({
+        code: 'ETIMEDOUT',
+        message: 'Timeout exceeded',
+      });
+
+      const fakeReq: any = {
+        method: 'GET',
+        originalUrl: '/api/v1/reviews/products/p1/eligibility',
+        headers: {},
+      };
+
+      const res = await proxyService.forward(fakeReq);
+
+      expect(res.status).toBe(200);
+      expect(res.data).toEqual({
+        canReview: false,
+        reason: 'Reviews service temporarily unavailable',
+      });
+      expect(res.headers['x-degraded']).toBe('true');
+    });
+
+    it('returns degraded empty hits fallback for search when OpenSearch cluster is down', async () => {
+      jest.spyOn(proxyService as any, 'sendWithRetry').mockRejectedValue({
+        code: 'ECONNREFUSED',
+        message: 'OpenSearch cluster unreachable',
+      });
+
+      const fakeReq: any = {
+        method: 'GET',
+        originalUrl: '/api/v1/search?q=running+shoes',
+        headers: {},
+      };
+
+      const res = await proxyService.forward(fakeReq);
+
+      expect(res.status).toBe(200);
+      expect(res.data).toEqual({
+        hits: [],
+        total: 0,
+        page: 1,
+        limit: 10,
+        facets: { categories: [] },
+      });
+      expect(res.headers['x-degraded']).toBe('true');
+    });
+
+    it('NEVER degrades non-idempotent write requests (POST /reviews) to fallback', async () => {
+      jest.spyOn(proxyService as any, 'sendWithRetry').mockRejectedValue({
+        code: 'ECONNREFUSED',
+        message: 'Refused',
+      });
+
+      const fakeReq: any = {
+        method: 'POST',
+        originalUrl: '/api/v1/reviews/products/p1',
+        headers: {},
+      };
+
+      await expect(proxyService.forward(fakeReq)).rejects.toThrow(HttpException);
+    });
+
+    it('NEVER degrades critical transactional requests (POST /orders)', async () => {
+      jest.spyOn(proxyService as any, 'sendWithRetry').mockRejectedValue({
+        code: 'ECONNREFUSED',
+        message: 'Refused',
+      });
+
+      const fakeReq: any = {
+        method: 'POST',
+        originalUrl: '/api/v1/orders',
+        headers: {},
+      };
+
+      await expect(proxyService.forward(fakeReq)).rejects.toThrow(HttpException);
     });
   });
 });

@@ -1,6 +1,7 @@
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { CircuitBreakerRegistry } from '../resilience/circuit-breaker';
+import { FallbackRegistry } from '../resilience/fallback';
 import { ProxyController } from './proxy.controller';
 import { ProxyService } from './proxy.service';
 
@@ -12,7 +13,7 @@ import { ProxyService } from './proxy.service';
     }),
   ],
   controllers: [ProxyController],
-  providers: [ProxyService, CircuitBreakerRegistry],
-  exports: [ProxyService, CircuitBreakerRegistry],
+  providers: [ProxyService, CircuitBreakerRegistry, FallbackRegistry],
+  exports: [ProxyService, CircuitBreakerRegistry, FallbackRegistry],
 })
 export class ProxyModule {}

@@ -11,6 +11,7 @@ import { AxiosError, AxiosResponse } from 'axios';
 import { Request } from 'express';
 import { firstValueFrom } from 'rxjs';
 import { CircuitBreakerRegistry, CircuitState } from '../resilience/circuit-breaker';
+import { FallbackRegistry } from '../resilience/fallback';
 
 type AuthenticatedRequest = Request & {
   user?: { sub?: string; role?: string };
@@ -42,18 +43,25 @@ const RETRYABLE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 export class ProxyService {
   private readonly logger = new Logger(ProxyService.name);
   private readonly circuitBreakerRegistry: CircuitBreakerRegistry;
+  private readonly fallbackRegistry: FallbackRegistry;
 
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     circuitBreakerRegistry?: CircuitBreakerRegistry,
+    fallbackRegistry?: FallbackRegistry,
   ) {
     this.circuitBreakerRegistry =
       circuitBreakerRegistry ?? new CircuitBreakerRegistry(this.configService);
+    this.fallbackRegistry = fallbackRegistry ?? new FallbackRegistry();
   }
 
   getCircuitBreakerRegistry(): CircuitBreakerRegistry {
     return this.circuitBreakerRegistry;
+  }
+
+  getFallbackRegistry(): FallbackRegistry {
+    return this.fallbackRegistry;
   }
 
   resolveRoute(path: string): { url: string; configKey: string } {
@@ -82,9 +90,26 @@ export class ProxyService {
     const targetUrl = `${baseUrl.replace(/\/$/, '')}${path}`;
     const breaker = this.circuitBreakerRegistry.getBreaker(configKey);
 
-    // Fast-fail if the circuit breaker is OPEN to avoid socket exhaustion and upstream hammering
+    // Fast-fail or gracefully degrade if the circuit breaker is OPEN
     if (breaker.isOpen()) {
       const retryAfter = breaker.getRetryAfterSeconds();
+
+      // Non-critical read routes return safe empty projection rather than failing the client
+      const fallback = this.fallbackRegistry.getFallback(
+        request.method,
+        path,
+        `circuit_open_${configKey}`,
+      );
+
+      if (fallback) {
+        this.logger.warn(
+          `Degraded: Circuit breaker is OPEN for '${configKey}'; returning fallback for ${request.method} ${path} [${request.correlationId}]`,
+        );
+        fallback.headers['x-circuit-breaker-status'] = 'OPEN';
+        fallback.headers['retry-after'] = String(retryAfter);
+        return fallback;
+      }
+
       this.logger.warn(
         `Fast-fail: Circuit breaker is OPEN for upstream '${configKey}' [${request.correlationId}]`,
       );
@@ -149,6 +174,19 @@ export class ProxyService {
       // Server error (5xx) is treated as an upstream failure for circuit breaker tracking
       if (response.status >= 500) {
         breaker.recordFailure(new Error(`Upstream returned HTTP ${response.status}`));
+
+        const fallback = this.fallbackRegistry.getFallback(
+          request.method,
+          path,
+          `upstream_status_${response.status}`,
+        );
+        if (fallback) {
+          this.logger.warn(
+            `Degraded: Upstream '${configKey}' returned ${response.status}; returning fallback for ${request.method} ${path} [${request.correlationId}]`,
+          );
+          fallback.headers['x-circuit-breaker-status'] = breaker.getState();
+          return fallback;
+        }
       } else {
         breaker.recordSuccess();
       }
@@ -158,6 +196,20 @@ export class ProxyService {
       return response;
     } catch (error) {
       breaker.recordFailure(error);
+
+      const fallback = this.fallbackRegistry.getFallback(
+        request.method,
+        path,
+        'upstream_transport_failure',
+      );
+      if (fallback) {
+        this.logger.warn(
+          `Degraded: Upstream '${configKey}' unreachable; returning fallback for ${request.method} ${path} [${request.correlationId}]`,
+        );
+        fallback.headers['x-circuit-breaker-status'] = breaker.getState();
+        return fallback;
+      }
+
       throw this.toGatewayError(error, targetUrl, request.correlationId, breaker.getState());
     }
   }
