@@ -11,12 +11,13 @@
 
 - **Milestone:** M18 — Resilience (R4 Operations & Hardening)
 - **Parent Plan:** `docs/PROJECT_PLAN.md` (§8, R4 M18)
-- **Prerequisites:** 
+- **Prerequisites:**
   - M16 Authorization & RBAC Matrix (`docs/M16_AUTHORIZATION_RBAC_PLAN.md`)
   - M17 Admin Dashboard & Operations Console (`docs/M17_ADMIN_DASHBOARD_PLAN.md`)
-- **Core Acceptance Criterion:** *"Killing a service degrades gracefully instead of 500-ing."*
+- **Core Acceptance Criterion:** _"Killing a service degrades gracefully instead of 500-ing."_
 
 ### Architectural Invariants
+
 1. **Fail-Fast over Connection Exhaustion:** The API Gateway must never hold client connections open indefinitely when an upstream microservice hangs or crashes. Timeouts and circuit breakers trip immediately to protect gateway thread pools.
 2. **Circuit Breaker State Machine:** Per-upstream circuit breaker tracking three states: `CLOSED` (normal operation), `OPEN` (tripped after error threshold; fails fast with 503 or fallback), and `HALF_OPEN` (trialing limited requests to probe recovery).
 3. **Idempotent-Only Retries with Full Jitter:** Only safe, idempotent HTTP methods (`GET`, `HEAD`) are retried. Write operations (`POST`, `PUT`, `DELETE`) fail immediately or rely on saga/outbox retries to avoid duplicate side-effects.
@@ -57,16 +58,16 @@ graph TD
 
 Before undertaking M18, a rigorous audit of the physical repository was performed to avoid false assumptions:
 
-| Resilience Capability | In Parent Plan (M18) | Status in Codebase | Source File |
-|---|---|---|---|
-| **Gateway Timeouts** | Yes | **Already Implemented** | `apps/api-gateway/src/proxy/proxy.service.ts` (`upstreamTimeoutMs = 5000ms`) |
-| **Retry with Jitter** | Yes | **Already Implemented** | `apps/api-gateway/src/proxy/proxy.service.ts` (`sendWithRetry` with exponential backoff and `Math.random()`) |
-| **DLQ with Backoff** | Yes | **Already Implemented** | `libs/rabbitmq/src/rabbitmq.service.ts` (`commerce.dlx`, `${queue}.dlq`, 3 retries, exponential backoff, poison quarantine headers) |
-| **DLQ Operator Tooling** | Yes | **Already Implemented** | `scripts/rabbitmq-dlq.js` (`npm run dlq:stats`, `npm run dlq:replay`, `npm run dlq:purge`) |
-| **Circuit Breaker** | Yes | **MISSING** | No circuit breaker state machine (`CLOSED` / `OPEN` / `HALF_OPEN`) exists in `api-gateway` |
-| **Graceful Degradation / Fallbacks** | Yes | **MISSING** | Gateway throws 503/504 if non-critical services (recommendations, reviews) are dead |
-| **Admin UI DLQ & Breaker Console** | Yes | **MISSING** | `/system` maintenance console does not yet display DLQ status or allow one-click redrives |
-| **Automated Resilience Test Suite** | Yes | **MISSING** | No automated tests for circuit tripping, fallback responses, or DLQ quarantine |
+| Resilience Capability                | In Parent Plan (M18) | Status in Codebase      | Source File                                                                                                                         |
+| ------------------------------------ | -------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **Gateway Timeouts**                 | Yes                  | **Already Implemented** | `apps/api-gateway/src/proxy/proxy.service.ts` (`upstreamTimeoutMs = 5000ms`)                                                        |
+| **Retry with Jitter**                | Yes                  | **Already Implemented** | `apps/api-gateway/src/proxy/proxy.service.ts` (`sendWithRetry` with exponential backoff and `Math.random()`)                        |
+| **DLQ with Backoff**                 | Yes                  | **Already Implemented** | `libs/rabbitmq/src/rabbitmq.service.ts` (`commerce.dlx`, `${queue}.dlq`, 3 retries, exponential backoff, poison quarantine headers) |
+| **DLQ Operator Tooling**             | Yes                  | **Already Implemented** | `scripts/rabbitmq-dlq.js` (`npm run dlq:stats`, `npm run dlq:replay`, `npm run dlq:purge`)                                          |
+| **Circuit Breaker**                  | Yes                  | **MISSING**             | No circuit breaker state machine (`CLOSED` / `OPEN` / `HALF_OPEN`) exists in `api-gateway`                                          |
+| **Graceful Degradation / Fallbacks** | Yes                  | **MISSING**             | Gateway throws 503/504 if non-critical services (recommendations, reviews) are dead                                                 |
+| **Admin UI DLQ & Breaker Console**   | Yes                  | **MISSING**             | `/system` maintenance console does not yet display DLQ status or allow one-click redrives                                           |
+| **Automated Resilience Test Suite**  | Yes                  | **MISSING**             | No automated tests for circuit tripping, fallback responses, or DLQ quarantine                                                      |
 
 ---
 
@@ -83,6 +84,7 @@ graph TD
 ---
 
 ### Phase 1: API Gateway Circuit Breaker Engine
+
 - **Circuit Breaker State Machine:** Implement an in-memory, thread-safe circuit breaker (`CLOSED`, `OPEN`, `HALF_OPEN`) in `apps/api-gateway/src/resilience/circuit-breaker.ts`.
 - **Configurable Parameters per Upstream:**
   - `failureThreshold`: Number of consecutive transport failures required to open the circuit (default: 5).
@@ -95,6 +97,7 @@ graph TD
 ---
 
 ### Phase 2: Graceful Fallbacks & Per-Route Degradation
+
 - **Route Classification:**
   - **Critical Paths (Fast Fail 503):** Checkout (`/api/v1/orders`), Payments (`/api/v1/payments`), Auth (`/api/v1/auth`), Inventory (`/api/v1/inventory`). If upstream is down, fail fast with structured 503 and correlation ID.
   - **Non-Critical Paths (Graceful Fallback):**
@@ -105,6 +108,7 @@ graph TD
 ---
 
 ### Phase 3: Admin Dashboard DLQ & Circuit Breaker Telemetry
+
 - **Admin DLQ Endpoints (`apps/api-gateway`):**
   - Expose `GET /api/v1/admin/resilience/dlq` to query RabbitMQ queue depths.
   - Expose `POST /api/v1/admin/resilience/dlq/:queue/replay` using existing `RabbitMQService.replayDeadLetters()`.
@@ -117,6 +121,7 @@ graph TD
 ---
 
 ### Phase 4: Automated Chaos & Resilience Test Suite
+
 - **API Gateway Resilience Tests (`apps/api-gateway/test/resilience.spec.ts`):**
   - Verify timeout cancellation aborts hanging upstream calls within 5000ms deadline.
   - Verify circuit breaker trips after 5 consecutive upstream connection failures.
@@ -129,6 +134,7 @@ graph TD
 ---
 
 ### Phase 5: Runbook, Verification & Definition of Done
+
 - Comprehensive runbook documenting failure modes and recovery procedures.
 - Prettier formatting and whole-repo linting with 0 errors.
 - Secrets scan (`bash scripts/scan-secrets.sh`).
@@ -138,11 +144,12 @@ graph TD
 
 ## 4. Definition of Done for M18
 
-- [ ] All 5 phases implemented and verified.
-- [ ] API Gateway circuit breaker protects all 11 downstream service routes.
-- [ ] Non-critical services (recommendations, reviews) degrade gracefully on storefront.
-- [ ] RabbitMQ dead-letter exchange (`commerce.dlx`) and DLQ queues isolate poison messages.
-- [ ] Admin console displays real-time DLQ depths and allows redriving quarantined messages.
-- [ ] Automated resilience tests pass for timeouts, circuit tripping, and DLQ retries.
-- [ ] Code formatted with Prettier and lint passes with 0 errors.
-- [ ] Secrets scan passes (`bash scripts/scan-secrets.sh`).
+- [x] All 5 phases implemented and verified.
+- [x] API Gateway circuit breaker protects all 11 downstream service routes (`apps/api-gateway/src/resilience/circuit-breaker.ts`).
+- [x] Non-critical services (recommendations, reviews, search) degrade gracefully with HTTP 200 fallbacks (`apps/api-gateway/src/resilience/fallback.ts`).
+- [x] RabbitMQ dead-letter exchange (`commerce.dlx`) and DLQ queues isolate poison messages (`libs/rabbitmq/src/rabbitmq.service.ts`).
+- [x] Admin console displays real-time DLQ depths and allows redriving quarantined messages (`admin/app/system/page.tsx`).
+- [x] Automated chaos and resilience tests pass with zero failures (`apps/api-gateway/test/chaos-resilience.spec.ts`).
+- [x] Code formatted with Prettier and lint passes with 0 errors.
+- [x] Secrets scan passes (`bash scripts/scan-secrets.sh`).
+- [x] Operational runbook documented (`docs/RESILIENCE_RUNBOOK.md`).
