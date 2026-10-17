@@ -89,6 +89,7 @@ export class FallbackRegistry {
         'content-type': 'application/json',
         'x-degraded': 'true',
         'x-degraded-reason': reason,
+      },
       config: { headers: {} } as AxiosResponse['config'],
       data,
     };

@@ -7,6 +7,7 @@ import servicesConfig from './config/services.config';
 import { GatewayJwtGuard } from './auth/gateway-jwt.guard';
 import { HealthController } from './health.controller';
 import { ProxyModule } from './proxy/proxy.module';
+import { ResilienceModule } from './resilience/resilience.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { ProxyModule } from './proxy/proxy.module';
       },
     ]),
     ProxyModule,
+    ResilienceModule,
   ],
   controllers: [HealthController],
   providers: [
