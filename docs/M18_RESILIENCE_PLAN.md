@@ -53,93 +53,82 @@ graph TD
 
 ---
 
+## 2. Existing Baseline vs Missing Deliverables (Verified Fact Check)
+
+Before undertaking M18, a rigorous audit of the physical repository was performed to avoid false assumptions:
+
+| Resilience Capability | In Parent Plan (M18) | Status in Codebase | Source File |
+|---|---|---|---|
+| **Gateway Timeouts** | Yes | **Already Implemented** | `apps/api-gateway/src/proxy/proxy.service.ts` (`upstreamTimeoutMs = 5000ms`) |
+| **Retry with Jitter** | Yes | **Already Implemented** | `apps/api-gateway/src/proxy/proxy.service.ts` (`sendWithRetry` with exponential backoff and `Math.random()`) |
+| **DLQ with Backoff** | Yes | **Already Implemented** | `libs/rabbitmq/src/rabbitmq.service.ts` (`commerce.dlx`, `${queue}.dlq`, 3 retries, exponential backoff, poison quarantine headers) |
+| **DLQ Operator Tooling** | Yes | **Already Implemented** | `scripts/rabbitmq-dlq.js` (`npm run dlq:stats`, `npm run dlq:replay`, `npm run dlq:purge`) |
+| **Circuit Breaker** | Yes | **MISSING** | No circuit breaker state machine (`CLOSED` / `OPEN` / `HALF_OPEN`) exists in `api-gateway` |
+| **Graceful Degradation / Fallbacks** | Yes | **MISSING** | Gateway throws 503/504 if non-critical services (recommendations, reviews) are dead |
+| **Admin UI DLQ & Breaker Console** | Yes | **MISSING** | `/system` maintenance console does not yet display DLQ status or allow one-click redrives |
+| **Automated Resilience Test Suite** | Yes | **MISSING** | No automated tests for circuit tripping, fallback responses, or DLQ quarantine |
+
+---
+
 ## 3. Implementation Phases
 
 ```mermaid
 graph TD
-    Phase1[Phase 1: Gateway Circuit Breaker Engine] --> Phase2[Phase 2: Graceful Fallbacks & Per-Route Policies]
-    Phase2 --> Phase3[Phase 3: RabbitMQ DLX & Exponential Backoff]
-    Phase3 --> Phase4[Phase 4: Admin Dashboard DLQ Management]
-    Phase4 --> Phase5[Phase 5: Automated Chaos & Resilience Tests]
-    Phase5 --> Phase6[Phase 6: Runbook & Verification]
+    Phase1[Phase 1: API Gateway Circuit Breaker Engine] --> Phase2[Phase 2: Graceful Fallbacks & Per-Route Degradation]
+    Phase2 --> Phase3[Phase 3: Admin Console DLQ & Circuit Telemetry]
+    Phase3 --> Phase4[Phase 4: Automated Chaos & Resilience Tests]
+    Phase4 --> Phase5[Phase 5: Runbook & Definition of Done]
 ```
 
 ---
 
 ### Phase 1: API Gateway Circuit Breaker Engine
-- **Circuit Breaker Abstraction:** Implement an in-memory, thread-safe circuit breaker state machine (`Closed`, `Open`, `Half-Open`) inside `apps/api-gateway/src/resilience/circuit-breaker.ts`.
+- **Circuit Breaker State Machine:** Implement an in-memory, thread-safe circuit breaker (`CLOSED`, `OPEN`, `HALF_OPEN`) in `apps/api-gateway/src/resilience/circuit-breaker.ts`.
 - **Configurable Parameters per Upstream:**
-  - `failureThreshold`: Number of consecutive or rate-based failures required to open the circuit (default: 5 failures).
-  - `samplingPeriodMs`: Rolling time window for failure evaluation (default: 10,000ms).
+  - `failureThreshold`: Number of consecutive transport failures required to open the circuit (default: 5).
   - `recoveryTimeoutMs`: Time spent in `OPEN` before entering `HALF_OPEN` probe state (default: 15,000ms).
-  - `halfOpenMaxTrials`: Number of consecutive successful probe requests required to close the circuit (default: 2 trials).
+  - `halfOpenMaxTrials`: Number of consecutive successful probe requests required to close the circuit (default: 2).
 - **Integration with `ProxyService`:**
-  - Wrap upstream routing in `ProxyService.forward()`.
-  - When the circuit for `recommendationsServiceUrl` or `inventoryServiceUrl` is `OPEN`, fail immediately without creating an outbound TCP socket or consuming gateway concurrency.
-  - Return clear diagnostic headers on circuit trip: `X-Circuit-Breaker-Status: OPEN` and `Retry-After`.
+  - Fast-fail when a service circuit is `OPEN` without opening a TCP socket or holding gateway worker threads.
+  - Expose diagnostic headers: `X-Circuit-Breaker-Status: OPEN` and `Retry-After`.
 
 ---
 
-### Phase 2: Graceful Fallback Degradation & Per-Route Policies
+### Phase 2: Graceful Fallbacks & Per-Route Degradation
 - **Route Classification:**
-  - **Critical Paths (Fast Fail):** Checkout (`/api/v1/orders`), Payments (`/api/v1/payments`), Auth (`/api/v1/auth`). If upstream is down, fail fast with structured 503 and correlation ID.
-  - **Degradable Paths (Graceful Fallback):**
+  - **Critical Paths (Fast Fail 503):** Checkout (`/api/v1/orders`), Payments (`/api/v1/payments`), Auth (`/api/v1/auth`), Inventory (`/api/v1/inventory`). If upstream is down, fail fast with structured 503 and correlation ID.
+  - **Non-Critical Paths (Graceful Fallback):**
     - Recommendations (`GET /api/v1/recommendations/products/:id`): Return HTTP 200 with `[]` and `X-Degraded: true` header when recommendations-service is unavailable.
     - Product Reviews (`GET /api/v1/reviews/products/:id`): Return empty reviews array and 0 rating count when reviews-service is down.
-    - Search (`GET /api/v1/search`): If OpenSearch cluster is down or index is reconstructing, return fallback response or empty hits rather than breaking storefront catalog browsing.
-- **Storefront Verification:** Verify that storefront product detail and cart pages remain completely interactive even when optional recommendation or review microservices are killed.
+- **Storefront Verification:** Verify that customer product detail and catalog browsing continue seamlessly even when optional microservices are killed.
 
 ---
 
-### Phase 3: RabbitMQ Dead-Letter Exchange (DLX) & Exponential Backoff
-- **Topology Hardening in `libs/rabbitmq`:**
-  - Declare durable topic Dead Letter Exchange (`commerce.dlx`).
-  - Declare dedicated quarantine queues for every service: `${queue}.dlq` (e.g. `orders-service.dlq`, `shipping-service.dlq`).
-  - Configure queue arguments on all main queues:
-    - `'x-dead-letter-exchange': 'commerce.dlx'`
-    - `'x-dead-letter-routing-key': '${queue}.dlq'`
-- **Exponential Backoff Delayed Retries:**
-  - When a message handler throws an unhandled error, apply exponential backoff (`backoff = retryBackoffMs * 2^attempts`) with a max attempts cap (`RABBITMQ_MAX_RETRIES=3`).
-  - Inject diagnostic headers on retries: `x-retry-count`, `x-last-error`, `x-last-attempt-at`.
-- **Poison Message Quarantine:**
-  - If `attempts >= maxRetries`, publish the message directly to `commerce.dlx` with:
-    - `x-quarantine-reason: MaxRetriesExceeded`
-    - `x-quarantine-error: <error message>`
-    - `x-quarantine-at: <ISO timestamp>`
-    - `x-original-queue: <queue>`
-    - `x-original-routing-key: <routingKey>`
-  - Acknowledge original message from the main queue to unblock the channel.
+### Phase 3: Admin Dashboard DLQ & Circuit Breaker Telemetry
+- **Admin DLQ Endpoints (`apps/api-gateway`):**
+  - Expose `GET /api/v1/admin/resilience/dlq` to query RabbitMQ queue depths.
+  - Expose `POST /api/v1/admin/resilience/dlq/:queue/replay` using existing `RabbitMQService.replayDeadLetters()`.
+  - Expose `GET /api/v1/admin/resilience/circuits` to inspect current circuit breaker states across all 11 services.
+- **Admin UI Console (`admin/app/system/page.tsx`):**
+  - Add **Dead Letter Queue (DLQ) & Circuit Breaker** panel to the System Maintenance console.
+  - Live indicators for circuit breaker status (`CLOSED` 🟢, `OPEN` 🔴, `HALF_OPEN` 🟡).
+  - Visual poison message alerts and one-click DLQ replay button with real-time log output.
 
 ---
 
-### Phase 4: Admin Dashboard DLQ & Fault Telemetry Console
-- **Backend DLQ API Endpoints (`apps/api-gateway`):**
-  - `GET /api/v1/admin/resilience/dlq`: Returns real-time message depths across all service DLQs (`mainDepth`, `dlqDepth`, `status`).
-  - `POST /api/v1/admin/resilience/dlq/:queue/replay`: Replays quarantined messages from a specific DLQ back into the main event exchange.
-  - `DELETE /api/v1/admin/resilience/dlq/:queue`: Purges a poisoned DLQ after fatal unrecoverable bugs.
-- **Admin UI Integration (`admin/app/system/page.tsx`):**
-  - Add **Dead Letter Queue (DLQ) Management** panel to the System Maintenance console.
-  - Real-time badge indicators: 🟢 `Healthy` vs ⚠️ `Poison Messages Quarantined`.
-  - One-click "Redrive DLQ" button with execution feedback.
-  - Circuit Breaker live status viewer showing state (`CLOSED`, `OPEN`, `HALF_OPEN`) per microservice.
-
----
-
-### Phase 5: Automated Chaos & Resilience Test Suite
+### Phase 4: Automated Chaos & Resilience Test Suite
 - **API Gateway Resilience Tests (`apps/api-gateway/test/resilience.spec.ts`):**
-  - Verify timeout cancellation aborts hanging upstream calls within configured deadline.
+  - Verify timeout cancellation aborts hanging upstream calls within 5000ms deadline.
   - Verify circuit breaker trips after 5 consecutive upstream connection failures.
   - Verify circuit breaker fails fast (< 5ms) while open without hitting the network.
   - Verify circuit transitions to `HALF_OPEN` after cooldown and recovers to `CLOSED` upon successful probe.
   - Verify fallback degradation returns `{ items: [] }` for recommendations on failure.
-- **Event Bus Chaos Tests (`libs/rabbitmq/test/dlq-resilience.spec.ts`):**
-  - Verify a crashing consumer message is retried 3 times with exponential backoff.
-  - Verify message 4 is quarantined into `${queue}.dlq` with diagnostic headers.
-  - Verify consumer channel does not crash and continues processing subsequent messages.
+- **RabbitMQ DLQ Tests (`apps/orders-service/test/dlq.spec.ts` or `libs/rabbitmq/test/dlq.spec.ts`):**
+  - Verify unhandled handler errors retry 3 times with exponential backoff and quarantine to `${queue}.dlq`.
 
 ---
 
-### Phase 6: Runbook, Verification & Definition of Done
+### Phase 5: Runbook, Verification & Definition of Done
 - Comprehensive runbook documenting failure modes and recovery procedures.
 - Prettier formatting and whole-repo linting with 0 errors.
 - Secrets scan (`bash scripts/scan-secrets.sh`).
@@ -149,7 +138,7 @@ graph TD
 
 ## 4. Definition of Done for M18
 
-- [ ] All 6 phases implemented and verified.
+- [ ] All 5 phases implemented and verified.
 - [ ] API Gateway circuit breaker protects all 11 downstream service routes.
 - [ ] Non-critical services (recommendations, reviews) degrade gracefully on storefront.
 - [ ] RabbitMQ dead-letter exchange (`commerce.dlx`) and DLQ queues isolate poison messages.
