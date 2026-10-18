@@ -1,6 +1,13 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { RabbitMQService } from '@libs/rabbitmq';
 import { DataSource, EntityManager } from 'typeorm';
+import {
+  TraceSpan,
+  SpanKind,
+  SpanStatusCode,
+  extractTraceContext,
+  getGlobalOtelExporter,
+} from '@libs/common';
 import { OUTBOX_OPTIONS, OutboxOptions } from './outbox.options';
 
 interface OutboxRow {
@@ -102,20 +109,46 @@ export class OutboxRelay implements OnModuleInit, OnModuleDestroy {
         ? ((row.payload as Record<string, unknown>).traceparent as string | undefined)
         : undefined;
 
+    const parentTrace = extractTraceContext({
+      traceparent,
+      correlationId: row.correlation_id ?? undefined,
+    });
+
+    const producerSpan = new TraceSpan(`outbox.relay ${row.event_type}`, {
+      kind: SpanKind.PRODUCER,
+      parentCtx: parentTrace,
+      attributes: {
+        'messaging.system': 'rabbitmq',
+        'messaging.destination': 'commerce.events',
+        'messaging.destination_kind': 'topic',
+        'messaging.routing_key': row.event_type,
+        'messaging.message_id': row.event_id,
+        'messaging.correlation_id': row.correlation_id ?? '',
+        'outbox.aggregate_id': row.aggregate_id,
+      },
+    });
+
     const envelope = {
       eventId: row.event_id,
       eventType: row.event_type,
       occurredAt: new Date(row.created_at).toISOString(),
       aggregateId: row.aggregate_id,
       correlationId: row.correlation_id ?? '',
-      traceparent,
+      traceparent: producerSpan.traceparent,
       version: row.version,
       payload: row.payload,
     };
 
     try {
       await this.rabbitmq.publishOrThrow(row.event_type, envelope);
+      producerSpan.setStatus(SpanStatusCode.OK);
+      producerSpan.end();
+      getGlobalOtelExporter().export(producerSpan);
     } catch (error) {
+      producerSpan.recordException(error);
+      producerSpan.end();
+      getGlobalOtelExporter().export(producerSpan);
+
       // Deliberately not rethrown: one unpublishable row must not roll back
       // the rows already published in this batch. It stays unpublished and the
       // next cycle retries it. A broker outage delays events, never loses them.

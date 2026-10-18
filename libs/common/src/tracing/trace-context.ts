@@ -130,6 +130,39 @@ export function createTraceContext(options?: {
 }
 
 /**
+ * Extracts a TraceContext from incoming carrier headers or payload without generating
+ * an intermediate span ID. Preserves incoming spanId as context.spanId so child spans
+ * adopt it as parentSpanId.
+ */
+export function extractTraceContext(options?: {
+  traceparent?: string | string[];
+  correlationId?: string | string[];
+  userId?: string;
+  userRole?: string;
+  serviceName?: string;
+}): TraceContext {
+  const parsed = parseTraceparent(options?.traceparent);
+  if (parsed) {
+    const incomingCorr = Array.isArray(options?.correlationId)
+      ? options?.correlationId[0]
+      : options?.correlationId;
+
+    return {
+      traceId: parsed.traceId,
+      spanId: parsed.spanId,
+      traceFlags: parsed.traceFlags,
+      traceparent: buildTraceparent(parsed.traceId, parsed.spanId, parsed.traceFlags),
+      correlationId: (incomingCorr && incomingCorr.trim()) || parsed.traceId,
+      userId: options?.userId,
+      userRole: options?.userRole,
+      serviceName: options?.serviceName,
+    };
+  }
+
+  return createTraceContext(options);
+}
+
+/**
  * Creates a child span context from an existing parent TraceContext (for downstream HTTP or AMQP).
  */
 export function createChildSpanContext(parent?: TraceContext): TraceContext {

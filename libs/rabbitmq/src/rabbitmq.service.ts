@@ -6,8 +6,13 @@ import {
   TRACEPARENT_HEADER,
   createChildSpanContext,
   createTraceContext,
+  extractTraceContext,
   getTraceContext,
   runWithTraceContext,
+  TraceSpan,
+  SpanKind,
+  SpanStatusCode,
+  getGlobalOtelExporter,
 } from '@libs/common';
 
 export interface RabbitMQModuleOptions {
@@ -248,13 +253,53 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     const { payload, publishOptions, correlationId } = this.preparePublishOptions(message, options);
 
+    const activeCtx = getTraceContext();
+    const producerSpan = activeCtx
+      ? new TraceSpan(`rabbitmq.publish ${routingKey}`, {
+          kind: SpanKind.PRODUCER,
+          parentCtx: activeCtx,
+          attributes: {
+            'messaging.system': 'rabbitmq',
+            'messaging.destination': exchange,
+            'messaging.destination_kind': 'topic',
+            'messaging.routing_key': routingKey,
+            'messaging.correlation_id': correlationId,
+          },
+        })
+      : null;
+
+    if (producerSpan) {
+      (publishOptions.headers as Record<string, unknown>)[TRACEPARENT_HEADER] =
+        producerSpan.traceparent;
+    }
+
     if (!this.channel) {
       this.logger.log(`[offline] Publish ${routingKey}: ${payload.toString()}`);
+      if (producerSpan) {
+        producerSpan.setStatus(SpanStatusCode.OK);
+        producerSpan.end();
+        getGlobalOtelExporter().export(producerSpan);
+      }
       return;
     }
 
-    this.channel.publish(exchange, routingKey, payload, publishOptions);
-    this.logger.debug(`Published ${routingKey} to ${exchange} [${correlationId}]`);
+    try {
+      this.channel.publish(exchange, routingKey, payload, publishOptions);
+      this.logger.debug(`Published ${routingKey} to ${exchange} [${correlationId}]`);
+      if (producerSpan) {
+        producerSpan.setStatus(SpanStatusCode.OK);
+      }
+    } catch (err) {
+      if (producerSpan) {
+        producerSpan.recordException(err);
+      }
+      throw err;
+    } finally {
+      if (producerSpan) {
+        producerSpan.end();
+        getGlobalOtelExporter().export(producerSpan);
+      }
+    }
   }
 
   /**
@@ -313,20 +358,47 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
         const incomingCorr =
           (headers[CORRELATION_ID_HEADER] as string) || (parsed.correlationId as string);
 
-        const consumerCtx = createTraceContext({
+        const consumerCtx = extractTraceContext({
           traceparent: incomingTrace,
           correlationId: incomingCorr,
           serviceName: process.env.SERVICE_NAME,
         });
 
-        await runWithTraceContext(consumerCtx, async () => {
-          await handler({
-            ...parsed,
-            correlationId: parsed.correlationId ?? consumerCtx.correlationId,
-            traceparent: parsed.traceparent ?? consumerCtx.traceparent,
-            routingKey: message.fields.routingKey,
-          });
+        const routingKey = message.fields.routingKey;
+        const consumerSpan = new TraceSpan(`rabbitmq.consume ${routingKey || queue}`, {
+          kind: SpanKind.CONSUMER,
+          parentCtx: consumerCtx,
+          attributes: {
+            'messaging.system': 'rabbitmq',
+            'messaging.destination': queue,
+            'messaging.destination_kind': 'queue',
+            'messaging.routing_key': routingKey,
+            'messaging.correlation_id': consumerCtx.correlationId,
+            ...(parsed.eventId ? { 'messaging.message_id': String(parsed.eventId) } : {}),
+            ...(parsed.aggregateId ? { 'messaging.aggregate_id': String(parsed.aggregateId) } : {}),
+          },
         });
+
+        const childCtx = consumerSpan.context;
+
+        try {
+          await runWithTraceContext(childCtx, async () => {
+            await handler({
+              ...parsed,
+              correlationId: parsed.correlationId ?? childCtx.correlationId,
+              traceparent: parsed.traceparent ?? childCtx.traceparent,
+              routingKey,
+            });
+          });
+
+          consumerSpan.setStatus(SpanStatusCode.OK);
+        } catch (handlerErr) {
+          consumerSpan.recordException(handlerErr);
+          throw handlerErr;
+        } finally {
+          consumerSpan.end();
+          getGlobalOtelExporter().export(consumerSpan);
+        }
 
         this.channel.ack(message);
       } catch (error) {

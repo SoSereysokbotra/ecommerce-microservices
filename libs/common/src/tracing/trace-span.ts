@@ -79,6 +79,22 @@ export class TraceSpan {
     }
   }
 
+  public get context(): TraceContext {
+    return {
+      traceId: this.traceId,
+      spanId: this.spanId,
+      parentSpanId: this.parentSpanId,
+      traceFlags: this.traceparent.slice(-2),
+      traceparent: this.traceparent,
+      correlationId:
+        (this.attributes['messaging.correlation_id'] as string) ||
+        (this.attributes['http.correlation_id'] as string) ||
+        this.traceId,
+      serviceName: this.serviceName,
+      activeSpan: this,
+    };
+  }
+
   setAttribute(key: string, value: string | number | boolean): this {
     this.attributes[key] = value;
     return this;
