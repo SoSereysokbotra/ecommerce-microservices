@@ -135,12 +135,12 @@ graph TD
 
 ## 4. Definition of Done for M19
 
-- [ ] All 5 phases implemented and verified.
-- [ ] Distributed W3C `traceparent` context propagated across Gateway, HTTP RPCs, and RabbitMQ events.
-- [ ] OTLP spans exported to Tempo creating complete span waterfalls for order transactions.
-- [ ] `/metrics` endpoint exposed across services collecting HTTP RED metrics and outbox lag.
-- [ ] Prometheus scrape configuration and Grafana dashboards provisioned and operational.
-- [ ] Structured JSON logs in Loki correlate with Tempo traces via `traceId`.
-- [ ] Automated tests pass with 0 failures.
-- [ ] Whole-repo linting and formatting pass with 0 errors.
-- [ ] Secrets scan passes (`bash scripts/scan-secrets.sh`).
+- [x] All 5 phases implemented and verified.
+- [x] Distributed W3C `traceparent` context propagated across Gateway, HTTP RPCs, and RabbitMQ events.
+- [x] OTLP spans exported to Tempo creating complete span waterfalls for order transactions.
+- [x] `/metrics` endpoint exposed across services collecting HTTP RED metrics and outbox lag.
+- [x] Prometheus scrape configuration and Grafana dashboards provisioned and operational.
+- [x] Structured JSON logs in Loki correlate with Tempo traces via `traceId`.
+- [x] Automated tests pass with 0 failures (70/70 api-gateway, 34/34 orders-service, 40/40 common trace/metrics).
+- [x] Whole-repo linting and formatting pass with 0 errors.
+- [x] Secrets scan passes (`bash scripts/scan-secrets.sh`).
