@@ -2,10 +2,12 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
   VersionColumn,
 } from 'typeorm';
+import { ProductTranslationEntity } from './product-translation.entity';
 
 @Entity({ name: 'products' })
 export class ProductEntity {
@@ -67,6 +69,9 @@ export class ProductEntity {
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
+
+  @OneToMany(() => ProductTranslationEntity, (t) => t.product)
+  translations?: ProductTranslationEntity[];
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;

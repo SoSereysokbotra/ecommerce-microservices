@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Param, Patch } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Patch, Query } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CORRELATION_ID_HEADER, Public, Roles } from '@libs/common';
 import { UserRole } from '@libs/shared-types';
@@ -15,8 +15,11 @@ export class CategoriesController {
   @Get()
   @ApiOperation({ summary: 'List categories' })
   @ApiOkResponse({ type: [CategoryResponseDto] })
-  list(): Promise<CategoryEntity[]> {
-    return this.categories.list();
+  list(
+    @Query('locale') queryLocale?: string,
+    @Headers('x-locale') headerLocale?: string,
+  ): Promise<CategoryEntity[]> {
+    return this.categories.list(queryLocale || headerLocale);
   }
 
   @Patch(':id')

@@ -1,9 +1,10 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { OutboxService } from '@libs/outbox';
 import { announceCategory } from '../../events/product-events';
 import { CategoryEntity } from './category.entity';
+import { CategoryTranslationEntity } from './category-translation.entity';
 import { UpdateCategoryDto } from './dto/category.dto';
 
 @Injectable()
@@ -11,12 +12,32 @@ export class CategoriesService {
   constructor(
     @InjectRepository(CategoryEntity)
     private readonly categories: Repository<CategoryEntity>,
+    @InjectRepository(CategoryTranslationEntity)
+    private readonly categoryTranslations: Repository<CategoryTranslationEntity>,
     private readonly dataSource: DataSource,
     private readonly outbox: OutboxService,
   ) {}
 
-  list(): Promise<CategoryEntity[]> {
-    return this.categories.find({ order: { name: 'ASC' } });
+  async list(locale?: string): Promise<CategoryEntity[]> {
+    const categories = await this.categories.find({ order: { name: 'ASC' } });
+    const normLocale = locale?.toLowerCase();
+    if (normLocale && normLocale !== 'en' && categories.length > 0) {
+      const translations = await this.categoryTranslations.find({
+        where: { categoryId: In(categories.map((c) => c.id)), locale: normLocale },
+      });
+      const transMap = new Map(translations.map((t) => [t.categoryId, t]));
+      return categories.map((c) => {
+        const t = transMap.get(c.id);
+        return t
+          ? ({
+              ...c,
+              name: t.name || c.name,
+              description: t.description ?? c.description,
+            } as CategoryEntity)
+          : c;
+      });
+    }
+    return categories;
   }
 
   /**

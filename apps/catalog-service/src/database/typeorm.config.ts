@@ -3,7 +3,9 @@ import { resolve } from 'path';
 import { DataSource, DataSourceOptions } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { ProductEntity } from '../modules/products/product.entity';
+import { ProductTranslationEntity } from '../modules/products/product-translation.entity';
 import { CategoryEntity } from '../modules/categories/category.entity';
+import { CategoryTranslationEntity } from '../modules/categories/category-translation.entity';
 import { OutboxEventEntity, ProcessedEventEntity } from '@libs/outbox';
 
 loadEnv({ path: resolve(process.cwd(), '../../.env') });
@@ -71,7 +73,14 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
       database: DB_NAME,
       // M12: the outbox relay reads its own table through this DataSource, and
       // forgetting these produces "this.subQuery is not a function" (HANDOFF §5).
-      entities: [ProductEntity, CategoryEntity, OutboxEventEntity, ProcessedEventEntity],
+      entities: [
+        ProductEntity,
+        ProductTranslationEntity,
+        CategoryEntity,
+        CategoryTranslationEntity,
+        OutboxEventEntity,
+        ProcessedEventEntity,
+      ],
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
       synchronize: false,
       logging: !isProduction,
@@ -94,7 +103,14 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
       database: parsed.pathname.replace(/^\//, ''),
       // M12: the outbox relay reads its own table through this DataSource, and
       // forgetting these produces "this.subQuery is not a function" (HANDOFF §5).
-      entities: [ProductEntity, CategoryEntity, OutboxEventEntity, ProcessedEventEntity],
+      entities: [
+        ProductEntity,
+        ProductTranslationEntity,
+        CategoryEntity,
+        CategoryTranslationEntity,
+        OutboxEventEntity,
+        ProcessedEventEntity,
+      ],
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
       synchronize: false,
       logging: !isProduction,
@@ -110,7 +126,14 @@ export function typeOrmConfig(config?: ConfigService): DataSourceOptions {
     url: DATABASE_URL,
     // M12: the outbox relay reads its own table through this DataSource, and
     // forgetting these produces "this.subQuery is not a function" (HANDOFF §5).
-    entities: [ProductEntity, CategoryEntity, OutboxEventEntity, ProcessedEventEntity],
+    entities: [
+      ProductEntity,
+      ProductTranslationEntity,
+      CategoryEntity,
+      CategoryTranslationEntity,
+      OutboxEventEntity,
+      ProcessedEventEntity,
+    ],
     migrations: [__dirname + '/migrations/*{.ts,.js}'],
     synchronize: false,
     logging: !isProduction,

@@ -21,16 +21,23 @@ export class ProductsController {
   @Get()
   @ApiOperation({ summary: 'List products' })
   @ApiOkResponse({ type: PaginatedProductsDto })
-  list(@Query() query: ListProductsQueryDto): Promise<PaginatedProductsDto> {
-    return this.products.list(query);
+  list(
+    @Query() query: ListProductsQueryDto,
+    @Headers('x-locale') headerLocale?: string,
+  ): Promise<PaginatedProductsDto> {
+    return this.products.list(query, headerLocale);
   }
 
   @Public()
   @Get(':idOrSlug')
   @ApiOperation({ summary: 'Get one product by id or slug' })
   @ApiOkResponse({ type: ProductResponseDto })
-  findOne(@Param('idOrSlug') idOrSlug: string): Promise<ProductResponseDto> {
-    return this.products.findOne(idOrSlug);
+  findOne(
+    @Param('idOrSlug') idOrSlug: string,
+    @Query('locale') queryLocale?: string,
+    @Headers('x-locale') headerLocale?: string,
+  ): Promise<ProductResponseDto> {
+    return this.products.findOne(idOrSlug, queryLocale || headerLocale);
   }
 
   @Post()

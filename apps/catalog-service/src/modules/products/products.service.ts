@@ -4,6 +4,7 @@ import { DataSource, EntityManager, In, QueryFailedError, Repository } from 'typ
 import { OutboxService } from '@libs/outbox';
 import { announceProduct } from '../../events/product-events';
 import { ProductEntity } from './product.entity';
+import { ProductTranslationEntity } from './product-translation.entity';
 import { CategoryEntity } from '../categories/category.entity';
 import { CreateProductDto, ListProductsQueryDto, UpdateProductDto } from './dto/product.dto';
 
@@ -23,14 +24,21 @@ export class ProductsService {
     private readonly products: Repository<ProductEntity>,
     @InjectRepository(CategoryEntity)
     private readonly categories: Repository<CategoryEntity>,
+    @InjectRepository(ProductTranslationEntity)
+    private readonly productTranslations: Repository<ProductTranslationEntity>,
     private readonly dataSource: DataSource,
     private readonly outbox: OutboxService,
   ) {}
 
-  async list(query: ListProductsQueryDto): Promise<{
+  async list(
+    query: ListProductsQueryDto,
+    headerLocale?: string,
+  ): Promise<{
     data: ProductEntity[];
     nextCursor: string | null;
   }> {
+    const locale = (query.locale || headerLocale)?.toLowerCase();
+
     if (query.ids) {
       const ids = [
         ...new Set(
@@ -48,6 +56,24 @@ export class ProductsService {
       const rows = await this.products.find({
         where: { id: In(ids) },
       });
+
+      if (locale && locale !== 'en' && rows.length > 0) {
+        const translations = await this.productTranslations.find({
+          where: { productId: In(rows.map((p) => p.id)), locale },
+        });
+        const transMap = new Map(translations.map((t) => [t.productId, t]));
+        const localizedRows = rows.map((p) => {
+          const t = transMap.get(p.id);
+          return t
+            ? ({
+                ...p,
+                name: t.name || p.name,
+                description: t.description ?? p.description,
+              } as ProductEntity)
+            : p;
+        });
+        return { data: localizedRows, nextCursor: null };
+      }
 
       return { data: rows, nextCursor: null };
     }
@@ -88,8 +114,27 @@ export class ProductsService {
       .getMany();
 
     const hasMore = rows.length > limit;
-    const data = hasMore ? rows.slice(0, limit) : rows;
-    const last = data[data.length - 1];
+    const rawData = hasMore ? rows.slice(0, limit) : rows;
+
+    let data = rawData;
+    if (locale && locale !== 'en' && rawData.length > 0) {
+      const translations = await this.productTranslations.find({
+        where: { productId: In(rawData.map((p) => p.id)), locale },
+      });
+      const transMap = new Map(translations.map((t) => [t.productId, t]));
+      data = rawData.map((p) => {
+        const t = transMap.get(p.id);
+        return t
+          ? ({
+              ...p,
+              name: t.name || p.name,
+              description: t.description ?? p.description,
+            } as ProductEntity)
+          : p;
+      });
+    }
+
+    const last = rawData[rawData.length - 1];
 
     return {
       data,
@@ -100,13 +145,27 @@ export class ProductsService {
     };
   }
 
-  async findOne(idOrSlug: string): Promise<ProductEntity> {
+  async findOne(idOrSlug: string, locale?: string): Promise<ProductEntity> {
     const product = await this.products.findOne({
       where: isUuid(idOrSlug) ? { id: idOrSlug } : { slug: idOrSlug },
     });
 
     if (!product) {
       throw new NotFoundException(`Product '${idOrSlug}' not found`);
+    }
+
+    const normLocale = locale?.toLowerCase();
+    if (normLocale && normLocale !== 'en') {
+      const translation = await this.productTranslations.findOne({
+        where: { productId: product.id, locale: normLocale },
+      });
+      if (translation) {
+        return {
+          ...product,
+          name: translation.name || product.name,
+          description: translation.description ?? product.description,
+        } as ProductEntity;
+      }
     }
 
     return product;

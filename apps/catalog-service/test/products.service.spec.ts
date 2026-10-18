@@ -2,12 +2,14 @@ import { In, Repository, DataSource } from 'typeorm';
 import { OutboxService } from '@libs/outbox';
 import { ProductsService } from '../src/modules/products/products.service';
 import { ProductEntity } from '../src/modules/products/product.entity';
+import { ProductTranslationEntity } from '../src/modules/products/product-translation.entity';
 import { CategoryEntity } from '../src/modules/categories/category.entity';
 
 describe('ProductsService - list with ids filter', () => {
   let service: ProductsService;
   let productsRepo: jest.Mocked<Repository<ProductEntity>>;
   let categoriesRepo: jest.Mocked<Repository<CategoryEntity>>;
+  let productTranslationsRepo: jest.Mocked<Repository<ProductTranslationEntity>>;
   let dataSource: jest.Mocked<DataSource>;
   let outbox: jest.Mocked<OutboxService>;
 
@@ -18,10 +20,20 @@ describe('ProductsService - list with ids filter', () => {
     } as unknown as jest.Mocked<Repository<ProductEntity>>;
 
     categoriesRepo = {} as unknown as jest.Mocked<Repository<CategoryEntity>>;
+    productTranslationsRepo = {
+      find: jest.fn(),
+      findOne: jest.fn(),
+    } as unknown as jest.Mocked<Repository<ProductTranslationEntity>>;
     dataSource = {} as unknown as jest.Mocked<DataSource>;
     outbox = {} as unknown as jest.Mocked<OutboxService>;
 
-    service = new ProductsService(productsRepo, categoriesRepo, dataSource, outbox);
+    service = new ProductsService(
+      productsRepo,
+      categoriesRepo,
+      productTranslationsRepo,
+      dataSource,
+      outbox,
+    );
   });
 
   it('filters by product ids when ids query param is provided', async () => {

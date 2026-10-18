@@ -172,6 +172,14 @@ export class ListProductsQueryDto {
   @IsOptional()
   @IsString()
   cursor?: string;
+
+  @ApiPropertyOptional({
+    description: 'Requested locale (e.g. "km" or "en"). Falls back to base English if missing.',
+    example: 'km',
+  })
+  @IsOptional()
+  @IsString()
+  locale?: string;
 }
 
 export class ProductResponseDto {
