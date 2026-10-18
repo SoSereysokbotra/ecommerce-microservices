@@ -165,11 +165,11 @@ graph TD
 ## 5. Definition of Done for M20
 
 - [ ] All 5 phases implemented and verified.
-- [ ] Database migration creates `product_translations` and `category_translations` with unique constraints.
-- [ ] Seed script loads complete Khmer translations for categories and products.
-- [ ] Fallback logic returns base English content when a localized record is missing.
-- [ ] API Gateway detects and propagates `x-locale` header to downstream microservices.
-- [ ] Storefront features interactive language switcher (`EN` / `KM`) with cookie persistence.
+- [x] Database migration creates `product_translations` and `category_translations` with unique constraints. (Phase 1 complete)
+- [x] Seed script loads complete Khmer translations for categories and products. (Phase 1 complete)
+- [x] Fallback logic returns base English content when a localized record is missing. (Phase 1 complete)
+- [x] API Gateway detects and propagates `x-locale` header to downstream microservices. (Phase 2 complete)
+- [ ] Storefront features interactive language switcher (`EN` / `KM`) with cookie persistence. (Phase 3)
 - [ ] `formatMoney` and date displays format according to active locale (`en-US` vs `km-KH`).
 - [ ] Full purchase flow (browse, detail, cart, checkout, confirmation) functional in both languages.
 - [ ] Automated tests pass with 0 errors.
