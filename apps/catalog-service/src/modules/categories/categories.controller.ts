@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Headers, Param, Patch, Query } from '@nestjs/common';
-import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiHeader, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CORRELATION_ID_HEADER, Public, Roles } from '@libs/common';
 import { UserRole } from '@libs/shared-types';
 import { CategoriesService } from './categories.service';
@@ -14,6 +14,16 @@ export class CategoriesController {
   @Public()
   @Get()
   @ApiOperation({ summary: 'List categories' })
+  @ApiQuery({
+    name: 'locale',
+    required: false,
+    description: 'Requested locale (e.g. "km" or "en"). Falls back to English if missing.',
+  })
+  @ApiHeader({
+    name: 'x-locale',
+    required: false,
+    description: 'Requested locale header (e.g. "km" or "en").',
+  })
   @ApiOkResponse({ type: [CategoryResponseDto] })
   list(
     @Query('locale') queryLocale?: string,

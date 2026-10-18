@@ -55,8 +55,10 @@ async function bootstrap(): Promise<void> {
       'traceparent',
       'x-cart-token',
       'stripe-signature',
+      'x-locale',
+      'accept-language',
     ],
-    exposedHeaders: ['x-correlation-id', 'traceparent', 'x-cart-token', 'set-cookie'],
+    exposedHeaders: ['x-correlation-id', 'traceparent', 'x-cart-token', 'set-cookie', 'x-locale'],
   };
 
   const app = await NestFactory.create(AppModule, {

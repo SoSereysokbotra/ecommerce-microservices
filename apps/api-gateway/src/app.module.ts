@@ -8,6 +8,7 @@ import { GatewayJwtGuard } from './auth/gateway-jwt.guard';
 import { HealthController } from './health.controller';
 import { ProxyModule } from './proxy/proxy.module';
 import { ResilienceModule } from './resilience/resilience.module';
+import { LocaleMiddleware } from './i18n/locale.middleware';
 
 @Module({
   imports: [
@@ -37,7 +38,7 @@ import { ResilienceModule } from './resilience/resilience.module';
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
     // Runs before the guards so every log line, including auth failures,
-    // carries the id.
-    consumer.apply(CorrelationIdMiddleware).forRoutes('*');
+    // carries the id, and every request resolves its locale.
+    consumer.apply(CorrelationIdMiddleware, LocaleMiddleware).forRoutes('*');
   }
 }

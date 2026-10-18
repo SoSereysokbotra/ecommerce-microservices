@@ -19,6 +19,7 @@ export { CORRELATION_ID_HEADER, TRACEPARENT_HEADER };
  */
 export const USER_ID_HEADER = 'x-user-id';
 export const USER_ROLE_HEADER = 'x-user-role';
+export const LOCALE_HEADER = 'x-locale';
 
 declare module 'express-serve-static-core' {
   interface Request {
@@ -26,6 +27,7 @@ declare module 'express-serve-static-core' {
     traceparent?: string;
     traceId?: string;
     spanId?: string;
+    locale?: string;
   }
 }
 

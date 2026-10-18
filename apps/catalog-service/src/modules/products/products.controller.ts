@@ -1,7 +1,7 @@
 import { Headers, Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { CORRELATION_ID_HEADER, Public, Roles } from '@libs/common';
 import { UserRole } from '@libs/shared-types';
-import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiHeader, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { ProductsService } from './products.service';
 import {
   CreateProductDto,
@@ -20,6 +20,11 @@ export class ProductsController {
   @Public()
   @Get()
   @ApiOperation({ summary: 'List products' })
+  @ApiHeader({
+    name: 'x-locale',
+    required: false,
+    description: 'Requested locale header (e.g. "km" or "en").',
+  })
   @ApiOkResponse({ type: PaginatedProductsDto })
   list(
     @Query() query: ListProductsQueryDto,
@@ -31,6 +36,16 @@ export class ProductsController {
   @Public()
   @Get(':idOrSlug')
   @ApiOperation({ summary: 'Get one product by id or slug' })
+  @ApiQuery({
+    name: 'locale',
+    required: false,
+    description: 'Requested locale (e.g. "km" or "en"). Falls back to English if missing.',
+  })
+  @ApiHeader({
+    name: 'x-locale',
+    required: false,
+    description: 'Requested locale header (e.g. "km" or "en").',
+  })
   @ApiOkResponse({ type: ProductResponseDto })
   findOne(
     @Param('idOrSlug') idOrSlug: string,

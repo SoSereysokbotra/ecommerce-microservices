@@ -3,6 +3,7 @@ import { HttpException, Injectable, Logger, NotFoundException } from '@nestjs/co
 import { ConfigService } from '@nestjs/config';
 import {
   CORRELATION_ID_HEADER,
+  LOCALE_HEADER,
   TRACEPARENT_HEADER,
   USER_ID_HEADER,
   USER_ROLE_HEADER,
@@ -15,11 +16,13 @@ import { Request } from 'express';
 import { firstValueFrom } from 'rxjs';
 import { CircuitBreakerRegistry, CircuitState } from '../resilience/circuit-breaker';
 import { FallbackRegistry } from '../resilience/fallback';
+import { resolveLocale } from '../i18n/locale.resolver';
 
 type AuthenticatedRequest = Request & {
   user?: { sub?: string; role?: string };
   correlationId?: string;
   traceparent?: string;
+  locale?: string;
   /** Present only for routes registered with a raw body parser. */
   rawBody?: Buffer;
 };
@@ -93,6 +96,8 @@ export class ProxyService {
     const targetUrl = `${baseUrl.replace(/\/$/, '')}${path}`;
     const breaker = this.circuitBreakerRegistry.getBreaker(configKey);
 
+    const locale = request.locale ?? resolveLocale(request);
+
     // Fast-fail or gracefully degrade if the circuit breaker is OPEN
     if (breaker.isOpen()) {
       const retryAfter = breaker.getRetryAfterSeconds();
@@ -110,6 +115,7 @@ export class ProxyService {
         );
         fallback.headers['x-circuit-breaker-status'] = 'OPEN';
         fallback.headers['retry-after'] = String(retryAfter);
+        fallback.headers[LOCALE_HEADER] = locale;
         return fallback;
       }
 
@@ -145,6 +151,7 @@ export class ProxyService {
     });
 
     headers[TRACEPARENT_HEADER] = clientSpan.traceparent;
+    headers[LOCALE_HEADER] = locale;
 
     // Forward the identity the guard already verified. Strip anything the
     // caller sent under these names first — otherwise a client could simply
@@ -204,6 +211,7 @@ export class ProxyService {
             `Degraded: Upstream '${configKey}' returned ${response.status}; returning fallback for ${request.method} ${path} [${request.correlationId}]`,
           );
           fallback.headers['x-circuit-breaker-status'] = breaker.getState();
+          fallback.headers[LOCALE_HEADER] = locale;
           return fallback;
         }
       } else {
@@ -212,6 +220,7 @@ export class ProxyService {
 
       response.headers = response.headers ?? {};
       response.headers['x-circuit-breaker-status'] = breaker.getState();
+      response.headers[LOCALE_HEADER] = locale;
       return response;
     } catch (error) {
       clientSpan.recordException(error);
@@ -229,6 +238,7 @@ export class ProxyService {
           `Degraded: Upstream '${configKey}' unreachable; returning fallback for ${request.method} ${path} [${request.correlationId}]`,
         );
         fallback.headers['x-circuit-breaker-status'] = breaker.getState();
+        fallback.headers[LOCALE_HEADER] = locale;
         return fallback;
       }
 
