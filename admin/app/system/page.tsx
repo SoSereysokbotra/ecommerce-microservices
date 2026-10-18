@@ -866,7 +866,228 @@ export default function SystemPage() {
           </div>
         </div>
 
-        {/* Section 4: Live Operational Terminal Output */}
+        {/* Section 4: Observability & Distributed Tracing Telemetry (M19) */}
+        <div style={{ marginBottom: '2.5rem' }}>
+          <div
+            className="row"
+            style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}
+          >
+            <div>
+              <div className="row" style={{ gap: '0.75rem', alignItems: 'center' }}>
+                <h2 style={{ fontSize: '1.25rem', margin: 0 }}>
+                  📊 Observability & Distributed Tracing Telemetry
+                </h2>
+                <span className="pill pill-active">LGTM STACK ACTIVE</span>
+              </div>
+              <p
+                className="subtitle"
+                style={{ fontSize: '0.85rem', margin: 0, marginTop: '0.25rem' }}
+              >
+                Full-spectrum distributed observability with W3C traceparent waterfalls (Tempo), RED
+                metrics & Outbox lag (Prometheus), and correlated log pivots (Loki).
+              </p>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+              gap: '1rem',
+            }}
+          >
+            {/* Grafana Dashboard Card */}
+            <div
+              className="card"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div>
+                <div
+                  className="row"
+                  style={{
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '0.5rem',
+                  }}
+                >
+                  <strong style={{ fontSize: '0.95rem' }}>📈 Grafana Commerce Mesh</strong>
+                  <span className="pill pill-staff" style={{ fontSize: '0.7rem' }}>
+                    PORT 3050
+                  </span>
+                </div>
+                <p
+                  className="subtitle"
+                  style={{ fontSize: '0.8rem', lineHeight: 1.5, margin: 0, marginBottom: '0.75rem' }}
+                >
+                  Unified service mesh dashboard with real-time RED metrics (Rate, Errors,
+                  Duration), Outbox lag gauges, and correlated log streams.
+                </p>
+              </div>
+              <a
+                href="http://localhost:3050/d/commerce-traces-logs/e-commerce-distributed-observability-mesh"
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-primary"
+                style={{
+                  textAlign: 'center',
+                  textDecoration: 'none',
+                  fontSize: '0.75rem',
+                  padding: '0.4rem 0.75rem',
+                }}
+              >
+                Launch Commerce Dashboard ↗
+              </a>
+            </div>
+
+            {/* Tempo Distributed Tracing Card */}
+            <div
+              className="card"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div>
+                <div
+                  className="row"
+                  style={{
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '0.5rem',
+                  }}
+                >
+                  <strong style={{ fontSize: '0.95rem' }}>🕸️ Tempo Trace Waterfalls</strong>
+                  <span className="pill pill-staff" style={{ fontSize: '0.7rem' }}>
+                    PORT 3200 / 4318
+                  </span>
+                </div>
+                <p
+                  className="subtitle"
+                  style={{ fontSize: '0.8rem', lineHeight: 1.5, margin: 0, marginBottom: '0.75rem' }}
+                >
+                  End-to-end W3C distributed trace waterfalls: Gateway HTTP (Server) ➔ Proxy
+                  (Client) ➔ Orders Saga ➔ Outbox Relay (Producer) ➔ RabbitMQ (Consumer).
+                </p>
+              </div>
+              <a
+                href="http://localhost:3050/explore?left=%7B%22datasource%22:%22tempo%22%7D"
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-secondary"
+                style={{
+                  textAlign: 'center',
+                  textDecoration: 'none',
+                  fontSize: '0.75rem',
+                  padding: '0.4rem 0.75rem',
+                }}
+              >
+                Explore Tempo Traces ↗
+              </a>
+            </div>
+
+            {/* Prometheus Metrics Engine Card */}
+            <div
+              className="card"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div>
+                <div
+                  className="row"
+                  style={{
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '0.5rem',
+                  }}
+                >
+                  <strong style={{ fontSize: '0.95rem' }}>⏱️ Prometheus Metrics Engine</strong>
+                  <span className="pill pill-staff" style={{ fontSize: '0.7rem' }}>
+                    PORT 9090
+                  </span>
+                </div>
+                <p
+                  className="subtitle"
+                  style={{ fontSize: '0.8rem', lineHeight: 1.5, margin: 0, marginBottom: '0.75rem' }}
+                >
+                  Time-series metrics registry scraping 12 services every 10s. Query{' '}
+                  <code>http_requests_total</code>, <code>outbox_lag_seconds</code>, and circuit
+                  breaker states.
+                </p>
+              </div>
+              <a
+                href="http://localhost:9090/targets"
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-secondary"
+                style={{
+                  textAlign: 'center',
+                  textDecoration: 'none',
+                  fontSize: '0.75rem',
+                  padding: '0.4rem 0.75rem',
+                }}
+              >
+                View Scrape Targets & PromQL ↗
+              </a>
+            </div>
+
+            {/* Live Gateway Metrics Card */}
+            <div
+              className="card"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div>
+                <div
+                  className="row"
+                  style={{
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '0.5rem',
+                  }}
+                >
+                  <strong style={{ fontSize: '0.95rem' }}>📡 Live Gateway Metrics Stream</strong>
+                  <span className="pill pill-active" style={{ fontSize: '0.7rem' }}>
+                    PORT 3000
+                  </span>
+                </div>
+                <p
+                  className="subtitle"
+                  style={{ fontSize: '0.8rem', lineHeight: 1.5, margin: 0, marginBottom: '0.75rem' }}
+                >
+                  Direct Prometheus exposition stream from the API Gateway edge. Inspect raw counter
+                  and histogram bucket distributions.
+                </p>
+              </div>
+              <a
+                href="http://localhost:3000/api/v1/metrics"
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-secondary"
+                style={{
+                  textAlign: 'center',
+                  textDecoration: 'none',
+                  fontSize: '0.75rem',
+                  padding: '0.4rem 0.75rem',
+                }}
+              >
+                View /api/v1/metrics Raw ↗
+              </a>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 5: Live Operational Terminal Output */}
         <div
           className="card"
           style={{
@@ -958,7 +1179,7 @@ export default function SystemPage() {
           </div>
         </div>
 
-        {/* Section 5: Real-Time Microservice Mesh Status */}
+        {/* Section 6: Real-Time Microservice Mesh Status */}
         <HealthMatrix />
       </div>
     </AuthGate>

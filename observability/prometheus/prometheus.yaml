@@ -14,3 +14,63 @@ scrape_configs:
   - job_name: 'loki'
     static_configs:
       - targets: ['loki:3100']
+
+  - job_name: 'api-gateway'
+    metrics_path: '/api/v1/metrics'
+    static_configs:
+      - targets: ['api-gateway:3000']
+
+  - job_name: 'orders-service'
+    metrics_path: '/api/v1/metrics'
+    static_configs:
+      - targets: ['orders-service:3004']
+
+  - job_name: 'catalog-service'
+    metrics_path: '/api/v1/metrics'
+    static_configs:
+      - targets: ['catalog-service:3002']
+
+  - job_name: 'inventory-service'
+    metrics_path: '/api/v1/metrics'
+    static_configs:
+      - targets: ['inventory-service:3003']
+
+  - job_name: 'payments-service'
+    metrics_path: '/api/v1/metrics'
+    static_configs:
+      - targets: ['payments-service:3005']
+
+  - job_name: 'users-service'
+    metrics_path: '/api/v1/metrics'
+    static_configs:
+      - targets: ['users-service:3001']
+
+  - job_name: 'cart-service'
+    metrics_path: '/api/v1/metrics'
+    static_configs:
+      - targets: ['cart-service:3006']
+
+  - job_name: 'pricing-service'
+    metrics_path: '/api/v1/metrics'
+    static_configs:
+      - targets: ['pricing-service:3007']
+
+  - job_name: 'shipping-service'
+    metrics_path: '/api/v1/metrics'
+    static_configs:
+      - targets: ['shipping-service:3008']
+
+  - job_name: 'search-service'
+    metrics_path: '/api/v1/metrics'
+    static_configs:
+      - targets: ['search-service:3009']
+
+  - job_name: 'reviews-service'
+    metrics_path: '/api/v1/metrics'
+    static_configs:
+      - targets: ['reviews-service:3010']
+
+  - job_name: 'recommendations-service'
+    metrics_path: '/api/v1/metrics'
+    static_configs:
+      - targets: ['recommendations-service:3011']
