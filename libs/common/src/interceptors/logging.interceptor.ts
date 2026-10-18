@@ -1,6 +1,7 @@
 import { CallHandler, ExecutionContext, Injectable, Logger, NestInterceptor } from '@nestjs/common';
 import { Observable, tap } from 'rxjs';
-import { getTraceContext } from '../tracing/trace-context';
+import { getTraceContext, startTraceSpan } from '../tracing/trace-context';
+import { SpanKind, SpanStatusCode } from '../tracing/trace-span';
 
 @Injectable()
 export class LoggingInterceptor implements NestInterceptor {
@@ -17,12 +18,30 @@ export class LoggingInterceptor implements NestInterceptor {
     const traceId = request.traceId || traceCtx?.traceId;
     const spanId = request.spanId || traceCtx?.spanId;
 
+    const span = startTraceSpan(`${method} ${path}`, {
+      kind: SpanKind.SERVER,
+      attributes: {
+        'http.method': method,
+        'http.target': path,
+        correlation_id: correlationId,
+        ...(traceCtx?.userId ? { 'user.id': traceCtx.userId } : {}),
+      },
+    });
+
     return next.handle().pipe(
       tap({
         next: () => {
           const response = context.switchToHttp().getResponse();
           const duration = Date.now() - startedAt;
           const statusCode = response.statusCode;
+
+          span.setAttribute('http.status_code', statusCode);
+          if (statusCode >= 500) {
+            span.setStatus(SpanStatusCode.ERROR, `HTTP ${statusCode}`);
+          } else {
+            span.setStatus(SpanStatusCode.OK);
+          }
+          span.end();
 
           if (process.env.LOG_FORMAT === 'json' || process.env.NODE_ENV === 'production') {
             this.logger.log(
@@ -50,6 +69,10 @@ export class LoggingInterceptor implements NestInterceptor {
           const duration = Date.now() - startedAt;
           const statusCode = (error as { status?: number })?.status || 500;
           const message = error instanceof Error ? error.message : String(error);
+
+          span.setAttribute('http.status_code', statusCode);
+          span.recordException(error);
+          span.end();
 
           if (process.env.LOG_FORMAT === 'json' || process.env.NODE_ENV === 'production') {
             this.logger.error(

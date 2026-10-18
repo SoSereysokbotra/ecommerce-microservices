@@ -6,6 +6,9 @@ import {
   TRACEPARENT_HEADER,
   USER_ID_HEADER,
   USER_ROLE_HEADER,
+  SpanKind,
+  SpanStatusCode,
+  startTraceSpan,
 } from '@libs/common';
 import { AxiosError, AxiosResponse } from 'axios';
 import { Request } from 'express';
@@ -131,9 +134,17 @@ export class ProxyService {
     delete headers.host;
     delete headers['content-length'];
     headers[CORRELATION_ID_HEADER] = request.correlationId ?? '';
-    if (request.traceparent) {
-      headers[TRACEPARENT_HEADER] = request.traceparent;
-    }
+    const clientSpan = startTraceSpan(`HTTP ${request.method} ${configKey}`, {
+      kind: SpanKind.CLIENT,
+      attributes: {
+        'http.method': request.method,
+        'http.url': targetUrl,
+        'upstream.service': configKey,
+        correlation_id: request.correlationId ?? '',
+      },
+    });
+
+    headers[TRACEPARENT_HEADER] = clientSpan.traceparent;
 
     // Forward the identity the guard already verified. Strip anything the
     // caller sent under these names first — otherwise a client could simply
@@ -171,6 +182,14 @@ export class ProxyService {
         request.correlationId,
       );
 
+      clientSpan.setAttribute('http.status_code', response.status);
+      if (response.status >= 500) {
+        clientSpan.setStatus(SpanStatusCode.ERROR, `HTTP ${response.status}`);
+      } else {
+        clientSpan.setStatus(SpanStatusCode.OK);
+      }
+      clientSpan.end();
+
       // Server error (5xx) is treated as an upstream failure for circuit breaker tracking
       if (response.status >= 500) {
         breaker.recordFailure(new Error(`Upstream returned HTTP ${response.status}`));
@@ -195,6 +214,9 @@ export class ProxyService {
       response.headers['x-circuit-breaker-status'] = breaker.getState();
       return response;
     } catch (error) {
+      clientSpan.recordException(error);
+      clientSpan.end();
+
       breaker.recordFailure(error);
 
       const fallback = this.fallbackRegistry.getFallback(

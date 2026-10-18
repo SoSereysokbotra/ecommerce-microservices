@@ -25,6 +25,8 @@ export * from './interceptors/transform.interceptor';
 
 // Tracing
 export * from './tracing/trace-context';
+export * from './tracing/trace-span';
+export * from './tracing/otel-exporter';
 
 // Middleware
 export * from './middleware/correlation-id.middleware';

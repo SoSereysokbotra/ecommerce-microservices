@@ -1,5 +1,7 @@
 import { AsyncLocalStorage } from 'async_hooks';
 import { randomBytes } from 'crypto';
+import { TraceSpan, SpanKind } from './trace-span';
+import { getGlobalOtelExporter } from './otel-exporter';
 
 export const TRACEPARENT_HEADER = 'traceparent';
 export const CORRELATION_ID_HEADER = 'x-correlation-id';
@@ -24,6 +26,8 @@ export interface TraceContext {
   serviceName?: string;
   /** W3C trace flags: '01' = sampled, '00' = not sampled */
   traceFlags?: string;
+  /** Active span object, if recorded */
+  activeSpan?: TraceSpan;
 }
 
 const storage = new AsyncLocalStorage<TraceContext>();
@@ -182,4 +186,34 @@ export function getCorrelationId(): string | undefined {
  */
 export function getTraceparent(): string | undefined {
   return storage.getStore()?.traceparent;
+}
+
+/**
+ * Starts a new trace span linked to the currently active trace context.
+ * When span.end() is called, it automatically enqueues for export via OtelExporter.
+ */
+export function startTraceSpan(
+  name: string,
+  options?: {
+    kind?: SpanKind;
+    attributes?: Record<string, string | number | boolean>;
+    serviceName?: string;
+  },
+): TraceSpan {
+  const currentCtx = getTraceContext();
+  const span = new TraceSpan(name, {
+    parentCtx: currentCtx,
+    kind: options?.kind,
+    attributes: options?.attributes,
+    serviceName: options?.serviceName,
+  });
+
+  const originalEnd = span.end.bind(span);
+  span.end = (endTimeUnixNano?: string) => {
+    originalEnd(endTimeUnixNano);
+    getGlobalOtelExporter().export(span);
+    return span;
+  };
+
+  return span;
 }
