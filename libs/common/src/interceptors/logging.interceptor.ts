@@ -2,6 +2,7 @@ import { CallHandler, ExecutionContext, Injectable, Logger, NestInterceptor } fr
 import { Observable, tap } from 'rxjs';
 import { getTraceContext, startTraceSpan } from '../tracing/trace-context';
 import { SpanKind, SpanStatusCode } from '../tracing/trace-span';
+import { getGlobalMetricsRegistry } from '../metrics/metrics-registry';
 
 @Injectable()
 export class LoggingInterceptor implements NestInterceptor {
@@ -43,12 +44,25 @@ export class LoggingInterceptor implements NestInterceptor {
           }
           span.end();
 
+          const serviceName = process.env.SERVICE_NAME ?? 'commerce-service';
+          const metricLabels = {
+            method,
+            route: path,
+            status_code: String(statusCode),
+            service: serviceName,
+          };
+          getGlobalMetricsRegistry().httpRequestsTotal.inc(metricLabels);
+          getGlobalMetricsRegistry().httpRequestDurationSeconds.observe(
+            duration / 1000,
+            metricLabels,
+          );
+
           if (process.env.LOG_FORMAT === 'json' || process.env.NODE_ENV === 'production') {
             this.logger.log(
               JSON.stringify({
                 timestamp: new Date().toISOString(),
                 level: 'info',
-                service: process.env.SERVICE_NAME ?? 'commerce-service',
+                service: serviceName,
                 traceId,
                 spanId,
                 correlationId,
@@ -73,6 +87,19 @@ export class LoggingInterceptor implements NestInterceptor {
           span.setAttribute('http.status_code', statusCode);
           span.recordException(error);
           span.end();
+
+          const serviceName = process.env.SERVICE_NAME ?? 'commerce-service';
+          const metricLabels = {
+            method,
+            route: path,
+            status_code: String(statusCode),
+            service: serviceName,
+          };
+          getGlobalMetricsRegistry().httpRequestsTotal.inc(metricLabels);
+          getGlobalMetricsRegistry().httpRequestDurationSeconds.observe(
+            duration / 1000,
+            metricLabels,
+          );
 
           if (process.env.LOG_FORMAT === 'json' || process.env.NODE_ENV === 'production') {
             this.logger.error(

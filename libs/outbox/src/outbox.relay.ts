@@ -7,6 +7,7 @@ import {
   SpanStatusCode,
   extractTraceContext,
   getGlobalOtelExporter,
+  getGlobalMetricsRegistry,
 } from '@libs/common';
 import { OUTBOX_OPTIONS, OutboxOptions } from './outbox.options';
 
@@ -87,6 +88,19 @@ export class OutboxRelay implements OnModuleInit, OnModuleDestroy {
           [batchSize],
         );
 
+        const serviceName = process.env.SERVICE_NAME || 'commerce-service';
+        if (rows.length === 0) {
+          getGlobalMetricsRegistry().outboxPendingCount.set(0, { service: serviceName });
+          getGlobalMetricsRegistry().outboxLagSeconds.set(0, { service: serviceName });
+        } else {
+          const oldestCreatedAt = new Date(rows[0].created_at).getTime();
+          const lagSeconds = Math.max(0, (Date.now() - oldestCreatedAt) / 1000);
+          getGlobalMetricsRegistry().outboxPendingCount.set(rows.length, { service: serviceName });
+          getGlobalMetricsRegistry().outboxLagSeconds.set(Number(lagSeconds.toFixed(3)), {
+            service: serviceName,
+          });
+        }
+
         let published = 0;
         for (const row of rows) {
           if (await this.publishOne(manager, row)) {
@@ -163,6 +177,10 @@ export class OutboxRelay implements OnModuleInit, OnModuleDestroy {
     }
 
     await manager.query(`UPDATE outbox SET published_at = now() WHERE id = $1`, [row.id]);
+    getGlobalMetricsRegistry().outboxPublishedTotal.inc({
+      service: process.env.SERVICE_NAME || 'commerce-service',
+      event_type: row.event_type,
+    });
     this.logger.debug(`Relayed ${row.event_type} (${row.event_id}) [${envelope.correlationId}]`);
     return true;
   }

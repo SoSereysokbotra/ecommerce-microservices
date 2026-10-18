@@ -1,6 +1,6 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Header } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { Public } from '@libs/common';
+import { Public, getGlobalMetricsRegistry } from '@libs/common';
 
 @ApiTags('health')
 @Controller()
@@ -23,5 +23,15 @@ export class HealthController {
   @Get('ready')
   ready(): { status: string; service: string } {
     return { status: 'ready', service: 'api-gateway' };
+  }
+
+  /**
+   * Prometheus exposition metrics endpoint.
+   */
+  @Public()
+  @Get('metrics')
+  @Header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
+  metrics(): string {
+    return getGlobalMetricsRegistry().formatMetrics();
   }
 }

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { getGlobalMetricsRegistry } from '@libs/common';
 
 export type CircuitState = 'CLOSED' | 'OPEN' | 'HALF_OPEN';
 
@@ -49,6 +50,7 @@ export class CircuitBreaker {
     this.failureThreshold = options?.failureThreshold ?? 5;
     this.recoveryTimeoutMs = options?.recoveryTimeoutMs ?? 15000;
     this.halfOpenMaxTrials = options?.halfOpenMaxTrials ?? 2;
+    getGlobalMetricsRegistry().circuitBreakerState.set(0, { service_key: this.serviceKey });
   }
 
   /**
@@ -116,6 +118,11 @@ export class CircuitBreaker {
 
   private transitionTo(newState: CircuitState): void {
     this.state = newState;
+    const stateValue = newState === 'CLOSED' ? 0 : newState === 'HALF_OPEN' ? 1 : 2;
+    getGlobalMetricsRegistry().circuitBreakerState.set(stateValue, {
+      service_key: this.serviceKey,
+    });
+
     if (newState === 'OPEN') {
       this.openedAt = Date.now();
       this.consecutiveSuccesses = 0;

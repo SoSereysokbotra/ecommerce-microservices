@@ -23,10 +23,11 @@ export * from './filters/http-exception.filter';
 export * from './interceptors/logging.interceptor';
 export * from './interceptors/transform.interceptor';
 
-// Tracing
+// Tracing & Metrics
 export * from './tracing/trace-context';
 export * from './tracing/trace-span';
 export * from './tracing/otel-exporter';
+export * from './metrics';
 
 // Middleware
 export * from './middleware/correlation-id.middleware';

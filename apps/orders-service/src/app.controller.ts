@@ -1,8 +1,8 @@
-import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
+import { Controller, Get, Header, ServiceUnavailableException } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { Public } from '@libs/common';
+import { Public, getGlobalMetricsRegistry } from '@libs/common';
 
 @ApiTags('health')
 @Controller()
@@ -31,5 +31,15 @@ export class AppController {
     }
 
     return { status: 'ready', service: 'orders-service' };
+  }
+
+  /**
+   * Prometheus exposition metrics endpoint.
+   */
+  @Public()
+  @Get('metrics')
+  @Header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
+  metrics(): string {
+    return getGlobalMetricsRegistry().formatMetrics();
   }
 }
