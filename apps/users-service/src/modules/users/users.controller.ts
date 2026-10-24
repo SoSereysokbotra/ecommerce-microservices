@@ -32,7 +32,7 @@ export class UsersController {
    * The caller's own profile, for a service that needs their name.
    */
   @Public()
-  @Get('me')
+  @Get(['me', 'profile'])
   @ApiHeader({ name: USER_ID_HEADER, description: 'Set by the gateway from the verified JWT.' })
   @ApiOperation({ summary: 'The calling user, identified by the gateway' })
   getMe(@Headers(USER_ID_HEADER) userId: string) {

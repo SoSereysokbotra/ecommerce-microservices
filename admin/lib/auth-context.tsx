@@ -38,6 +38,13 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function normalizeUser(u: AdminUser): AdminUser {
+  return {
+    ...u,
+    role: ((u.role ?? '') as string).toUpperCase() as UserRole,
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<AdminUser | null>(null);
@@ -46,7 +53,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshProfile = useCallback(async () => {
     try {
-      const profile = await api.get<AdminUser>('/users/profile');
+      const rawProfile = await api.get<AdminUser>('/users/profile');
+      const profile = normalizeUser(rawProfile);
       if (profile.role !== 'ADMIN' && profile.role !== 'STAFF') {
         clearAdminToken();
         setUser(null);
@@ -67,8 +75,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let mounted = true;
     api
       .get<AdminUser>('/users/profile')
-      .then((profile) => {
+      .then((raw) => {
         if (!mounted) return;
+        const profile = normalizeUser(raw);
         if (profile.role !== 'ADMIN' && profile.role !== 'STAFF') {
           clearAdminToken();
           setUser(null);
@@ -99,14 +108,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     try {
       const res = await api.post<LoginResponse>('/auth/login', { email, password });
-      if (res.user.role !== 'ADMIN' && res.user.role !== 'STAFF') {
+      const user = normalizeUser(res.user);
+      if (user.role !== 'ADMIN' && user.role !== 'STAFF') {
         clearAdminToken();
         setUser(null);
         throw new Error('Access denied: You need an Administrator or Staff role to access the back-office.');
       }
 
       setAdminToken(res.accessToken);
-      setUser(res.user);
+      setUser(user);
     } catch (err) {
       clearAdminToken();
       setUser(null);
