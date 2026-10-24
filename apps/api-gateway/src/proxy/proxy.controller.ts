@@ -135,7 +135,16 @@ export class ProxyController {
 
     response.status(upstream.status);
     Object.entries(upstream.headers).forEach(([key, value]) => {
-      if (value !== undefined && key.toLowerCase() !== 'transfer-encoding') {
+      const lowerKey = key.toLowerCase();
+      // Do not copy upstream CORS headers or hop-by-hop transfer-encoding.
+      // The gateway manages client-facing CORS. Overwriting the gateway's
+      // Access-Control-Allow-Origin with upstream's '*' breaks browser requests
+      // that use credentials: 'include'.
+      if (
+        value !== undefined &&
+        lowerKey !== 'transfer-encoding' &&
+        !lowerKey.startsWith('access-control-')
+      ) {
         response.setHeader(key, value as string | string[]);
       }
     });
