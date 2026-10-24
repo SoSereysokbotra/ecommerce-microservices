@@ -4,7 +4,8 @@
   "description": "Order-Inventory-Payment microservices with a saga-orchestrated checkout",
   "private": true,
   "scripts": {
-    "dev": "docker compose up -d && npm --prefix storefront run dev",
+    "dev": "node scripts/dev.js",
+    "dev:all": "node scripts/dev.js",
     "dev:stack": "docker compose up -d",
     "dev:storefront": "npm --prefix storefront run dev",
     "dev:admin": "npm --prefix admin run dev",
@@ -58,6 +59,7 @@
     "@nestjs/typeorm": "^10.0.2",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
+    "concurrently": "^10.0.6",
     "eslint": "^8.56.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.1.0",
