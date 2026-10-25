@@ -118,6 +118,13 @@ spec:
                   name: {{ include "ecommerce-platform.fullname" $root }}-secrets
                   key: DATABASE_URL_PRICING
             {{- end }}
+            {{- if eq $serviceName "recommendations-service" }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ecommerce-platform.fullname" $root }}-secrets
+                  key: DATABASE_URL_RECOMMENDATIONS
+            {{- end }}
           resources:
             {{- toYaml $serviceConfig.resources | nindent 12 }}
           {{- if $serviceConfig.probes }}

@@ -24,21 +24,20 @@ secrets:
     shipping: "postgresql://postgres:${DB_PASSWORD}@shipping-db:5432/shipping"
     reviews: "postgresql://postgres:${DB_PASSWORD}@reviews-db:5432/reviews"
     pricing: "postgresql://postgres:${DB_PASSWORD}@pricing-db:5432/pricing"
+    recommendations: "postgresql://postgres:${DB_PASSWORD}@recommendations-db:5432/recommendations"
 
 ingress:
   enabled: true
-  className: nginx
+  className: traefik
   host: commerce.local
   tls:
-    enabled: true
+    enabled: false
     secretName: commerce-tls-cert
   annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    traefik.ingress.kubernetes.io/router.entrypoints: web
 
 networkPolicy:
-  enabled: true
+  enabled: false
 
 services:
   api-gateway:
@@ -109,10 +108,10 @@ services:
       maxReplicas: 8
       targetCPU: 70
 
-  cart-service:
+  inventory-service:
     enabled: true
     image:
-      repository: cart-service
+      repository: inventory-service
       tag: latest
       pullPolicy: IfNotPresent
     replicas: 2
@@ -127,11 +126,12 @@ services:
       limits:
         cpu: 500m
         memory: 384Mi
-    autoscaling:
+    keda:
       enabled: true
+      queueName: inventory-service
+      queueLength: "30"
       minReplicas: 2
-      maxReplicas: 8
-      targetCPU: 70
+      maxReplicas: 6
 
   orders-service:
     enabled: true
@@ -176,10 +176,10 @@ services:
         cpu: 500m
         memory: 384Mi
 
-  inventory-service:
+  cart-service:
     enabled: true
     image:
-      repository: inventory-service
+      repository: cart-service
       tag: latest
       pullPolicy: IfNotPresent
     replicas: 2
@@ -194,12 +194,30 @@ services:
       limits:
         cpu: 500m
         memory: 384Mi
-    keda:
+    autoscaling:
       enabled: true
-      queueName: inventory-service
-      queueLength: "30"
       minReplicas: 2
-      maxReplicas: 6
+      maxReplicas: 8
+      targetCPU: 70
+
+  pricing-service:
+    enabled: true
+    image:
+      repository: pricing-service
+      tag: latest
+      pullPolicy: IfNotPresent
+    replicas: 2
+    port: 3007
+    probes:
+      livenessPath: /api/v1/health
+      readinessPath: /api/v1/ready
+    resources:
+      requests:
+        cpu: 100m
+        memory: 180Mi
+      limits:
+        cpu: 500m
+        memory: 384Mi
 
   shipping-service:
     enabled: true
@@ -208,7 +226,7 @@ services:
       tag: latest
       pullPolicy: IfNotPresent
     replicas: 2
-    port: 3007
+    port: 3008
     probes:
       livenessPath: /api/v1/health
       readinessPath: /api/v1/ready
@@ -226,29 +244,10 @@ services:
       minReplicas: 2
       maxReplicas: 6
 
-  reviews-service:
+  search-service:
     enabled: true
     image:
-      repository: reviews-service
-      tag: latest
-      pullPolicy: IfNotPresent
-    replicas: 2
-    port: 3008
-    probes:
-      livenessPath: /api/v1/health
-      readinessPath: /api/v1/ready
-    resources:
-      requests:
-        cpu: 100m
-        memory: 180Mi
-      limits:
-        cpu: 500m
-        memory: 384Mi
-
-  pricing-service:
-    enabled: true
-    image:
-      repository: pricing-service
+      repository: search-service
       tag: latest
       pullPolicy: IfNotPresent
     replicas: 2
@@ -264,10 +263,10 @@ services:
         cpu: 500m
         memory: 384Mi
 
-  search-service:
+  reviews-service:
     enabled: true
     image:
-      repository: search-service
+      repository: reviews-service
       tag: latest
       pullPolicy: IfNotPresent
     replicas: 2
@@ -290,7 +289,7 @@ services:
       tag: latest
       pullPolicy: IfNotPresent
     replicas: 2
-    port: 3011
+    port: 3012
     probes:
       livenessPath: /api/v1/health
       readinessPath: /api/v1/ready

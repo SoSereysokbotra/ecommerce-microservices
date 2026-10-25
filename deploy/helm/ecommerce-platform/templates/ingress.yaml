@@ -6,20 +6,39 @@ metadata:
   labels:
     {{- include "ecommerce-platform.labels" . | nindent 4 }}
   annotations:
-    kubernetes.io/ingress.class: {{ .Values.ingress.className | default "nginx" | quote }}
+    kubernetes.io/ingress.class: {{ .Values.ingress.className | default "traefik" | quote }}
     {{- with .Values.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
-  {{- if .Values.ingress.tls.enabled }}
+  ingressClassName: {{ .Values.ingress.className | default "traefik" }}
+  {{- if and .Values.ingress.tls .Values.ingress.tls.enabled }}
   tls:
     - hosts:
         - {{ .Values.ingress.host | quote }}
       secretName: {{ .Values.ingress.tls.secretName | quote }}
   {{- end }}
   rules:
+    {{- if .Values.ingress.host }}
     - host: {{ .Values.ingress.host | quote }}
       http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "ecommerce-platform.fullname" . }}-api-gateway
+                port:
+                  number: 3000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "ecommerce-platform.fullname" . }}-storefront
+                port:
+                  number: 3100
+    {{- end }}
+    - http:
         paths:
           - path: /api
             pathType: Prefix
