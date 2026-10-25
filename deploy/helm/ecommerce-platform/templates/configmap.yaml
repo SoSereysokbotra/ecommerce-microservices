@@ -11,6 +11,7 @@ data:
   RABBITMQ_URL: {{ .Values.config.rabbitmqUrl | quote }}
   REDIS_URL: {{ .Values.config.redisUrl | quote }}
   OPENSEARCH_NODE: {{ .Values.config.opensearchNode | quote }}
+  OPENSEARCH_URL: {{ .Values.config.opensearchNode | quote }}
   OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.config.otelEndpoint | quote }}
   LOKI_ENDPOINT: {{ .Values.config.lokiEndpoint | quote }}
   API_GATEWAY_PORT: "3000"

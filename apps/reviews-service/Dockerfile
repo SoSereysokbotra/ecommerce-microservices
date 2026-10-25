@@ -29,7 +29,8 @@ COPY . .
 # development target only has them because it bind-mounts the host tree, so
 # the production build has to install them explicitly.
 RUN npm install --ignore-scripts \
- && npm install --ignore-scripts --prefix libs/common
+ && npm install --ignore-scripts --prefix libs/common \
+ && npm install --ignore-scripts --prefix libs/rabbitmq
 
 RUN npm --prefix apps/reviews-service run build
 

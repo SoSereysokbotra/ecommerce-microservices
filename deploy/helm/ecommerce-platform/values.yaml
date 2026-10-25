@@ -24,6 +24,7 @@ secrets:
     orders: "postgresql://postgres:${DB_PASSWORD}@orders-db:5432/orders"
     payments: "postgresql://postgres:${DB_PASSWORD}@payments-db:5432/payments"
     inventory: "postgresql://postgres:${DB_PASSWORD}@inventory-db:5432/inventory"
+    cart: "postgresql://postgres:${DB_PASSWORD}@cart-db:5432/cart"
     shipping: "postgresql://postgres:${DB_PASSWORD}@shipping-db:5432/shipping"
     reviews: "postgresql://postgres:${DB_PASSWORD}@reviews-db:5432/reviews"
     pricing: "postgresql://postgres:${DB_PASSWORD}@pricing-db:5432/pricing"
@@ -47,7 +48,7 @@ services:
     enabled: true
     image:
       repository: commerce-api-gateway
-      tag: latest
+      tag: prod
       pullPolicy: IfNotPresent
     replicas: 2
     port: 3000
@@ -64,7 +65,7 @@ services:
     autoscaling:
       enabled: true
       minReplicas: 2
-      maxReplicas: 10
+      maxReplicas: 5
       targetCPU: 70
       targetMemory: 80
 
@@ -72,9 +73,9 @@ services:
     enabled: true
     image:
       repository: commerce-users-service
-      tag: latest
+      tag: prod
       pullPolicy: IfNotPresent
-    replicas: 2
+    replicas: 1
     port: 3001
     probes:
       livenessPath: /api/v1/health
@@ -91,9 +92,9 @@ services:
     enabled: true
     image:
       repository: commerce-catalog-service
-      tag: latest
+      tag: prod
       pullPolicy: IfNotPresent
-    replicas: 2
+    replicas: 1
     port: 3002
     probes:
       livenessPath: /api/v1/health
@@ -107,17 +108,17 @@ services:
         memory: 384Mi
     autoscaling:
       enabled: true
-      minReplicas: 2
-      maxReplicas: 8
+      minReplicas: 1
+      maxReplicas: 5
       targetCPU: 70
 
   inventory-service:
     enabled: true
     image:
       repository: commerce-inventory-service
-      tag: latest
+      tag: prod
       pullPolicy: IfNotPresent
-    replicas: 2
+    replicas: 1
     port: 3003
     probes:
       livenessPath: /api/v1/health
@@ -130,7 +131,7 @@ services:
         cpu: 500m
         memory: 384Mi
     keda:
-      enabled: true
+      enabled: false
       queueName: inventory-service
       queueLength: "30"
       minReplicas: 2
@@ -140,9 +141,9 @@ services:
     enabled: true
     image:
       repository: commerce-orders-service
-      tag: latest
+      tag: prod
       pullPolicy: IfNotPresent
-    replicas: 2
+    replicas: 1
     port: 3004
     probes:
       livenessPath: /api/v1/health
@@ -156,17 +157,17 @@ services:
         memory: 384Mi
     autoscaling:
       enabled: true
-      minReplicas: 2
-      maxReplicas: 8
+      minReplicas: 1
+      maxReplicas: 5
       targetCPU: 70
 
   payments-service:
     enabled: true
     image:
       repository: commerce-payments-service
-      tag: latest
+      tag: prod
       pullPolicy: IfNotPresent
-    replicas: 2
+    replicas: 1
     port: 3005
     probes:
       livenessPath: /api/v1/health
@@ -183,9 +184,9 @@ services:
     enabled: true
     image:
       repository: commerce-cart-service
-      tag: latest
+      tag: prod
       pullPolicy: IfNotPresent
-    replicas: 2
+    replicas: 1
     port: 3006
     probes:
       livenessPath: /api/v1/health
@@ -199,17 +200,17 @@ services:
         memory: 384Mi
     autoscaling:
       enabled: true
-      minReplicas: 2
-      maxReplicas: 8
+      minReplicas: 1
+      maxReplicas: 5
       targetCPU: 70
 
   pricing-service:
     enabled: true
     image:
       repository: commerce-pricing-service
-      tag: latest
+      tag: prod
       pullPolicy: IfNotPresent
-    replicas: 2
+    replicas: 1
     port: 3007
     probes:
       livenessPath: /api/v1/health
@@ -226,9 +227,9 @@ services:
     enabled: true
     image:
       repository: commerce-shipping-service
-      tag: latest
+      tag: prod
       pullPolicy: IfNotPresent
-    replicas: 2
+    replicas: 1
     port: 3008
     probes:
       livenessPath: /api/v1/health
@@ -241,7 +242,7 @@ services:
         cpu: 500m
         memory: 384Mi
     keda:
-      enabled: true
+      enabled: false
       queueName: shipping-service
       queueLength: "30"
       minReplicas: 2
@@ -251,13 +252,13 @@ services:
     enabled: true
     image:
       repository: commerce-search-service
-      tag: latest
+      tag: prod
       pullPolicy: IfNotPresent
-    replicas: 2
+    replicas: 1
     port: 3009
     probes:
       livenessPath: /api/v1/health
-      readinessPath: /api/v1/ready
+      readinessPath: /api/v1/health
     resources:
       requests:
         cpu: 100m
@@ -270,9 +271,9 @@ services:
     enabled: true
     image:
       repository: commerce-reviews-service
-      tag: latest
+      tag: prod
       pullPolicy: IfNotPresent
-    replicas: 2
+    replicas: 1
     port: 3010
     probes:
       livenessPath: /api/v1/health
@@ -289,9 +290,9 @@ services:
     enabled: true
     image:
       repository: commerce-recommendations-service
-      tag: latest
+      tag: prod
       pullPolicy: IfNotPresent
-    replicas: 2
+    replicas: 1
     port: 3012
     probes:
       livenessPath: /api/v1/health
@@ -308,9 +309,9 @@ services:
     enabled: false
     image:
       repository: commerce-storefront
-      tag: latest
+      tag: prod
       pullPolicy: IfNotPresent
-    replicas: 2
+    replicas: 1
     port: 3100
     probes:
       livenessPath: /

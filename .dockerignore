@@ -1,5 +1,6 @@
-node_modules
-dist
+**/node_modules
+**/dist
+**/.next
 coverage
 .git
 .idea
@@ -7,7 +8,9 @@ coverage
 *.log
 .env
 .env.*
-apps/**/node_modules
-apps/**/dist
-libs/**/node_modules
-libs/**/dist
+admin
+storefront
+docs
+scripts
+deploy
+*.tar

@@ -27,7 +27,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "ecommerce-platform.fullname" . }}-api-gateway
+                name: api-gateway
                 port:
                   number: 3000
           {{- if and (hasKey .Values.services "storefront") .Values.services.storefront.enabled }}
@@ -46,7 +46,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "ecommerce-platform.fullname" . }}-api-gateway
+                name: api-gateway
                 port:
                   number: 3000
           {{- if and (hasKey .Values.services "storefront") .Values.services.storefront.enabled }}

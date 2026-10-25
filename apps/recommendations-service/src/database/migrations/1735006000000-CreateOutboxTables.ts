@@ -45,15 +45,12 @@ export class CreateOutboxTables1735006000000 implements MigrationInterface {
           { name: 'created_at', type: 'timestamptz', default: 'now()' },
         ],
       }),
+      true,
     );
 
     // The relay's only query is "unpublished, oldest first".
-    await queryRunner.createIndex(
-      'outbox',
-      new TableIndex({
-        name: 'IDX_outbox_unpublished',
-        columnNames: ['published_at', 'created_at'],
-      }),
+    await queryRunner.query(
+      'CREATE INDEX IF NOT EXISTS "IDX_outbox_unpublished" ON "outbox" ("published_at", "created_at")',
     );
 
     await queryRunner.createTable(
@@ -67,6 +64,7 @@ export class CreateOutboxTables1735006000000 implements MigrationInterface {
           { name: 'processed_at', type: 'timestamptz', default: 'now()' },
         ],
       }),
+      true,
     );
   }
 

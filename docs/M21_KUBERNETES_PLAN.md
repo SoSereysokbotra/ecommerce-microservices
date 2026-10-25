@@ -136,9 +136,9 @@ graph TD
 - [x] Local Kubernetes cluster (`k3d-commerce-cluster`) provisioned and accessible via `kubectl`.
 - [x] Namespace `commerce`, ConfigMap `commerce-config`, and Secrets `commerce-secrets` configured and verified.
 - [x] Helm chart passes `helm lint` and `helm template` with 0 errors.
-- [ ] All microservices deployed and healthy in the `commerce` namespace.
-- [ ] Liveness and readiness probes active and passing on all deployments.
-- [ ] Pod self-healing verified by killing a pod and confirming automatic resurrection.
-- [ ] Zero-downtime rolling update verified during rollout restart.
-- [ ] Horizontal Pod Autoscaler (HPA) configured for high-traffic services.
-- [ ] Operational runbook created in `docs/KUBERNETES_RUNBOOK.md`.
+- [x] All microservices deployed and healthy in the `commerce` namespace.
+- [x] Liveness and readiness probes active and passing on all deployments.
+- [x] Pod self-healing verified by killing a pod and confirming automatic resurrection.
+- [x] Zero-downtime rolling update verified during rollout restart.
+- [x] Horizontal Pod Autoscaler (HPA) configured for high-traffic services.
+- [x] Operational runbook created in `docs/KUBERNETES_RUNBOOK.md`.
