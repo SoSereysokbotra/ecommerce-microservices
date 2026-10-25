@@ -135,7 +135,7 @@ graph TD
 
 - [x] Local Kubernetes cluster (`k3d-commerce-cluster`) provisioned and accessible via `kubectl`.
 - [x] Namespace `commerce`, ConfigMap `commerce-config`, and Secrets `commerce-secrets` configured and verified.
-- [ ] Helm chart passes `helm lint` and `helm template` with 0 errors.
+- [x] Helm chart passes `helm lint` and `helm template` with 0 errors.
 - [ ] All microservices deployed and healthy in the `commerce` namespace.
 - [ ] Liveness and readiness probes active and passing on all deployments.
 - [ ] Pod self-healing verified by killing a pod and confirming automatic resurrection.
