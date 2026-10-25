@@ -45,8 +45,10 @@ async function bootstrap(): Promise<void> {
     defaultOrigins.push(process.env.ADMIN_DASHBOARD_URL);
   }
 
+  const allowedOrigins = Array.from(new Set([...defaultOrigins, ...corsOrigins]));
+
   const corsOptions = {
-    origin: corsOrigins.length > 0 ? corsOrigins : defaultOrigins,
+    origin: allowedOrigins,
     credentials: true,
     allowedHeaders: [
       'Content-Type',
