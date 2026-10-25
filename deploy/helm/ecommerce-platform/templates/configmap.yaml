@@ -1,3 +1,4 @@
+{{- if not .Values.configMapName -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -25,3 +26,4 @@ data:
   REVIEWS_SERVICE_URL: "http://{{ include "ecommerce-platform.fullname" . }}-reviews-service:3010"
   RECOMMENDATIONS_SERVICE_URL: "http://{{ include "ecommerce-platform.fullname" . }}-recommendations-service:3012"
   NEXT_PUBLIC_API_URL: "http://{{ include "ecommerce-platform.fullname" . }}-api-gateway:3000"
+{{- end }}

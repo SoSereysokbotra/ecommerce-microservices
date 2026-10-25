@@ -1,4 +1,6 @@
 {{- $root := . -}}
+{{- $secretName := $root.Values.secretName | default (printf "%s-secrets" (include "ecommerce-platform.fullname" $root)) -}}
+{{- $configMapName := $root.Values.configMapName | default (printf "%s-config" (include "ecommerce-platform.fullname" $root)) -}}
 {{- range $serviceName, $serviceConfig := .Values.services }}
 {{- if $serviceConfig.enabled }}
 ---
@@ -29,14 +31,14 @@ spec:
     spec:
       containers:
         - name: {{ $serviceName }}
-          image: "{{ $root.Values.global.imageRegistry }}/{{ $serviceConfig.image.repository }}:{{ $serviceConfig.image.tag }}"
+          image: "{{ if $root.Values.global.imageRegistry }}{{ $root.Values.global.imageRegistry }}/{{ end }}{{ $serviceConfig.image.repository }}:{{ $serviceConfig.image.tag }}"
           imagePullPolicy: {{ $serviceConfig.image.pullPolicy }}
           ports:
             - containerPort: {{ $serviceConfig.port }}
               name: http
           envFrom:
             - configMapRef:
-                name: {{ include "ecommerce-platform.fullname" $root }}-config
+                name: {{ $configMapName }}
           env:
             - name: PORT
               value: "{{ $serviceConfig.port }}"
@@ -44,85 +46,85 @@ spec:
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ecommerce-platform.fullname" $root }}-secrets
+                  name: {{ $secretName }}
                   key: JWT_SECRET
             {{- end }}
             {{- if eq $serviceName "users-service" }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ecommerce-platform.fullname" $root }}-secrets
+                  name: {{ $secretName }}
                   key: DATABASE_URL_USERS
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ecommerce-platform.fullname" $root }}-secrets
+                  name: {{ $secretName }}
                   key: JWT_SECRET
             {{- end }}
             {{- if eq $serviceName "catalog-service" }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ecommerce-platform.fullname" $root }}-secrets
+                  name: {{ $secretName }}
                   key: DATABASE_URL_CATALOG
             {{- end }}
             {{- if eq $serviceName "orders-service" }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ecommerce-platform.fullname" $root }}-secrets
+                  name: {{ $secretName }}
                   key: DATABASE_URL_ORDERS
             {{- end }}
             {{- if eq $serviceName "payments-service" }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ecommerce-platform.fullname" $root }}-secrets
+                  name: {{ $secretName }}
                   key: DATABASE_URL_PAYMENTS
             - name: STRIPE_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ecommerce-platform.fullname" $root }}-secrets
+                  name: {{ $secretName }}
                   key: STRIPE_SECRET_KEY
             - name: STRIPE_WEBHOOK_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ecommerce-platform.fullname" $root }}-secrets
+                  name: {{ $secretName }}
                   key: STRIPE_WEBHOOK_SECRET
             {{- end }}
             {{- if eq $serviceName "inventory-service" }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ecommerce-platform.fullname" $root }}-secrets
+                  name: {{ $secretName }}
                   key: DATABASE_URL_INVENTORY
             {{- end }}
             {{- if eq $serviceName "shipping-service" }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ecommerce-platform.fullname" $root }}-secrets
+                  name: {{ $secretName }}
                   key: DATABASE_URL_SHIPPING
             {{- end }}
             {{- if eq $serviceName "reviews-service" }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ecommerce-platform.fullname" $root }}-secrets
+                  name: {{ $secretName }}
                   key: DATABASE_URL_REVIEWS
             {{- end }}
             {{- if eq $serviceName "pricing-service" }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ecommerce-platform.fullname" $root }}-secrets
+                  name: {{ $secretName }}
                   key: DATABASE_URL_PRICING
             {{- end }}
             {{- if eq $serviceName "recommendations-service" }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ecommerce-platform.fullname" $root }}-secrets
+                  name: {{ $secretName }}
                   key: DATABASE_URL_RECOMMENDATIONS
             {{- end }}
           resources:

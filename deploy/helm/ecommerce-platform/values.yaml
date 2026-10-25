@@ -1,18 +1,21 @@
 global:
   environment: production
-  imageRegistry: ghcr.io/sosereysokbotra/ecommerce-microservices
+  imageRegistry: ""
+
+secretName: commerce-secrets
+configMapName: commerce-config
 
 config:
   nodeEnv: production
   logLevel: info
-  rabbitmqUrl: "amqp://guest:${RABBITMQ_PASS}@rabbitmq:5672"
-  redisUrl: "redis://redis.commerce.svc.cluster.local:6379"
+  rabbitmqUrl: "amqp://guest:guest@rabbitmq:5672"
+  redisUrl: "redis://redis:6379"
   opensearchNode: "http://opensearch.commerce.svc.cluster.local:9200"
   otelEndpoint: "http://tempo.commerce.svc.cluster.local:4318"
   lokiEndpoint: "http://loki.commerce.svc.cluster.local:3100"
 
 secrets:
-  jwtSecret: "change-in-vault-production-secret"
+  jwtSecret: "placeholder_jwt_secret"
   stripeSecretKey: "placeholder_test_key_not_real"
   stripeWebhookSecret: "whsec_placeholder"
   databases:
@@ -43,7 +46,7 @@ services:
   api-gateway:
     enabled: true
     image:
-      repository: api-gateway
+      repository: commerce-api-gateway
       tag: latest
       pullPolicy: IfNotPresent
     replicas: 2
@@ -68,7 +71,7 @@ services:
   users-service:
     enabled: true
     image:
-      repository: users-service
+      repository: commerce-users-service
       tag: latest
       pullPolicy: IfNotPresent
     replicas: 2
@@ -87,7 +90,7 @@ services:
   catalog-service:
     enabled: true
     image:
-      repository: catalog-service
+      repository: commerce-catalog-service
       tag: latest
       pullPolicy: IfNotPresent
     replicas: 2
@@ -111,7 +114,7 @@ services:
   inventory-service:
     enabled: true
     image:
-      repository: inventory-service
+      repository: commerce-inventory-service
       tag: latest
       pullPolicy: IfNotPresent
     replicas: 2
@@ -136,7 +139,7 @@ services:
   orders-service:
     enabled: true
     image:
-      repository: orders-service
+      repository: commerce-orders-service
       tag: latest
       pullPolicy: IfNotPresent
     replicas: 2
@@ -160,7 +163,7 @@ services:
   payments-service:
     enabled: true
     image:
-      repository: payments-service
+      repository: commerce-payments-service
       tag: latest
       pullPolicy: IfNotPresent
     replicas: 2
@@ -179,7 +182,7 @@ services:
   cart-service:
     enabled: true
     image:
-      repository: cart-service
+      repository: commerce-cart-service
       tag: latest
       pullPolicy: IfNotPresent
     replicas: 2
@@ -203,7 +206,7 @@ services:
   pricing-service:
     enabled: true
     image:
-      repository: pricing-service
+      repository: commerce-pricing-service
       tag: latest
       pullPolicy: IfNotPresent
     replicas: 2
@@ -222,7 +225,7 @@ services:
   shipping-service:
     enabled: true
     image:
-      repository: shipping-service
+      repository: commerce-shipping-service
       tag: latest
       pullPolicy: IfNotPresent
     replicas: 2
@@ -247,7 +250,7 @@ services:
   search-service:
     enabled: true
     image:
-      repository: search-service
+      repository: commerce-search-service
       tag: latest
       pullPolicy: IfNotPresent
     replicas: 2
@@ -266,7 +269,7 @@ services:
   reviews-service:
     enabled: true
     image:
-      repository: reviews-service
+      repository: commerce-reviews-service
       tag: latest
       pullPolicy: IfNotPresent
     replicas: 2
@@ -285,7 +288,7 @@ services:
   recommendations-service:
     enabled: true
     image:
-      repository: recommendations-service
+      repository: commerce-recommendations-service
       tag: latest
       pullPolicy: IfNotPresent
     replicas: 2
@@ -302,9 +305,9 @@ services:
         memory: 384Mi
 
   storefront:
-    enabled: true
+    enabled: false
     image:
-      repository: storefront
+      repository: commerce-storefront
       tag: latest
       pullPolicy: IfNotPresent
     replicas: 2
@@ -320,7 +323,7 @@ services:
         cpu: 1000m
         memory: 512Mi
     autoscaling:
-      enabled: true
+      enabled: false
       minReplicas: 2
       maxReplicas: 10
       targetCPU: 75

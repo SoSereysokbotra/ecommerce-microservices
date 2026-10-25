@@ -30,6 +30,7 @@ spec:
                 name: {{ include "ecommerce-platform.fullname" . }}-api-gateway
                 port:
                   number: 3000
+          {{- if and (hasKey .Values.services "storefront") .Values.services.storefront.enabled }}
           - path: /
             pathType: Prefix
             backend:
@@ -37,6 +38,7 @@ spec:
                 name: {{ include "ecommerce-platform.fullname" . }}-storefront
                 port:
                   number: 3100
+          {{- end }}
     {{- end }}
     - http:
         paths:
@@ -47,6 +49,7 @@ spec:
                 name: {{ include "ecommerce-platform.fullname" . }}-api-gateway
                 port:
                   number: 3000
+          {{- if and (hasKey .Values.services "storefront") .Values.services.storefront.enabled }}
           - path: /
             pathType: Prefix
             backend:
@@ -54,4 +57,5 @@ spec:
                 name: {{ include "ecommerce-platform.fullname" . }}-storefront
                 port:
                   number: 3100
+          {{- end }}
 {{- end }}
